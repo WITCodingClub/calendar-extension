@@ -33,20 +33,13 @@ class FeatureFlagsService {
         featureFlagsError.set(null);
 
         try {
+            const response = await API.getAllFeatureFlags();
             const flags: FeatureFlagsState = {} as FeatureFlagsState;
 
-            const flagPromises = FEATURE_FLAGS.map(async (flagName) => {
-                try {
-                    const isEnabled = await API.checkFeatureFlag(flagName);
-                    flags[flagName as FeatureFlagName] = isEnabled;
-                } catch (error) {
-                    console.error(`Failed to load feature flag: ${flagName}`, error);
-                    // Default to false if flag fetch fails
-                    flags[flagName as FeatureFlagName] = false;
-                }
-            });
-
-            await Promise.all(flagPromises);
+            // Map the response to our FeatureFlagsState type
+            for (const flagName of FEATURE_FLAGS) {
+                flags[flagName as FeatureFlagName] = response.feature_flags[flagName] ?? false;
+            }
 
             this.cache = flags;
             featureFlagsStore.set(flags);
@@ -54,6 +47,14 @@ class FeatureFlagsService {
             const err = error instanceof Error ? error : new Error('Failed to load feature flags');
             featureFlagsError.set(err);
             console.error('Error loading feature flags:', error);
+
+            // Set all flags to false on error
+            const flags: FeatureFlagsState = {} as FeatureFlagsState;
+            for (const flagName of FEATURE_FLAGS) {
+                flags[flagName as FeatureFlagName] = false;
+            }
+            this.cache = flags;
+            featureFlagsStore.set(flags);
         } finally {
             isLoadingFeatureFlags.set(false);
             this.loadPromise = null;

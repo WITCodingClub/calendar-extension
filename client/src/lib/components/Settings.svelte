@@ -9,16 +9,39 @@
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
     import { onMount } from "svelte";
 
+    // Google Calendar color ID to hex mapping
+    const COLOR_ID_TO_HEX: Record<string, string> = {
+        "1": "#7986cb",  // Lavender
+        "2": "#33b679",  // Sage
+        "3": "#8e24aa",  // Grape
+        "4": "#e67c73",  // Flamingo
+        "5": "#f6bf26",  // Banana
+        "6": "#f4511e",  // Tangerine
+        "7": "#039be5",  // Peacock
+        "8": "#616161",  // Graphite
+        "9": "#3f51b5",  // Blueberry
+        "10": "#0b8043", // Basil
+        "11": "#d50000", // Tomato
+    };
+
+    const HEX_TO_COLOR_ID: Record<string, string> = Object.fromEntries(
+        Object.entries(COLOR_ID_TO_HEX).map(([id, hex]) => [hex, id])
+    );
+
     let userSettings = $state<UserSettings | undefined>(undefined);
     let email = $state<string | undefined>(undefined);
     let currentEnvironment = $state<Environment>('prod');
     let authenticatedEnvironments = $state<Environment[]>([]);
     let notificationsDisabled = $state(false);
-    let connectedAccounts = $state<Array<{id: number, email: string, provider: string}>>([]);
+    let connectedAccounts = $state<Array<{id: string, email: string, provider: string, needs_reauth: boolean, token_revoked: boolean}>>([]);
     let addEmailInput = $state("");
     let showEnvSwitcher = $state<boolean>(false);
-    let showClearDataButton = $state<boolean>(false);
     let isRefreshingFlags = $state<boolean>(false);
+    const UNI_CAL_COLOR_STORAGE_KEY = "uniCalColor";
+    let uniCalColor = $state<string>(
+        browser ? (localStorage.getItem(UNI_CAL_COLOR_STORAGE_KEY) ?? "") : "#616161"
+    );
+    let hasLoadedUniCalColor = $state(false);
 
     $effect(() => {
         userSettings = $storedUserSettings;
@@ -55,16 +78,13 @@
             storedUserSettings.set(userSettings);
             email = emailData.email;
             showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
-            showClearDataButton = featureFlags.isEnabledSync('debugMode');
 
-            // Fetch global calendar preferences for notification toggle
+            // Fetch notification DND status
             try {
-                const globalPref = await API.getGlobalCalendarPreference();
-                if (globalPref && Array.isArray(globalPref.reminder_settings) && globalPref.reminder_settings.length === 0) {
-                    notificationsDisabled = true;
-                }
+                const status = await API.getNotificationStatus();
+                notificationsDisabled = status.notifications_disabled;
             } catch (e) {
-                // Global preference might not exist yet, that's okay
+                // DND status might not be available, that's okay
             }
 
             // Fetch connected accounts
@@ -73,6 +93,27 @@
                 connectedAccounts = accounts.oauth_credentials || [];
             } catch (e) {
                 console.error('Failed to fetch connected accounts:', e);
+            }
+
+            // Fetch uni cal color preference
+            try {
+                const calPrefs = await API.getCalendarPreferences();
+                // Check if any uni_cal_category has a color set (they should all be the same)
+                const firstCategory = Object.values(calPrefs.uni_cal_categories || {})[0];
+                if (firstCategory?.color_id) {
+                    const colorId = String(firstCategory.color_id);
+                    const resolvedColor = COLOR_ID_TO_HEX[colorId];
+                    if (resolvedColor) {
+                        uniCalColor = resolvedColor;
+                        if (browser) {
+                            localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, resolvedColor);
+                        }
+                    }
+                }
+            } catch (e) {
+                // Calendar preferences might not exist yet, that's okay
+            } finally {
+                hasLoadedUniCalColor = true;
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
@@ -140,6 +181,24 @@
 			storedUserSettings.set(userSettings);
 			API.userSettings(userSettings);
 		}
+    }
+
+    async function handleUniCalColorChange(newColor: string) {
+        if (!hasLoadedUniCalColor) return;
+        if (!newColor) return;
+        uniCalColor = newColor;
+        const colorId = HEX_TO_COLOR_ID[newColor] || "8"; // Default to Graphite
+
+        try {
+            await API.setAllUniCalCategoriesColor(colorId);
+            if (browser) {
+                localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, newColor);
+            }
+            snackbar('University events color updated', undefined, true);
+        } catch (error) {
+            console.error('Failed to update university events color:', error);
+            snackbar('Failed to update color. Please try again.', undefined, true);
+        }
     }
 
     function toggleUniversityCategory(categoryId: string) {
@@ -211,18 +270,16 @@
         notificationsDisabled = disabled;
         try {
             if (disabled) {
-                await API.setGlobalCalendarPreference({ reminder_settings: [] });
+                await API.disableNotifications();
                 snackbar('All notifications disabled', undefined, true);
             } else {
-                await API.setGlobalCalendarPreference({
-                    reminder_settings: [{ time: "30", type: "minutes", method: "notification" }]
-                });
-                snackbar('Default notifications restored (30 min before)', undefined, true);
+                await API.enableNotifications();
+                snackbar('Notifications re-enabled', undefined, true);
             }
         } catch (e) {
             console.error('Failed to update notification settings:', e);
             snackbar('Failed to update notification settings', undefined, true);
-            notificationsDisabled = !disabled; 
+            notificationsDisabled = !disabled;
         }
     }
 
@@ -276,7 +333,7 @@
         }
     }
 
-    async function disconnectAccount(credentialId: number) {
+    async function disconnectAccount(credentialId: string) {
         try {
             await API.disconnectAccount(credentialId);
             connectedAccounts = connectedAccounts.filter(a => a.id !== credentialId);
@@ -284,6 +341,36 @@
         } catch (e) {
             console.error('Failed to disconnect account:', e);
             snackbar('Failed to disconnect account', undefined, true);
+        }
+    }
+
+    async function reauthAccount(email: string) {
+        try {
+            const response = await API.requestOAuthForEmail(email);
+            if (response.error) {
+                snackbar(response.error, undefined, true);
+                return;
+            }
+
+            if (response.oauth_url) {
+                const popup = window.open(response.oauth_url, 'Google OAuth', 'width=500,height=600');
+
+                const pollTimer = setInterval(async () => {
+                    if (popup?.closed) {
+                        clearInterval(pollTimer);
+                        try {
+                            const accounts = await API.getConnectedAccounts();
+                            connectedAccounts = accounts.oauth_credentials || [];
+                            snackbar('Account re-authenticated successfully!', undefined, true);
+                        } catch (e) {
+                            console.error('Failed to refresh accounts:', e);
+                        }
+                    }
+                }, 500);
+            }
+        } catch (e) {
+            console.error('Failed to re-authenticate account:', e);
+            snackbar('Failed to re-authenticate account', undefined, true);
         }
     }
 
@@ -303,7 +390,6 @@
             featureFlags.clearCache();
             await featureFlags.reload();
             showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
-            showClearDataButton = featureFlags.isEnabledSync('debugMode');
             snackbar('Feature flags refreshed!', undefined, true);
         } finally {
             isRefreshingFlags = false;
@@ -429,20 +515,34 @@
         {#if connectedAccounts.length > 0}
             <div class="flex flex-col gap-2">
                 {#each connectedAccounts as account}
-                    <div class="flex flex-row gap-3 items-center justify-between bg-surface-container-low rounded-lg p-3">
-                        <div class="flex flex-row gap-2 items-center">
-                            <svg class="w-5 h-5 text-primary" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
-                            </svg>
-                            <span class="text-sm">{account.email}</span>
-                        </div>
-                        {#if connectedAccounts.length > 1}
-                            <Button variant="text" onclick={() => disconnectAccount(account.id)}>
-                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    <div class="flex flex-row gap-3 items-center justify-between bg-surface-container-low rounded-lg p-3 {account.needs_reauth ? 'border border-error' : ''}">
+                        <div class="flex flex-col gap-1">
+                            <div class="flex flex-row gap-2 items-center">
+                                <svg class="w-5 h-5 {account.needs_reauth ? 'text-error' : 'text-primary'}" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
                                 </svg>
-                            </Button>
-                        {/if}
+                                <span class="text-sm">{account.email}</span>
+                            </div>
+                            {#if account.needs_reauth}
+                                <span class="text-xs text-error ml-7">
+                                    {account.token_revoked ? 'Access revoked - please re-authenticate' : 'Authentication expired - please re-authenticate'}
+                                </span>
+                            {/if}
+                        </div>
+                        <div class="flex flex-row gap-2 items-center">
+                            {#if account.needs_reauth}
+                                <Button variant="tonal" onclick={() => reauthAccount(account.email)}>
+                                    Re-auth
+                                </Button>
+                            {/if}
+                            {#if connectedAccounts.length > 1}
+                                <Button variant="text" onclick={() => disconnectAccount(account.id)}>
+                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                    </svg>
+                                </Button>
+                            {/if}
+                        </div>
                     </div>
                 {/each}
             </div>
@@ -477,6 +577,30 @@
         </div>
 
         {#if syncUniversityEventsValue && availableCategories.length > 0}
+            <div class="flex flex-row gap-3 items-center justify-between">
+                <h2 class="text-md font-bold">University Events Color</h2>
+                <div class="flex flex-row gap-2 items-center">
+                    <div class="w-6 h-6 rounded-full border-2 border-outline" style="background-color: {uniCalColor};"></div>
+                    <SelectOutlined label=""
+                        options={[
+                            { text: "Tomato", value: "#d50000" },
+                            { text: "Flamingo", value: "#e67c73" },
+                            { text: "Tangerine", value: "#f4511e" },
+                            { text: "Banana", value: "#f6bf26" },
+                            { text: "Sage", value: "#33b679" },
+                            { text: "Basil", value: "#0b8043" },
+                            { text: "Peacock", value: "#039be5" },
+                            { text: "Blueberry", value: "#3f51b5" },
+                            { text: "Lavender", value: "#7986cb" },
+                            { text: "Grape", value: "#8e24aa" },
+                            { text: "Graphite", value: "#616161" },
+                        ]}
+                        bind:value={uniCalColor}
+                        onchange={() => handleUniCalColorChange(uniCalColor)}
+                    />
+                </div>
+            </div>
+
             <div class="flex flex-col gap-2 ml-2 pl-4 border-l-2 border-outline-variant">
                 <p class="text-sm text-outline font-medium">Select event types to sync:</p>
                 {#each availableCategories.filter(c => c.id !== 'holiday') as category}
@@ -502,7 +626,6 @@
             {isRefreshingFlags ? 'Refreshing...' : 'Refresh Flags'}
         </Button>
     </div>
-    {#if showClearDataButton}
     <div class="flex flex-col gap-2 items-center justify-center mt-6 w-full">
         <Button variant="filled" onclick={clearLocalStorage}>Clear Local Data</Button>
         <p class="text-sm text-error text-center max-w-md">
@@ -510,5 +633,4 @@
             This will clear all your local data and you will need to sign in again. This does <b>not</b> affect your Calendar data.
         </p>
     </div>
-    {/if}
 </div>

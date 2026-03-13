@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WIT-Calendar",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "A Chrome extension to import WIT classes into your calendar!",
   "side_panel": {
     "default_path": "index.html"

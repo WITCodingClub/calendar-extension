@@ -31,6 +31,7 @@
     let templates: TemplateVariables | undefined = $derived(currentEventPrefs?.templates);
     let resolved: ResolvedData | undefined = $derived(currentEventPrefs?.resolved);
     let editMode = $state(false);
+    let notificationsDisabled = $state(false);
 
     let titleTemplates = [
         "{% if schedule_type == 'Laboratory' %}{{title | remove: '- Lab'}} - {{schedule_type_short}}{% else %}{{title}}{% endif %}",
@@ -328,10 +329,12 @@
             if (!isOnTargetPage) {
                 tabToUse = await chrome.tabs.create({ url: targetUrl });
                 shouldCloseTab = true;
+                const openedTabId = tabToUse.id;
+                if (!openedTabId) return;
 
                 await new Promise<void>((resolve) => {
-                    const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-                        if (tabId === tabToUse.id && changeInfo.status === 'complete') {
+                    const listener = (tabId: number, changeInfo: { status?: string }) => {
+                        if (tabId === openedTabId && changeInfo.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
                             resolve();
                         }
@@ -540,10 +543,15 @@
             if (!isOnTargetPage) {
                 tabToUse = await chrome.tabs.create({ url: targetUrl });
                 shouldCloseTab = true;
+                const openedTabId = tabToUse.id;
+                if (!openedTabId) {
+                    snackbar('Failed to open LeopardWeb tab', undefined, true);
+                    return;
+                }
 
                 await new Promise<void>((resolve) => {
-                    const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-                        if (tabId === tabToUse.id && changeInfo.status === 'complete') {
+                    const listener = (tabId: number, changeInfo: { status?: string }) => {
+                        if (tabId === openedTabId && changeInfo.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
                             resolve();
                         }
@@ -643,6 +651,7 @@
             location_template: string;
             reminder_settings: ReminderSettings[];
             color_id: string;
+            notifications_disabled: boolean;
         }> = {};
 
         const titleChanged = editTitle !== (resolved?.title_template ?? titleTemplates[0]);
@@ -680,6 +689,8 @@
         if (notificationsChanged) {
             event_preference.reminder_settings = convertedNotifications;
         }
+
+        event_preference.notifications_disabled = notificationsDisabled;
 
         if (Object.keys(event_preference).length === 0) {
             activeCourse = undefined;
@@ -832,7 +843,7 @@
     }
 
     async function listenForEnvironmentChanges() {
-        chrome.storage.onChanged.addListener((changes: chrome.storage.StorageChanges) => {
+        chrome.storage.onChanged.addListener((changes) => {
             if ('environment_data' in changes) {
                 (async () => {
                     checkBetaAccess();
@@ -911,6 +922,7 @@
             editDescriptionManual = currentEventPrefs.preview?.description ?? "";
             editLocationManual = currentEventPrefs.preview?.location ?? "";
             courseColor = resolved?.color_id ?? "#d50000";
+            notificationsDisabled = currentEventPrefs.notifications_disabled ?? false;
             
             if (resolved?.reminder_settings && resolved.reminder_settings.length > 0) {
                 //@ts-ignore
@@ -1145,7 +1157,7 @@
                             {/each}
                         </div>
                         <h2 class="text-md">Event Description</h2>
-                        <div class="flex flex-row gap-2 items-center peak">
+                        <div class="flex flex-row flex-wrap gap-2 items-center peak desc-chips">
 							{#each derivedTemplates.descriptionTemplates as template, i}
 								{@const selected = (editDescription && descriptionTemplates.includes(editDescription)) ? (editDescription === descriptionTemplates[i]) : (resolved?.description_template === descriptionTemplates[i])}
 								<Chip selected={selected} variant="input" onclick={() => {editDescription = descriptionTemplates[i];}}>{template.join('')}</Chip>
@@ -1161,17 +1173,34 @@
                     </div>
                     {/if}
                     <div class="flex flex-col gap-3">
-                        <h2 class="text-md">Remind me before class</h2>
+                        <div class="flex flex-row items-center gap-2 justify-between">
+                            <h2 class="text-md">Remind me before class</h2>
+                            {#if notificationsDisabled}
+                                <div class="flex flex-row items-center gap-1 text-error" title="All reminders are currently disabled in Settings. Your reminder preferences are saved and will be restored when you re-enable notifications.">
+                                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                                        <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                                    </svg>
+                                    <span class="text-xs font-medium">Do Not Disturb</span>
+                                </div>
+                            {/if}
+                        </div>
+                        {#if notificationsDisabled}
+                            <p class="text-sm text-on-surface-variant bg-error-container/20 p-3 rounded-md border border-error-container">
+                                <strong>Reminders are muted.</strong> Your settings are preserved but notifications are currently disabled. Re-enable notifications in Settings to activate them.
+                            </p>
+                        {/if}
                         {#each notifications, i}
-                        <div class="flex flex-row gap-2 items-center stuff-moment peak">
+                        <div class="flex flex-row gap-2 items-center stuff-moment peak {notificationsDisabled ? 'opacity-50' : ''}">
                             <SelectOutlined label=""
                                 options={[
                                 { text: "Notification", value: "notification" },
                                 { text: "Email", value: "email" },
                                 ]}
                                 bind:value={notifications[i].method}
+                                disabled={notificationsDisabled}
                             />
-                            <TextFieldOutlined type="number" label="" bind:value={notifications[i].time} />
+                            <TextFieldOutlined type="number" label="" bind:value={notifications[i].time} disabled={notificationsDisabled} />
                             <SelectOutlined label=""
                                 options={[
                                 { text: "minutes", value: "minutes" },
@@ -1179,13 +1208,14 @@
                                 { text: "days", value: "days" },
                                 ]}
                                 bind:value={notifications[i].type}
+                                disabled={notificationsDisabled}
                             />
-                            <Button variant="tonal" onclick={() => { notifications = notifications.filter((_, idx) => idx !== i); }}>
+                            <Button variant="tonal" onclick={() => { notifications = notifications.filter((_, idx) => idx !== i); }} disabled={notificationsDisabled}>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 13q-.425 0-.712-.288T5 12t.288-.712T6 11h12q.425 0 .713.288T19 12t-.288.713T18 13z"/></svg>
                             </Button>
                         </div>
                         {/each}
-                        <Button variant="tonal" onclick={() => { notifications = [...notifications, { time: "30", type: "minutes", method: "notification" }]; }}>
+                        <Button variant="tonal" onclick={() => { notifications = [...notifications, { time: "30", type: "minutes", method: "notification" }]; }} disabled={notificationsDisabled}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M12 21q-.425 0-.712-.288T11 20v-7H4q-.425 0-.712-.288T3 12t.288-.712T4 11h7V4q0-.425.288-.712T12 3t.713.288T13 4v7h7q.425 0 .713.288T21 12t-.288.713T20 13h-7v7q0 .425-.288.713T12 21"/></svg>
                         </Button>
                         <h2 class="text-md">Color</h2>
@@ -1223,6 +1253,18 @@
 
     :global(.peak button) {
         height: 2.5rem !important;
+    }
+
+    :global(.desc-chips button.m3-container) {
+        flex-shrink: 0;
+        width: fit-content;
+        height: auto !important;
+        min-height: 2.5rem;
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+        align-items: flex-start !important;
+        white-space: pre-line;
+        overflow: visible;
     }
 
     :global(.unpeak button) {

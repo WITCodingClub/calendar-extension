@@ -18,12 +18,18 @@ const FEATURE_FLAGS = [
     "v1",
     "v2",
     "debugMode",
-    "envSwitcher"
-]
+    "envSwitcher",
+    "finalsRetroactive",
+    "bypassRateLimits"
+] as const;
 
 interface FeatureFlagEnabled {
     feature_name: string;
     is_enabled: boolean;
+}
+
+interface FeatureFlagsResponse {
+    feature_flags: Record<string, boolean>;
 }
 
 interface Location {
@@ -242,6 +248,7 @@ interface Preview {
 }
 
 interface GetPreferencesResponse {
+	notifications_disabled: boolean;
     individual_preference: EventPreferences;
     preview: Preview;
     templates: TemplateVariables;
@@ -267,6 +274,6 @@ export {
     FEATURE_FLAGS,
     type Building,
     type CalendarConfig, type Course, type CurrentTerm, type DayItem,
-    type EventPreferences, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location,
+    type EventPreferences, type FeatureFlagsResponse, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location,
     type MeetingTime, type NextTerm, type NotificationMethod, type NotificationSetting, type NotificationType, type OkResponse, type Preview, type ProcessedEvents, type Professor, type ReminderSettings, type ResolvedData, type ResponseData, type TemplateVariables, type Term, type TermResponse, type UniversityCalendarEvent, type UniversityEventCategory, type UniversityEventCategoryWithCount, type UserSettings
 };

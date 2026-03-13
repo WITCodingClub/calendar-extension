@@ -1,5 +1,5 @@
 import { EnvironmentManager } from "./environment";
-import type { FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, isProcessed, OkResponse, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
+import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, isProcessed, OkResponse, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
 
 export class API {
     private static async getBaseUrl(): Promise<string> {
@@ -32,6 +32,24 @@ export class API {
 
         const data = await response.json();
         return data.is_enabled;
+    }
+
+    public static async getAllFeatureFlags(): Promise<FeatureFlagsResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/user/feature_flags`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            console.error('Feature flags API error:', response.status, response.statusText);
+            throw new Error(`Failed to fetch feature flags: ${response.status}`);
+        }
+
+        return response.json();
     }
 
     public static async getTerms() {
@@ -374,6 +392,47 @@ export class API {
         return response.json();
     }
 
+    // Notifications DND (Do Not Disturb) mode
+    public static async getNotificationStatus(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string | null }> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/user/notifications_status`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        return response.json();
+    }
+
+    public static async disableNotifications(duration?: number): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string }> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const body = duration ? JSON.stringify({ duration }) : undefined;
+        const response = await fetch(`${baseUrl}/user/notifications/disable`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body
+        });
+        return response.json();
+    }
+
+    public static async enableNotifications(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: null }> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/user/notifications/enable`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        return response.json();
+    }
+
     // Global calendar preferences
     public static async getGlobalCalendarPreference(): Promise<any> {
         const baseUrl = await this.getBaseUrl();
@@ -407,7 +466,7 @@ export class API {
     }
 
     // Connected Google accounts
-    public static async getConnectedAccounts(): Promise<{ oauth_credentials: Array<{id: number, email: string, provider: string}> }> {
+    public static async getConnectedAccounts(): Promise<{ oauth_credentials: Array<{id: string, email: string, provider: string, needs_reauth: boolean, token_revoked: boolean}> }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await fetch(`${baseUrl}/user/oauth_credentials`, {
@@ -433,7 +492,7 @@ export class API {
         return response.json();
     }
 
-    public static async disconnectAccount(credentialId: number): Promise<void> {
+    public static async disconnectAccount(credentialId: string): Promise<void> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         await fetch(`${baseUrl}/user/oauth_credentials/${credentialId}`, {
@@ -442,6 +501,54 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
+    }
+
+    // University calendar preferences
+    public static async getCalendarPreferences(): Promise<{
+        global: any;
+        event_types: Record<string, any>;
+        uni_cal_categories: Record<string, any>;
+    }> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/calendar_preferences`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        return response.json();
+    }
+
+    public static async setUniCalCategoryPreference(category: string, preferences: {
+        color_id?: string;
+        title_template?: string;
+        description_template?: string;
+    }): Promise<any> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/calendar_preferences/uni_cal:${category}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ calendar_preference: preferences })
+        });
+        return response.json();
+    }
+
+    // Set color for all university calendar categories at once
+    // colorId should be a Google Calendar color ID (1-11)
+    public static async setAllUniCalCategoriesColor(colorId: string): Promise<void> {
+        const categories = [
+            'holiday', 'term_dates', 'registration', 'deadline', 'finals',
+            'graduation', 'academic', 'campus_event', 'meeting', 'exhibit',
+            'announcement', 'other'
+        ];
+        await Promise.all(
+            categories.map(cat => this.setUniCalCategoryPreference(cat, { color_id: colorId }))
+        );
     }
 
 }
