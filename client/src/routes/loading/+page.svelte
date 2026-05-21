@@ -99,7 +99,7 @@
 
             await signIn();
         } catch (err) {
-            error = 'Failed to fetch data! Make';
+            error = 'Make';
             snackbar('Failed to fetch data: ' + err, undefined, true);
         } finally {
             // Close ONLY if we created a new tab for preferred name
@@ -157,7 +157,7 @@
         {#if error == 'Server is (probably) down!'}
             <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
-        {:else if error == 'Failed to fetch data! Make'}
+        {:else if error == 'Make'}
             <ErrorNotice title="Failed to fetch data!" error={error} includeStatusLink={false} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else}
