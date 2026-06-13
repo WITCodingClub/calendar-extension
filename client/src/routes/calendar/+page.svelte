@@ -23,16 +23,22 @@
     let terms = $state<TermResponse | undefined>(undefined);
 	let attemptedTerms = $state(new Set<string>());
 	let refreshedTerms = $state(new Set<string>());
-    let displayTerms = $derived(
-        $enrolledTerms.length > 0
+    let showHistoricTerms = $derived($storedUserSettings?.show_historic_terms ?? false);
+    let displayTerms = $derived((() => {
+        const currentTermId = terms?.current_term?.id;
+        const base = $enrolledTerms.length > 0
             ? $enrolledTerms
             : terms
                 ? [
                     { id: String(terms.current_term.id), name: terms.current_term.name },
                     { id: String(terms.next_term.id), name: terms.next_term.name }
                   ]
-                : []
-    );
+                : [];
+        if (!showHistoricTerms && currentTermId != null) {
+            return base.filter(t => parseInt(t.id) >= currentTermId);
+        }
+        return base;
+    })());
     let militaryTime = $derived($storedUserSettings?.military_time ?? true);
     let lectureColor = $derived($storedUserSettings?.default_color_lecture ?? "#039be5");
     let labColor = $derived($storedUserSettings?.default_color_lab ?? "#f6bf26");

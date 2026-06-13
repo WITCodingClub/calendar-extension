@@ -100,6 +100,7 @@ interface UserSettings {
     sync_university_events: boolean;
     university_event_categories: string[];
     available_university_event_categories?: UniversityEventCategory[];
+    show_historic_terms: boolean;
 }
 
 interface UniversityEventCategory {

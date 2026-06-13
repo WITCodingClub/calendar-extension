@@ -66,10 +66,13 @@
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
 
+        // Load feature flags independently so flag-gated UI shows even if other API calls fail
+        await featureFlags.loadFlags();
+        showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
+
         try {
-            // Load feature flags and settings in parallel
-            const [, userSettingsData, emailData] = await Promise.all([
-                featureFlags.loadFlags(),
+            // Load settings in parallel
+            const [userSettingsData, emailData] = await Promise.all([
                 API.userSettings(),
                 API.getUserEmail()
             ]);
@@ -77,7 +80,6 @@
             userSettings = userSettingsData;
             storedUserSettings.set(userSettings);
             email = emailData.email;
-            showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
 
             // Fetch notification DND status
             try {
@@ -130,6 +132,7 @@
     let syncUniversityEventsValue = $derived(userSettings?.sync_university_events ?? false);
     let universityEventCategories = $derived(userSettings?.university_event_categories ?? []);
     let availableCategories = $derived(userSettings?.available_university_event_categories ?? []);
+    let showHistoricTermsValue = $derived(userSettings?.show_historic_terms ?? false);
 
     const defaultColorLectureGetterSetter = {
         get value() { return defaultColorLecture; },
@@ -181,6 +184,16 @@
 			storedUserSettings.set(userSettings);
 			API.userSettings(userSettings);
 		}
+    }
+
+    const showHistoricTermsGetterSetter = {
+        get value() { return showHistoricTermsValue; },
+        set value(value: boolean) {
+            if (!userSettings) return;
+            userSettings = { ...userSettings, show_historic_terms: value };
+            storedUserSettings.set(userSettings);
+            API.userSettings(userSettings);
+        }
     }
 
     async function handleUniCalColorChange(newColor: string) {
@@ -490,6 +503,17 @@
         <div class="flex flex-row gap-2 items-center">
             <label>
                 <Switch bind:checked={advancedEditingGetterSetter.value} />
+            </label>
+        </div>
+    </div>
+    <div class="flex flex-row gap-3 items-center justify-between">
+        <div class="flex flex-col">
+            <h2 class="text-md font-bold">Show Historic Terms</h2>
+            <p class="text-sm text-outline">Show past terms alongside your current schedule</p>
+        </div>
+        <div class="flex flex-row gap-2 items-center">
+            <label>
+                <Switch bind:checked={showHistoricTermsGetterSetter.value} />
             </label>
         </div>
     </div>
