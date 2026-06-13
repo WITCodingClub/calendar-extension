@@ -38,6 +38,7 @@
   "host_permissions": [
     "https://selfservice.wit.edu/*",
     "https://*.witcc.dev/*",
-    "https://witcal.tun.hogwarts.dev/*"
+    "https://witcal.tun.hogwarts.dev/*",
+    "https://heron-selected-literally.ngrok-free.app/*"
   ]
 }
