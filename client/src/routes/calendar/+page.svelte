@@ -420,6 +420,7 @@
             // Persist the authoritative enrolled terms from the Banner dropdown
             if (termOptions.length > 0) {
                 enrolledTerms.set(termOptions);
+                API.userSettings({ enrolled_terms: termOptions } as any).catch(() => {});
             }
 
             if (registrations.length === 0) {
@@ -662,6 +663,7 @@
 
             if (refreshTermOptions.length > 0) {
                 enrolledTerms.set(refreshTermOptions);
+                API.userSettings({ enrolled_terms: refreshTermOptions } as any).catch(() => {});
             }
 
             if (!Array.isArray(registrationData)) {
@@ -935,7 +937,11 @@
 
                     // Now fetch fresh data for the current environment
                     terms = await API.getTerms();
-                    storedUserSettings.set(await API.userSettings());
+                    const envSettings = await API.userSettings();
+                    storedUserSettings.set(envSettings);
+                    if (envSettings.enrolled_terms?.length && $enrolledTerms.length === 0) {
+                        enrolledTerms.set(envSettings.enrolled_terms);
+                    }
                 })();
             }
         });
@@ -957,7 +963,11 @@
 
         // Now fetch fresh data for the current environment
         terms = await API.getTerms();
-        storedUserSettings.set(await API.userSettings());
+        const settings = await API.userSettings();
+        storedUserSettings.set(settings);
+        if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
+            enrolledTerms.set(settings.enrolled_terms);
+        }
         listenForEnvironmentChanges();
     });
 

@@ -101,6 +101,7 @@ interface UserSettings {
     university_event_categories: string[];
     available_university_event_categories?: UniversityEventCategory[];
     show_historic_terms: boolean;
+    enrolled_terms?: Array<{ id: string; name: string }>;
 }
 
 interface UniversityEventCategory {
