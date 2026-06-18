@@ -178,7 +178,7 @@
         {:else if error == 'Server is (probably) down!'}
             <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
-        {:else if error == 'Failed to fetch data! Make'}
+        {:else if error == 'Make'}
             <ErrorNotice title="Failed to fetch data!" error={error} includeStatusLink={false} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else}
