@@ -36,11 +36,16 @@
                 tabToUse = await chrome.tabs.create({ url: preferredNameUrl });
                 createdNewTab = true;
 
-                await new Promise<void>((resolve) => {
+                await new Promise<void>((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        chrome.tabs.onUpdated.removeListener(listener);
+                        reject(new Error('Timed out waiting for WIT page to load. Are you connected to the internet?'));
+                    }, 15000);
                     // @ts-expect-error
                     const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
                         if (tabId === tabToUse!.id && changeInfo.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
+                            clearTimeout(timeout);
                             resolve();
                         }
                     };
@@ -50,6 +55,13 @@
 
             if (!tabToUse?.id) {
                 throw new Error('Failed to get tab ID');
+            }
+
+            // Check the tab didn't redirect to a login page (expired session)
+            const finalTab = await chrome.tabs.get(tabToUse.id);
+            if (finalTab.url && !finalTab.url.startsWith('https://selfservice.wit.edu/')) {
+                error = 'not_logged_in';
+                return;
             }
 
             // 1) Hit preferred name endpoint first (establish cookies/session)
@@ -99,11 +111,16 @@
 
             await signIn();
         } catch (err) {
-            error = 'Make';
-            snackbar('Failed to fetch data: ' + err, undefined, true);
+            const msg = String(err);
+            if (msg.includes('cas.wit.edu') || msg.includes('Cannot access contents of url')) {
+                error = 'not_logged_in';
+            } else {
+                error = 'Failed to fetch data! Make';
+                snackbar('Failed to fetch data: ' + err, undefined, true);
+            }
         } finally {
-            // Close ONLY if we created a new tab for preferred name
-            if (createdNewTab && tabToUse?.id) {
+            // Always close the tab — getPreferredName is an API endpoint, never useful to leave open
+            if (tabToUse?.id) {
                 try {
                     await chrome.tabs.remove(tabToUse.id);
                 } catch {
@@ -154,7 +171,11 @@
 
 <div class="flex flex-col items-center justify-center min-h-screen w-full px-4">
     <div class=" rounded-lg shadow-md p-8 flex flex-col items-center peak {error ? 'bg-error' : 'bg-surface-container-high'}">
-        {#if error == 'Server is (probably) down!'}
+        {#if error == 'not_logged_in'}
+            <ErrorNotice title="Not logged in to WIT!" error="Please sign in to WIT Self Service first, then try again." includeStatusLink={false} />
+            <a href="https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory" target="_blank" class="text-primary underline text-sm mb-3">Open WIT Self Service</a>
+            <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
+        {:else if error == 'Server is (probably) down!'}
             <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else if error == 'Make'}

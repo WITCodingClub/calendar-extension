@@ -1,6 +1,6 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
-    import { processedData as storedProcessedData, icsUrl as storedIcsUrl } from '$lib/store';
+    import { processedData as storedProcessedData, icsUrl as storedIcsUrl, enrolledTerms } from '$lib/store';
     import type { Course, MeetingTime, ResponseData, TermResponse, DayItem, GetPreferencesResponse, TemplateVariables, ResolvedData, NotificationSetting, ReminderSettings, NotificationMethod } from '$lib/types';
     import { Button, LoadingIndicator, SelectOutlined, VariableTabs, TextFieldOutlined, ConnectedButtons, TextFieldOutlinedMultiline, Chip } from 'm3-svelte';
     import { onMount, onDestroy } from 'svelte';
@@ -23,6 +23,22 @@
     let terms = $state<TermResponse | undefined>(undefined);
 	let attemptedTerms = $state(new Set<string>());
 	let refreshedTerms = $state(new Set<string>());
+    let showHistoricTerms = $derived($storedUserSettings?.show_historic_terms ?? false);
+    let displayTerms = $derived((() => {
+        const currentTermId = terms?.current_term?.id;
+        const base = $enrolledTerms.length > 0
+            ? $enrolledTerms
+            : terms
+                ? [
+                    { id: String(terms.current_term.id), name: terms.current_term.name },
+                    { id: String(terms.next_term.id), name: terms.next_term.name }
+                  ]
+                : [];
+        if (!showHistoricTerms && currentTermId != null) {
+            return base.filter(t => parseInt(t.id) >= currentTermId);
+        }
+        return base;
+    })());
     let militaryTime = $derived($storedUserSettings?.military_time ?? true);
     let lectureColor = $derived($storedUserSettings?.default_color_lecture ?? "#039be5");
     let labColor = $derived($storedUserSettings?.default_color_lab ?? "#f6bf26");
@@ -311,9 +327,7 @@
         }
     }
 
-    async function fetchFromCurrentPage(term: string | undefined): Promise<{ ics_url: string } | undefined> {
-        if (!term) return;
-        const baseUrl = await API.baseUrl;
+    async function fetchFromCurrentPage(termId?: string): Promise<{ ics_url: string; termId: string } | undefined> {
         let tabToUse: chrome.tabs.Tab | undefined;
         let shouldCloseTab = false;
         try {
@@ -332,7 +346,7 @@
 
                 await new Promise<void>((resolve) => {
                     const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-                        if (tabId === tabToUse.id && changeInfo.status === 'complete') {
+                        if (tabId === tabToUse!.id && changeInfo.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
                             resolve();
                         }
@@ -342,17 +356,10 @@
 
                 await new Promise(resolve => setTimeout(resolve, 1000));
 
-                try {
-                    await chrome.scripting.executeScript({
-                        target: { tabId: tabToUse.id! },
-                        func: () => {
-                            return document.readyState === 'complete' &&
-                                   typeof fetch !== 'undefined' &&
-                                   document.body !== null;
-                        }
-                    });
-                } catch (e) {
-                    console.error('Page readiness check failed:', e);
+                // If CAS redirected us to the login page the user isn't authenticated.
+                const finalTab = await chrome.tabs.get(tabToUse.id!);
+                if (!finalTab.url?.startsWith('https://selfservice.wit.edu/')) {
+                    throw new Error('Please log in to LeopardWeb (selfservice.wit.edu) and try again.');
                 }
             }
 
@@ -361,39 +368,86 @@
             const results = await chrome.scripting.executeScript({
                 target: { tabId: tabToUse.id },
                 world: 'MAIN',
-                func: async (termId: string) => {
+                func: async (termIdArg) => {
                     try {
-                        const r0 = await fetch(`https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/reset?term=${termId}`, {
-                            credentials: 'include'
-                        });
-                        await r0.json();
-    					const r1 = await fetch('https://selfservice.wit.edu/StudentRegistrationSsb/ssb/classRegistration/getRegistrationEvents?termFilter=', {
-    						credentials: 'include'
-    					});
-    					return await r1.json();
-    				} catch (e) {
-    					return ({ error: e instanceof Error ? e.message : String(e) });
-    				}
+                        // Extract the student's enrolled terms from the page dropdown
+                        const select = document.querySelector('#lookupFilter');
+                        const termOptions = select
+                            ? Array.from(select.options).map(o => ({ id: o.value, name: o.text.trim() }))
+                            : [];
+
+                        // If the requested term isn't in the enrolled list, fall back to the first enrolled term
+                        let actualTermId = termIdArg;
+                        if (termOptions.length > 0 && !termOptions.some(t => t.id === actualTermId)) {
+                            actualTermId = termOptions[0].id;
+                        }
+
+                        // Get CSRF token for the request
+                        const token = document.querySelector('meta[name="synchronizerToken"]')?.getAttribute('content') ?? '';
+
+                        // Fetch registrations for the (possibly corrected) term
+                        const r = await fetch(
+                            `https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/reset?term=${actualTermId}`,
+                            {
+                                credentials: 'include',
+                                headers: {
+                                    'Accept': 'application/json, text/javascript, */*; q=0.01',
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                    ...(token ? { 'X-Synchronizer-Token': token } : {})
+                                }
+                            }
+                        );
+                        const data = await r.json();
+
+                        return { termOptions, registrations: data?.data?.registrations ?? [], usedTermId: actualTermId };
+                    } catch (e) {
+                        return { error: e instanceof Error ? e.message : String(e) };
+                    }
                 },
-                args: [term]
+                args: [termId ?? '']
             });
 
-            const registrationData = results[0]?.result ?? [];
+            const result = results[0]?.result ?? {};
 
-            // Check if the script returned an error
-            if (registrationData?.error) {
-                throw new Error(registrationData.error);
+            if (result?.error) {
+                throw new Error(result.error);
             }
 
-            const response = await API.processCourses(registrationData);
+            const termOptions: Array<{ id: string; name: string }> = result.termOptions ?? [];
+            const registrations: any[] = result.registrations ?? [];
+            const usedTermId: string = result.usedTermId ?? String(termId);
+
+            // Persist the authoritative enrolled terms from the Banner dropdown
+            if (termOptions.length > 0) {
+                enrolledTerms.set(termOptions);
+                API.userSettings({ enrolled_terms: termOptions } as any).catch(() => {});
+            }
+
+            if (registrations.length === 0) {
+                const termName = termOptions.find(t => t.id === usedTermId)?.name ?? usedTermId;
+                const available = termOptions.map(t => t.name).join(', ');
+                throw new Error(
+                    `You have no classes for ${termName}.` +
+                    (available ? ` Your schedule is available for: ${available}.` : '')
+                );
+            }
+
+            // Map Banner registration records to the format the backend expects
+            const coursesArray = registrations.map((reg: any) => ({
+                crn: reg.courseReferenceNumber,
+                term: reg.term,
+                courseNumber: reg.courseNumber
+            }));
+
+            const response = await API.processCourses(coursesArray);
 
             if (typeof response === 'string') {
-                return { ics_url: response };
+                return { ics_url: response, termId: usedTermId };
             }
-            return response;
+            return { ...response, termId: usedTermId };
         } catch (e) {
             console.error('Failed to fetch from current page:', e);
-            return undefined;
+            throw e;
         } finally {
             if (shouldCloseTab && tabToUse?.id) {
                 await chrome.tabs.remove(tabToUse.id);
@@ -426,6 +480,7 @@
                     return next;
                 });
             } else {
+                loading = false;
                 await runScrapeAndProcess(termId);
             }
         } catch (e) {
@@ -496,22 +551,31 @@
             loading = true;
             const res = await fetchFromCurrentPage(termId);
             if (!res?.ics_url) {
-                console.error('No ICS URL in response from fetchFromCurrentPage');
-                snackbar('Failed to fetch calendar: No ICS URL in response', undefined, true);
-                return;
+                throw new Error('No ICS URL in response');
+            }
+            // Use the term code Banner returned; fall back to what we requested.
+            const actualTermId = res.termId || termId;
+            // If Banner redirected to a different term (e.g. requested Summer but enrolled in Fall),
+            // update the selected tab to match.
+            if (actualTermId && actualTermId !== termId) {
+                selected = actualTermId;
             }
             storedIcsUrl.set(res.ics_url);
-            const events = await API.getProcessedEvents(termId);
+            const events = await API.getProcessedEvents(actualTermId);
+            if (!Array.isArray(events?.classes)) {
+                const msg = (events as any)?.error ?? 'Unexpected response from server';
+                throw new Error(`Failed to load calendar events: ${msg}`);
+            }
             storedProcessedData.update((list) => {
-                const tid = String(termId);
+                const tid = String(actualTermId);
                 const i = list.findIndex((x) => String(x.termId) === tid);
                 const next = [...list];
                 const response: ResponseData = { ics_url: res.ics_url, classes: events.classes };
                 if (i >= 0) next[i] = { termId: tid, responseData: response };
                 else next.push({ termId: tid, responseData: response });
-                snackbar('Calendar fetched successfully!', undefined, true);
                 return next;
             });
+            snackbar('Calendar fetched successfully!', undefined, true);
         } catch (e) {
             console.error('Failed to scrape and process:', e);
             snackbar('Failed to fetch calendar: ' + e, undefined, true);
@@ -563,45 +627,66 @@
             const results = await chrome.scripting.executeScript({
                 target: { tabId: tabToUse.id },
                 world: 'MAIN',
-                func: async (term: string) => {
+                func: async () => {
                     try {
-                        const r0 = await fetch(`https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/reset?term=${term}`, {
-                            credentials: 'include'
-                        });
-                        await r0.json();
-                        const r1 = await fetch('https://selfservice.wit.edu/StudentRegistrationSsb/ssb/classRegistration/getRegistrationEvents?termFilter=', {
-                            credentials: 'include'
-                        });
-                        return await r1.json();
+                        // Extract enrolled terms from the page dropdown
+                        const select = document.querySelector('#lookupFilter');
+                        const termOptions = select
+                            ? Array.from(select.options).map(o => ({ id: o.value, name: o.text.trim() }))
+                            : [];
+
+                        const r = await fetch(
+                            'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/classRegistration/getRegistrationEvents?termFilter=',
+                            { credentials: 'include' }
+                        );
+                        const events = await r.json();
+                        return { termOptions, events };
                     } catch (e) {
-                        return ({ error: e instanceof Error ? e.message : String(e) });
+                        return { error: e instanceof Error ? e.message : String(e) };
                     }
                 },
-                args: [termId]
+                args: []
             });
 
             if (shouldCloseTab && tabToUse?.id) {
                 await chrome.tabs.remove(tabToUse.id);
             }
 
-            const registrationData = results[0]?.result ?? [];
+            const refreshResult = results[0]?.result ?? {};
 
-            // Check if the script returned an error
-            if (registrationData?.error) {
-                throw new Error(registrationData.error);
+            if (refreshResult?.error) {
+                throw new Error(refreshResult.error);
             }
 
+            const refreshTermOptions: Array<{ id: string; name: string }> = refreshResult.termOptions ?? [];
+            const registrationData = refreshResult.events ?? [];
+
+            if (refreshTermOptions.length > 0) {
+                enrolledTerms.set(refreshTermOptions);
+                API.userSettings({ enrolled_terms: refreshTermOptions } as any).catch(() => {});
+            }
+
+            if (!Array.isArray(registrationData)) {
+                throw new Error('Unexpected response from LeopardWeb');
+            }
+
+            // Filter to only the current term's events before reprocessing
+            const termFiltered = registrationData.filter((e: any) => String(e.term) === String(termId));
+            const eventsToReprocess = termFiltered.length > 0 ? termFiltered : registrationData;
+
             // Call the reprocess endpoint
-            const response = await API.reprocessCourses(registrationData);
+            const response = await API.reprocessCourses(eventsToReprocess);
 
             if (response.ics_url) {
                 storedIcsUrl.set(response.ics_url);
             }
 
+            const actualRefreshTermId = String(eventsToReprocess[0]?.term ?? termId);
+
             // Update the store with fresh data
-            const events = await API.getProcessedEvents(termId);
+            const events = await API.getProcessedEvents(actualRefreshTermId);
             storedProcessedData.update((list) => {
-                const tid = String(termId);
+                const tid = String(actualRefreshTermId);
                 const i = list.findIndex((x) => String(x.termId) === tid);
                 const next = [...list];
                 const ics = response.ics_url || $storedIcsUrl || '';
@@ -852,7 +937,11 @@
 
                     // Now fetch fresh data for the current environment
                     terms = await API.getTerms();
-                    storedUserSettings.set(await API.userSettings());
+                    const envSettings = await API.userSettings();
+                    storedUserSettings.set(envSettings);
+                    if (envSettings.enrolled_terms?.length && $enrolledTerms.length === 0) {
+                        enrolledTerms.set(envSettings.enrolled_terms);
+                    }
                 })();
             }
         });
@@ -874,14 +963,24 @@
 
         // Now fetch fresh data for the current environment
         terms = await API.getTerms();
-        storedUserSettings.set(await API.userSettings());
+        const settings = await API.userSettings();
+        storedUserSettings.set(settings);
+        if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
+            enrolledTerms.set(settings.enrolled_terms);
+        }
         listenForEnvironmentChanges();
     });
 
     $effect(() => {
-        if (terms && !selected) {
-            const initial = terms?.current_term?.id ?? terms?.next_term?.id;
-            selected = initial != null ? String(initial) : undefined;
+        if (!selected) {
+            if ($enrolledTerms.length > 0) {
+                const processedTermIds = new Set($storedProcessedData.map(d => String(d.termId)));
+                const preferred = $enrolledTerms.find(t => processedTermIds.has(t.id)) ?? $enrolledTerms[0];
+                selected = preferred.id;
+            } else if (terms) {
+                const initial = terms?.current_term?.id ?? terms?.next_term?.id;
+                selected = initial != null ? String(initial) : undefined;
+            }
         }
     });
 
@@ -996,10 +1095,10 @@
                 <div class="flex-1"></div>
                 <div class="flex justify-center">
                     <ConnectedButtons>
-                    <input type="radio" name="seg" id="seg-a" bind:group={selected} value={terms?.current_term.id?.toString()} onchange={async () => { const tid = terms?.current_term.id?.toString(); if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !attemptedTerms.has(tid) && !loading) { const next = new Set(attemptedTerms); next.add(tid); attemptedTerms = next; await ensureProcessedForTerm(tid); } }} />
-                    <Button for="seg-a" variant="filled">{terms?.current_term.name}</Button>
-                    <input type="radio" name="seg" id="seg-b" bind:group={selected} value={terms?.next_term.id?.toString()} onchange={async () => { const tid = terms?.next_term.id?.toString(); if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !attemptedTerms.has(tid) && !loading) { const next = new Set(attemptedTerms); next.add(tid); attemptedTerms = next; await ensureProcessedForTerm(tid); } }} />
-                    <Button for="seg-b" variant="filled">{terms?.next_term.name}</Button>
+                    {#each displayTerms as termOpt, i}
+                        <input type="radio" name="seg" id="seg-{i}" bind:group={selected} value={termOpt.id} onchange={async () => { const tid = termOpt.id; if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !attemptedTerms.has(tid) && !loading) { const next = new Set(attemptedTerms); next.add(tid); attemptedTerms = next; await ensureProcessedForTerm(tid); } }} />
+                        <Button for="seg-{i}" variant="filled">{termOpt.name}</Button>
+                    {/each}
                     </ConnectedButtons>
                 </div>
                 <div class="flex-1 flex justify-end gap-3 mr-4">

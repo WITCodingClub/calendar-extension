@@ -4,7 +4,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     const oauthSuccessPatterns = [
       'https://heron-selected-literally.ngrok-free.app/oauth/success',
       'https://staging-calendar.witcc.dev/oauth/success',
-      'https://server-calendar.witcc.dev/oauth/success'
+      'https://calendar.witcc.dev/oauth/success'
     ];
 
     const isOAuthSuccess = oauthSuccessPatterns.some(pattern => tab.url.includes(pattern));

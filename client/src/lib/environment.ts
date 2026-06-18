@@ -20,7 +20,7 @@ export const ENVIRONMENTS: Record<Environment, EnvironmentConfig> = {
     prod: {
         name: 'prod',
         displayName: 'Production',
-        baseUrl: 'https://server-calendar.witcc.dev'
+        baseUrl: 'https://calendar.witcc.dev'
     }
 };
 
@@ -95,7 +95,7 @@ export class EnvironmentManager {
     public static async migrateOldJwtToken(): Promise<void> {
         const result = await chrome.storage.local.get('jwt_token');
         if (result.jwt_token) {
-            await this.setJwtToken(result.jwt_token, 'dev');
+            await this.setJwtToken(result.jwt_token, 'prod');
             await chrome.storage.local.remove('jwt_token');
         }
     }
