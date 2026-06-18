@@ -114,9 +114,6 @@
             const msg = String(err);
             if (msg.includes('cas.wit.edu') || msg.includes('Cannot access contents of url')) {
                 error = 'not_logged_in';
-            } else {
-                error = 'Failed to fetch data! Make';
-                snackbar('Failed to fetch data: ' + err, undefined, true);
             }
         } finally {
             // Always close the tab — getPreferredName is an API endpoint, never useful to leave open
@@ -172,14 +169,10 @@
 <div class="flex flex-col items-center justify-center min-h-screen w-full px-4">
     <div class=" rounded-lg shadow-md p-8 flex flex-col items-center peak {error ? 'bg-error' : 'bg-surface-container-high'}">
         {#if error == 'not_logged_in'}
-            <ErrorNotice title="Not logged in to WIT!" error="Please sign in to WIT Self Service first, then try again." includeStatusLink={false} />
-            <a href="https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory" target="_blank" class="text-primary underline text-sm mb-3">Open WIT Self Service</a>
+            <ErrorNotice title="Not logged in to WIT!" error="Please sign in to " includeStatusLink={false} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else if error == 'Server is (probably) down!'}
             <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
-            <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
-        {:else if error == 'Make'}
-            <ErrorNotice title="Failed to fetch data!" error={error} includeStatusLink={false} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else}
             <h1 class="text-3xl font-extrabold text-center text-primary mb-6">Signing in!</h1>
