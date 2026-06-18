@@ -343,6 +343,8 @@
             if (!isOnTargetPage) {
                 tabToUse = await chrome.tabs.create({ url: targetUrl });
                 shouldCloseTab = true;
+                const openedTabId = tabToUse.id;
+                if (!openedTabId) return;
 
                 await new Promise<void>((resolve) => {
                     const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
@@ -605,10 +607,15 @@
             if (!isOnTargetPage) {
                 tabToUse = await chrome.tabs.create({ url: targetUrl });
                 shouldCloseTab = true;
+                const openedTabId = tabToUse.id;
+                if (!openedTabId) {
+                    snackbar('Failed to open LeopardWeb tab', undefined, true);
+                    return;
+                }
 
                 await new Promise<void>((resolve) => {
-                    const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-                        if (tabId === tabToUse.id && changeInfo.status === 'complete') {
+                    const listener = (tabId: number, changeInfo: { status?: string }) => {
+                        if (tabId === openedTabId && changeInfo.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
                             resolve();
                         }
@@ -755,7 +762,8 @@
             event_preference.color_id = courseColor;
         }
 
-        //@ts-ignore
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        //@ts-expect-error
         const convertedNotifications: ReminderSettings[] = notifications.map(n => ({
             time: (n.time).toString(),
             type: n.type,
@@ -920,13 +928,14 @@
     }
 
     async function listenForEnvironmentChanges() {
-        chrome.storage.onChanged.addListener((changes: chrome.storage.StorageChanges) => {
+        chrome.storage.onChanged.addListener((changes) => {
             if ('environment_data' in changes) {
                 (async () => {
                     checkBetaAccess();
                     jwt_token = await API.getJwtToken();
                     if (!jwt_token) {
                         // No JWT token for current environment, redirect to welcome page
+                        // eslint-disable-next-line svelte/no-navigation-without-resolve
                         goto('/');
                         return;
                     }
@@ -952,6 +961,7 @@
         jwt_token = await API.getJwtToken();
         if (!jwt_token) {
             // No JWT token for current environment, redirect to welcome page
+            // eslint-disable-next-line svelte/no-navigation-without-resolve
             goto('/');
             return;
         }
@@ -1076,6 +1086,7 @@
                 </p>
                 <div class="flex flex-row gap-2 items-center">
                     <Button variant="outlined" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
+                    <Button variant="outlined" square onclick={() => goto('/friends')}>View Friends</Button>
                 </div>
             </div>
         </div>
