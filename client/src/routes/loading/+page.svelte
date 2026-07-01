@@ -160,7 +160,9 @@
             const baseUrl = await API.baseUrl;
             const response = await fetch(`${baseUrl}/user/onboard`, {
                 method: 'POST',
-                body: JSON.stringify({ google_access_token: accessToken, preferred_name: preferredName }),
+                // wit_email is stored as metadata only — the backend keys the
+                // account to the verified Google token, not this value.
+                body: JSON.stringify({ google_access_token: accessToken, preferred_name: preferredName, wit_email: schoolEmail }),
                 headers: {
                     'Content-Type': 'application/json'
                 }
