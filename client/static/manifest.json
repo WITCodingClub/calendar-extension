@@ -34,7 +34,7 @@
     "identity.email"
   ],
   "oauth2": {
-    "client_id": "REPLACE_WITH_CHROME_EXTENSION_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "542377189189-at1sbv0820ooa8niirhakkmko1c1b8je.apps.googleusercontent.com",
     "scopes": [
       "email",
       "profile"
