@@ -34,7 +34,7 @@ interface FeatureFlagsResponse {
 
 interface Location {
     building: Building;
-    room: string;
+    rooms: string[];
 }
 
 interface MeetingTime {
