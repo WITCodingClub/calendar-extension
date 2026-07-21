@@ -1150,6 +1150,7 @@
                                         {@const overlapCount = Math.max(item.overlapCount ?? 1, 1)}
                                         {@const heightPct = Math.max((100 - (overlapCount + 1) * stackGapPct) / overlapCount, 0)}
                                         {@const topPct = stackGapPct + item.stackIndex * (heightPct + stackGapPct)}
+                                        {@const rooms = item.meeting.location.rooms.filter(Boolean).join(' / ')}
                                         <button
                                             class="absolute rounded px-2 py-1 text-xs overflow-hidden cursor-pointer hover:shadow-md transition-shadow border-t-2"
                                             style={`background-color:${item.bgColor}; color:${item.textColor}; left:${item.startOffset}rem; width:${item.width}rem; top:${topPct}%; height:${heightPct}%; border-color:${item.bgColor};`}
@@ -1157,7 +1158,7 @@
                                         >
 											<div class="font-medium truncate">{item.meeting.title_overrides?.[day.key] ?? item.course.title}</div>
 											<div class="opacity-80">{convertTo12Hour(item.meeting.begin_time)} - {convertTo12Hour(item.meeting.end_time)}</div>
-                                            <div class="opacity-70 text-[10px]">{item.meeting.location.building.abbreviation} {item.meeting.location.room}</div>
+                                            <div class="opacity-70 text-[10px] whitespace-nowrap">{item.meeting.location.building.abbreviation}{rooms ? ` - ${rooms}` : ''}</div>
                                         </button>
                                     {/each}
                                 </div>
