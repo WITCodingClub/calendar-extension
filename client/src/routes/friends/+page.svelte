@@ -6,7 +6,19 @@
     import { fade, scale } from 'svelte/transition';
     import { Chip, SelectOutlined, TextFieldOutlined, VariableTabs } from 'm3-svelte';
 
-    let selected = $state<string | undefined>(undefined);
+    let currentTermId = $state<string | undefined>(undefined);
+    let termsFetched = $state(false);
+    let selected = $derived.by(() => {
+        if (!termsFetched || $storedProcessedData.length === 0) return undefined;
+        const data = $storedProcessedData;
+        if (currentTermId && data.some((d) => String(d.termId) === currentTermId)) {
+            return currentTermId;
+        }
+        const latest = data.reduce((a, b) =>
+            parseInt(String(a.termId), 10) >= parseInt(String(b.termId), 10) ? a : b
+        );
+        return String(latest.termId);
+    });
     let processedData: Course[] | undefined = $derived(
         $storedProcessedData.find((d) => String(d.termId) === selected)?.responseData.classes
     );
@@ -667,13 +679,15 @@
     }
 
     onMount(async () => {
-        await loadFriendsAndRequests();
-    });
-
-    $effect(() => {
-        if (!selected && $storedProcessedData.length > 0) {
-            selected = String($storedProcessedData[0].termId);
+        try {
+            const terms = await API.getTerms();
+            if (terms?.current_term?.id != null) {
+                currentTermId = String(terms.current_term.id);
+            }
+        } finally {
+            termsFetched = true;
         }
+        await loadFriendsAndRequests();
     });
 
     $effect(() => {
