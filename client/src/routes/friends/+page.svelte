@@ -863,11 +863,10 @@
             <div class="h-px bg-outline-variant"></div>
             <div class="flex flex-row gap-2 items-center flex-wrap">
                 <div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant whitespace-nowrap">Primary</div>
-                <span
-                    class="w-2.5 h-2.5 rounded-full shrink-0 border border-outline-variant"
-                    style={`background-color:${ownerColorMap['you']?.lecture ?? OWNER_PALETTE[0].lecture}`}
-                    title="Your color"
-                ></span>
+                <span class="flex flex-row gap-0.5 shrink-0" title="Primary colors">
+                    <span class="w-2.5 h-2.5 rounded-full border border-outline-variant" style={`background-color:${(ownerColorMap[primaryUser] ?? OWNER_PALETTE[0]).lecture}`}></span>
+                    <span class="w-2.5 h-2.5 rounded-full border border-outline-variant" style={`background-color:${(ownerColorMap[primaryUser] ?? OWNER_PALETTE[0]).lab}`}></span>
+                </span>
                 <SelectOutlined
                     label=""
                     options={[
@@ -889,11 +888,12 @@
                 {:else}
                     <div class="flex flex-wrap gap-1.5">
                         {#each friendList as friend (friend.id)}
+                            {@const friendColors = ownerColorMap[friend.id] ?? OWNER_PALETTE[0]}
                             <div class="flex flex-row gap-1 items-center border border-outline-variant rounded-md px-1.5 py-1">
-                                <span
-                                    class="w-2.5 h-2.5 rounded-full shrink-0 border border-outline-variant"
-                                    style={`background-color:${ownerColorMap[friend.id]?.lecture ?? OWNER_PALETTE[0].lecture}`}
-                                ></span>
+                                <span class="flex flex-row gap-0.5 shrink-0">
+                                    <span class="w-2.5 h-2.5 rounded-full border border-outline-variant" style={`background-color:${friendColors.lecture}`}></span>
+                                    <span class="w-2.5 h-2.5 rounded-full border border-outline-variant" style={`background-color:${friendColors.lab}`}></span>
+                                </span>
                                 <Chip
                                     variant="input"
                                     selected={selectedFriends.includes(friend.id)}
