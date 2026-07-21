@@ -1005,14 +1005,20 @@
 
     $effect(() => {
         if (!selected) {
-            if ($enrolledTerms.length > 0) {
+            if (displayTerms.length > 0) {
                 const processedTermIds = new Set($storedProcessedData.map(d => String(d.termId)));
-                const preferred = $enrolledTerms.find(t => processedTermIds.has(t.id)) ?? $enrolledTerms[0];
+                const preferred = displayTerms.find(t => processedTermIds.has(t.id)) ?? displayTerms[0];
                 selected = preferred.id;
             } else if (terms) {
                 const initial = terms?.current_term?.id ?? terms?.next_term?.id;
                 selected = initial != null ? String(initial) : undefined;
             }
+        } else if (displayTerms.length > 0 && !displayTerms.some(t => t.id === selected)) {
+            const currentId = terms?.current_term?.id != null ? String(terms.current_term.id) : undefined;
+            const preferred =
+                (currentId && displayTerms.find(t => t.id === currentId)) ??
+                displayTerms[0];
+            selected = preferred.id;
         }
     });
 
