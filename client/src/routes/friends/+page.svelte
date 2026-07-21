@@ -23,9 +23,18 @@
         $storedProcessedData.find((d) => String(d.termId) === selected)?.responseData.classes
     );
     let militaryTime = $derived($storedUserSettings?.military_time ?? true);
-    let lectureColor = $derived($storedUserSettings?.default_color_lecture ?? "#039be5");
-    let labColor = $derived($storedUserSettings?.default_color_lab ?? "#f6bf26");
     let primaryUser = $state<string>('you');
+
+    const OWNER_PALETTE = [
+        { lecture: '#039be5', lab: '#81d4fa' },
+        { lecture: '#43a047', lab: '#a5d6a7' },
+        { lecture: '#e53935', lab: '#ef9a9a' },
+        { lecture: '#8e24aa', lab: '#ce93d8' },
+        { lecture: '#fb8c00', lab: '#ffcc80' },
+        { lecture: '#00897b', lab: '#80cbc4' },
+        { lecture: '#5e35b1', lab: '#b39ddb' },
+        { lecture: '#c2185b', lab: '#f48fb1' }
+    ] as const;
 
     let activeCourse = $state<Course | undefined>(undefined);
     let activeMeeting = $state<MeetingTime | undefined>(undefined);
@@ -42,6 +51,20 @@
     let pageError = $state<string>('');
     let actionLoadingId = $state<string>('');
     let schedulesLoadVersion = 0;
+
+    let ownerColorMap = $derived.by(() => {
+        const map: Record<string, { lecture: string; lab: string }> = {};
+        const ids = ['you', ...friendList.map((f) => f.id)];
+        for (let i = 0; i < ids.length; i++) {
+            map[ids[i]] = OWNER_PALETTE[i % OWNER_PALETTE.length];
+        }
+        return map;
+    });
+
+    function ownerScheduleColor(ownerId: string, scheduleType: string): string {
+        const pair = ownerColorMap[ownerId] ?? OWNER_PALETTE[0];
+        return scheduleType.toLowerCase() === 'laboratory' ? pair.lab : pair.lecture;
+    }
 
     type RawFriendMeeting = {
         id?: number | string;
@@ -183,6 +206,8 @@
         ownerId: string;
         ownerPriority: number;
         isPrimary: boolean;
+        isShared: boolean;
+        sharedOwnerIds: string[];
     };
 
     function convertTo12Hour(time24: string): string {
@@ -340,12 +365,15 @@
         startTotal: number;
         endTotal: number;
         bgColor: string;
+        borderColor: string;
         textColor: string;
         stackIndex: number;
         overlapCount: number;
         ownerId: string;
         ownerPriority: number;
         isPrimary: boolean;
+        isShared: boolean;
+        sharedOwnerIds: string[];
     };
 
     const stackGapPct = 2;
@@ -389,12 +417,25 @@
                     const endTotal = parseTimeToMinutes(meeting.end_time);
                     for (const { key } of dayOrder) {
                         if (!(meeting as unknown as Record<DayItem['key'], boolean>)[key]) continue;
-                        blocks.push({ course, meeting, startTotal, endTotal, ownerId, ownerPriority, isPrimary });
+                        blocks.push({
+                            course,
+                            meeting,
+                            startTotal,
+                            endTotal,
+                            ownerId,
+                            ownerPriority,
+                            isPrimary,
+                            isShared: false,
+                            sharedOwnerIds: [ownerId]
+                        });
                     }
                 }
             }
             return blocks;
         };
+
+        const sharedCourseKey = (b: CalendarBlock): string =>
+            `${b.startTotal}-${b.endTotal}-${b.course.prefix}-${b.course.course_number}-${b.course.schedule_type}`;
 
         const allBlocks = ownerEntries.flatMap((entry, idx) => collectIntervals(entry.courses, entry.id, idx, entry.isPrimary));
 
@@ -402,14 +443,39 @@
         const maxStacksByDay: Record<string, number> = {};
 
         for (const { key } of dayOrder) {
-            const seen: Record<string, boolean> = {};
-            const blocks = allBlocks.filter((b) => {
-                if (!(b.meeting as unknown as Record<DayItem['key'], boolean>)[key]) return false;
-                const k = `${b.ownerId}-${b.startTotal}-${b.endTotal}-${b.course.title}`;
-                if (seen[k]) return false;
-                seen[k] = true;
-                return true;
-            });
+            const dayCandidates = allBlocks.filter((b) =>
+                (b.meeting as unknown as Record<DayItem['key'], boolean>)[key]
+            );
+
+            const mergeMap = new Map<string, CalendarBlock>();
+            for (const b of dayCandidates) {
+                const k = sharedCourseKey(b);
+                const existing = mergeMap.get(k);
+                if (!existing) {
+                    mergeMap.set(k, { ...b, sharedOwnerIds: [...b.sharedOwnerIds] });
+                    continue;
+                }
+                if (!existing.sharedOwnerIds.includes(b.ownerId)) {
+                    existing.sharedOwnerIds.push(b.ownerId);
+                }
+                existing.isShared = existing.sharedOwnerIds.length > 1;
+                if (b.isPrimary && !existing.isPrimary) {
+                    existing.course = b.course;
+                    existing.meeting = b.meeting;
+                    existing.ownerId = b.ownerId;
+                    existing.isPrimary = true;
+                }
+                if (b.ownerPriority < existing.ownerPriority) {
+                    existing.ownerPriority = b.ownerPriority;
+                    if (!existing.isPrimary) {
+                        existing.course = b.course;
+                        existing.meeting = b.meeting;
+                        existing.ownerId = b.ownerId;
+                    }
+                }
+            }
+
+            const blocks = Array.from(mergeMap.values());
             if (blocks.length === 0) {
                 byDay[key] = [];
                 maxStacksByDay[key] = 1;
@@ -437,9 +503,14 @@
                 const startMin = block.startTotal % 60;
                 const startOffset = ((startHour - 8) * 60 + startMin) / 60 * 8;
                 const width = (block.endTotal - block.startTotal) / 60 * 8;
-                const isLab = block.course.schedule_type.toLowerCase() === 'laboratory';
-                const baseColor = block.meeting.color ?? (isLab ? labColor : lectureColor);
-                const textColor = getTextColor(baseColor);
+                const scheduleType = block.course.schedule_type;
+                let bgColor = ownerScheduleColor(block.ownerId, scheduleType);
+                let borderColor = bgColor;
+                if (block.isShared && block.sharedOwnerIds.length >= 2) {
+                    const otherOwnerId = block.sharedOwnerIds.find((id) => id !== block.ownerId) ?? block.sharedOwnerIds[1];
+                    borderColor = ownerScheduleColor(otherOwnerId, scheduleType);
+                }
+                const textColor = getTextColor(bgColor);
                 const currentOverlap = active.length + 1;
                 const item: PositionedMeeting = {
                     course: block.course,
@@ -448,13 +519,16 @@
                     width,
                     startTotal: block.startTotal,
                     endTotal: block.endTotal,
-                    bgColor: baseColor,
+                    bgColor,
+                    borderColor,
                     textColor,
                     stackIndex: 0,
                     overlapCount: currentOverlap,
                     ownerId: block.ownerId,
                     ownerPriority: block.ownerPriority,
-                    isPrimary: block.isPrimary
+                    isPrimary: block.isPrimary,
+                    isShared: block.isShared,
+                    sharedOwnerIds: block.sharedOwnerIds
                 };
 
                 for (const a of active) {
@@ -789,6 +863,11 @@
             <div class="h-px bg-outline-variant"></div>
             <div class="flex flex-row gap-2 items-center flex-wrap">
                 <div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant whitespace-nowrap">Primary</div>
+                <span
+                    class="w-2.5 h-2.5 rounded-full shrink-0 border border-outline-variant"
+                    style={`background-color:${ownerColorMap['you']?.lecture ?? OWNER_PALETTE[0].lecture}`}
+                    title="Your color"
+                ></span>
                 <SelectOutlined
                     label=""
                     options={[
@@ -811,6 +890,10 @@
                     <div class="flex flex-wrap gap-1.5">
                         {#each friendList as friend (friend.id)}
                             <div class="flex flex-row gap-1 items-center border border-outline-variant rounded-md px-1.5 py-1">
+                                <span
+                                    class="w-2.5 h-2.5 rounded-full shrink-0 border border-outline-variant"
+                                    style={`background-color:${ownerColorMap[friend.id]?.lecture ?? OWNER_PALETTE[0].lecture}`}
+                                ></span>
                                 <Chip
                                     variant="input"
                                     selected={selectedFriends.includes(friend.id)}
@@ -884,13 +967,13 @@
                                         <div class="w-32 border-r border-outline-variant"></div>
                                     {/each}
 
-                                    {#each dayEvents as item (`${item.ownerId}-${item.meeting.id}`)}
+                                    {#each dayEvents as item (`${item.startTotal}-${item.endTotal}-${item.course.prefix}-${item.course.course_number}-${item.course.schedule_type}-${[...item.sharedOwnerIds].sort().join(',')}`)}
                                         {@const overlapCount = Math.max(item.overlapCount ?? 1, 1)}
                                         {@const heightPct = Math.max((100 - (overlapCount + 1) * stackGapPct) / overlapCount, 0)}
                                         {@const topPct = stackGapPct + item.stackIndex * (heightPct + stackGapPct)}
                                         <button
-                                            class="absolute rounded px-2 py-1 text-xs overflow-hidden cursor-pointer hover:shadow-md transition-shadow border-t-2"
-                                            style={`background-color:${item.bgColor}; color:${item.textColor}; left:${item.startOffset}rem; width:${item.width}rem; top:${topPct}%; height:${heightPct}%; border-color:${item.bgColor}; opacity:${item.isPrimary ? 1 : 0.5};`}
+                                            class={['absolute rounded px-2 py-1 text-xs overflow-hidden cursor-pointer hover:shadow-md transition-shadow', item.isShared ? 'border-2' : 'border-t-2']}
+                                            style={`background-color:${item.bgColor}; color:${item.textColor}; left:${item.startOffset}rem; width:${item.width}rem; top:${topPct}%; height:${heightPct}%; opacity:${item.isPrimary ? 1 : 0.5}; border-color:${item.borderColor};`}
                                             onclick={() => {activeCourse = item.course; activeMeeting = item.meeting; activeDay = day;}}
                                         >
                                             <div class="font-medium truncate">{item.meeting.title_overrides?.[day.key] ?? item.course.title}</div>
