@@ -43,6 +43,38 @@
     let lectureColor = $derived($storedUserSettings?.default_color_lecture ?? "#039be5");
     let labColor = $derived($storedUserSettings?.default_color_lab ?? "#f6bf26");
     let advancedEditing = $derived($storedUserSettings?.advanced_editing ?? false);
+
+    const EVENT_HEX_TO_WITCC: Record<string, string> = {
+        "#a4bdfc": "#7986cb",
+        "#7ae7bf": "#33b679",
+        "#dbadff": "#8e24aa",
+        "#ff887c": "#e67c73",
+        "#fbd75b": "#f6bf26",
+        "#ffb878": "#f4511e",
+        "#46d6db": "#039be5",
+        "#e1e1e1": "#616161",
+        "#5484ed": "#3f51b5",
+        "#51b749": "#0b8043",
+        "#dc2127": "#d50000",
+    };
+    const COLOR_ID_TO_WITCC: Record<string, string> = {
+        "1": "#7986cb",
+        "2": "#33b679",
+        "3": "#8e24aa",
+        "4": "#e67c73",
+        "5": "#f6bf26",
+        "6": "#f4511e",
+        "7": "#039be5",
+        "8": "#616161",
+        "9": "#3f51b5",
+        "10": "#0b8043",
+        "11": "#d50000",
+    };
+    function toDropdownColor(color: string | number | null | undefined): string {
+        if (color == null || color === "") return "#d50000";
+        const normalized = String(color).toLowerCase();
+        return EVENT_HEX_TO_WITCC[normalized] ?? COLOR_ID_TO_WITCC[normalized] ?? (normalized.startsWith("#") ? normalized : "#d50000");
+    }
     let currentEventPrefs = $state<GetPreferencesResponse | undefined>(undefined);
     let templates: TemplateVariables | undefined = $derived(currentEventPrefs?.templates);
     let resolved: ResolvedData | undefined = $derived(currentEventPrefs?.resolved);
@@ -522,7 +554,7 @@
                 const updatedMeetingTimes = c.meeting_times.map((mt) => {
                     const pref = map.get(mt.id);
                     if (!pref) return mt;
-                    const color = pref.resolved?.color_id ?? mt.color;
+                    const color = pref.resolved?.color_id ? toDropdownColor(pref.resolved.color_id) : mt.color;
                     let title_overrides = mt.title_overrides ?? {};
                     const title = pref.preview?.title;
                     if (title) {
@@ -750,7 +782,7 @@
             event_preference.location_template = locationChanged ? editLocation : editLocationManual;
         }
 
-        const colorChanged = courseColor !== resolved?.color_id;
+        const colorChanged = courseColor !== toDropdownColor(resolved?.color_id);
         if (colorChanged) {
             event_preference.color_id = courseColor;
         }
@@ -1010,7 +1042,7 @@
             editTitleManual = currentEventPrefs.preview?.title ?? "";
             editDescriptionManual = currentEventPrefs.preview?.description ?? "";
             editLocationManual = currentEventPrefs.preview?.location ?? "";
-            courseColor = resolved?.color_id ?? "#d50000";
+            courseColor = toDropdownColor(resolved?.color_id);
             notificationsDisabled = currentEventPrefs.notifications_disabled ?? false;
             
             if (resolved?.reminder_settings && resolved.reminder_settings.length > 0) {
