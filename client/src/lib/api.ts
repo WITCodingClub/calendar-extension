@@ -1,5 +1,5 @@
 import { EnvironmentManager } from "./environment";
-import type { FeatureFlagsResponse, isProcessed, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
+import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, isProcessed, OkResponse, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
 
 export class API {
     private static async getBaseUrl(): Promise<string> {
@@ -116,6 +116,134 @@ export class API {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await fetch(`${baseUrl}/user/processed_events`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ term_uid: termUid })
+        });
+        return response.json();
+    }
+
+    public static async getFriends(): Promise<FriendListResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/friends`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        return response.json();
+    }
+
+    public static async getFriendRequests(): Promise<FriendRequestsResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/friends/requests`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        return response.json();
+    }
+
+    public static async createFriendRequest(
+        payload: { friend_id: string } | { friend_email: string }
+    ): Promise<FriendRequestCreateResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/friends/requests`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            let message = `Failed to send friend request: ${response.status}`;
+            try {
+                const body = await response.json();
+                if (body?.error) message = String(body.error);
+                else if (body?.message) message = String(body.message);
+                else if (body?.detail) message = String(body.detail);
+            } catch {
+                /* ignore parse errors */
+            }
+            throw new Error(message);
+        }
+        return response.json();
+    }
+
+    public static async acceptFriendRequest(requestId: string): Promise<FriendRequestAcceptResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/friends/requests/${requestId}/accept`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        return response.json();
+    }
+
+    public static async declineFriendRequest(requestId: string): Promise<OkResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/friends/requests/${requestId}/decline`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        return response.json();
+    }
+
+    public static async cancelFriendRequest(requestId: string): Promise<OkResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/friends/requests/${requestId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        return response.json();
+    }
+
+    public static async removeFriend(friendId: string): Promise<OkResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/friends/${friendId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        return response.json();
+    }
+
+    public static async friendIsProcessed(friendId: string, termUid: string): Promise<isProcessed> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/friends/${friendId}/is_processed`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ term_uid: termUid })
+        });
+        return response.json();
+    }
+
+    public static async getFriendProcessedEvents(friendId: string, termUid: string): Promise<FriendProcessedEventsResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/friends/${friendId}/processed_events`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,

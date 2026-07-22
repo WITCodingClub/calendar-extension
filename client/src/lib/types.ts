@@ -68,6 +68,49 @@ interface isProcessed {
     processed: boolean;
 }
 
+interface FriendIdentity {
+    id: string;
+    name: string;
+}
+
+interface FriendRequestIncoming {
+    request_id: string;
+    from: FriendIdentity;
+    created_at: string;
+}
+
+interface FriendRequestOutgoing {
+    request_id: string;
+    to: FriendIdentity;
+    created_at: string;
+}
+
+interface FriendListResponse {
+    friends: FriendIdentity[];
+}
+
+interface FriendRequestsResponse {
+    incoming: FriendRequestIncoming[];
+    outgoing: FriendRequestOutgoing[];
+}
+
+interface FriendRequestCreateResponse {
+    request_id: string;
+}
+
+interface FriendRequestAcceptResponse {
+    friendship_id: string;
+    friend: FriendIdentity;
+}
+
+interface OkResponse {
+    ok: boolean;
+}
+
+interface FriendProcessedEventsResponse {
+    processed_courses: any[];
+}
+
 interface Professor {
     first_name: string;
     last_name: string;
@@ -233,6 +276,6 @@ export {
     FEATURE_FLAGS,
     type Building,
     type CalendarConfig, type Course, type CurrentTerm, type DayItem,
-    type EventPreferences, type FeatureFlagsResponse, type GetPreferencesResponse, type isProcessed, type Location,
-    type MeetingTime, type NextTerm, type NotificationMethod, type NotificationSetting, type NotificationType, type Preview, type ProcessedEvents, type Professor, type ReminderSettings, type ResolvedData, type ResponseData, type TemplateVariables, type Term, type TermResponse, type UniversityCalendarEvent, type UniversityEventCategory, type UniversityEventCategoryWithCount, type UserSettings
+    type EventPreferences, type FeatureFlagsResponse, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location,
+    type MeetingTime, type NextTerm, type NotificationMethod, type NotificationSetting, type NotificationType, type OkResponse, type Preview, type ProcessedEvents, type Professor, type ReminderSettings, type ResolvedData, type ResponseData, type TemplateVariables, type Term, type TermResponse, type UniversityCalendarEvent, type UniversityEventCategory, type UniversityEventCategoryWithCount, type UserSettings
 };
