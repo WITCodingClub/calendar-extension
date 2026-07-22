@@ -30,11 +30,14 @@
 
 <div class="flex flex-col gap-2.5 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
 	<div class="flex flex-col gap-2">
-		<div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant">Send friend request</div>
+		<div class="flex flex-col gap-0.5">
+			<div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant">Send friend request</div>
+			<div class="text-[11px] text-on-surface-variant">Use their email or user ID</div>
+		</div>
 		<div class="flex flex-row gap-2 items-center flex-wrap">
 			<div class="flex-1 min-w-[8rem]">
 				<TextFieldOutlined
-					label="Friend ID"
+					label="Email or user ID"
 					bind:value={sendFriendIdInput}
 					onkeydown={(e) => {
 						if (e.key === 'Enter') {

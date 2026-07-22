@@ -706,17 +706,20 @@
     }
 
     async function sendFriendRequest() {
-        const friendId = sendFriendIdInput.trim();
-        if (!friendId) return;
+        const value = sendFriendIdInput.trim();
+        if (!value) return;
         actionLoadingId = 'send-request';
         pageError = '';
         try {
-            await API.createFriendRequest(friendId);
+            const isEmail = value.includes('@');
+            await API.createFriendRequest(
+                isEmail ? { friend_email: value } : { friend_id: value }
+            );
             sendFriendIdInput = '';
             await loadFriendsAndRequests();
         } catch (error) {
             console.error('Failed to send friend request', error);
-            pageError = 'Failed to send friend request.';
+            pageError = error instanceof Error ? error.message : 'Failed to send friend request.';
         } finally {
             actionLoadingId = '';
         }

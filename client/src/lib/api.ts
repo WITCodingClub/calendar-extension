@@ -150,7 +150,9 @@ export class API {
         return response.json();
     }
 
-    public static async createFriendRequest(friendId: string): Promise<FriendRequestCreateResponse> {
+    public static async createFriendRequest(
+        payload: { friend_id: string } | { friend_email: string }
+    ): Promise<FriendRequestCreateResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await fetch(`${baseUrl}/friends/requests`, {
@@ -159,8 +161,20 @@ export class API {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ friend_id: friendId })
+            body: JSON.stringify(payload)
         });
+        if (!response.ok) {
+            let message = `Failed to send friend request: ${response.status}`;
+            try {
+                const body = await response.json();
+                if (body?.error) message = String(body.error);
+                else if (body?.message) message = String(body.message);
+                else if (body?.detail) message = String(body.detail);
+            } catch {
+                /* ignore parse errors */
+            }
+            throw new Error(message);
+        }
         return response.json();
     }
 
