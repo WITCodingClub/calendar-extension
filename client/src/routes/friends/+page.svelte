@@ -2,9 +2,14 @@
     import { API } from '$lib/api';
     import { processedData as storedProcessedData, userSettings as storedUserSettings } from '$lib/store';
     import type { Course, DayItem, FriendIdentity, FriendProcessedEventsResponse, FriendRequestIncoming, FriendRequestOutgoing, MeetingTime } from '$lib/types';
+    import { goto } from '$app/navigation';
+    import { resolve } from '$app/paths';
     import { onMount } from 'svelte';
     import { fade, scale } from 'svelte/transition';
-    import { Chip, SelectOutlined, TextFieldOutlined, VariableTabs } from 'm3-svelte';
+    import { Chip, Switch, TextFieldOutlined, VariableTabs } from 'm3-svelte';
+    import FriendsHeader from '$lib/components/FriendsHeader.svelte';
+    import FriendsToolbar from '$lib/components/FriendsToolbar.svelte';
+    import FriendsManagePanel from '$lib/components/FriendsManagePanel.svelte';
 
     let currentTermId = $state<string | undefined>(undefined);
     let termsFetched = $state(false);
@@ -259,6 +264,28 @@
     type MeetInterval = { start: number; end: number };
 
     let tab = $state<'calendar' | 'meeting'>('calendar');
+    let manageOpen = $state(false);
+    let manageOpenedForPending = false;
+
+    let pendingRequestCount = $derived(incomingRequests.length + outgoingRequests.length);
+
+    function toggleFriend(friendId: string) {
+        const exists = selectedFriends.includes(friendId);
+        const next = exists
+            ? selectedFriends.filter((id) => id !== friendId)
+            : [...selectedFriends, friendId];
+        selectedFriends = next;
+        if (primaryUser !== 'you' && !next.includes(primaryUser)) {
+            primaryUser = 'you';
+        }
+    }
+
+    function setPrimary(userId: string) {
+        if (userId !== 'you' && !selectedFriends.includes(userId)) {
+            return;
+        }
+        primaryUser = userId;
+    }
 
     let bestMeetTimesByDay = $derived.by(() => {
         const dayStart = meetRangeStart;
@@ -622,6 +649,11 @@
             friendIdentities = friendsResponse.friends ?? [];
             incomingRequests = requestsResponse.incoming ?? [];
             outgoingRequests = requestsResponse.outgoing ?? [];
+            const pending = incomingRequests.length + outgoingRequests.length;
+            if (!manageOpenedForPending && pending > 0) {
+                manageOpen = true;
+                manageOpenedForPending = true;
+            }
         } catch (error) {
             console.error('Failed to load friends data', error);
             pageError = 'Failed to load friends data.';
@@ -777,152 +809,38 @@
 
 <div class="flex flex-col gap-3 justify-center items-center h-full mt-2 w-full px-3">
     <div class="flex flex-col gap-2.5 w-full max-w-3xl">
+        <FriendsHeader onBack={() => goto(resolve('/calendar'))} />
         {#if pageError}
             <div class="text-sm text-error">{pageError}</div>
         {/if}
-        <div class="flex flex-col gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
-            <div class="flex flex-col gap-2">
-                <div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant">Send friend request</div>
-                <div class="flex flex-row gap-2 items-center flex-wrap sm:flex-nowrap">
-                    <TextFieldOutlined
-                        label="Friend ID"
-                        bind:value={sendFriendIdInput}
-                        onkeydown={(e) => {
-                            if (e.key === 'Enter') {
-                                sendFriendRequest();
-                            }
-                        }}
-                    />
-                    <button
-                        class="h-10 px-3 rounded bg-primary text-on-primary text-sm whitespace-nowrap disabled:opacity-50"
-                        disabled={actionLoadingId === 'send-request' || !sendFriendIdInput.trim()}
-                        onclick={sendFriendRequest}
-                    >
-                        Send
-                    </button>
-                </div>
-            </div>
-
-            {#if requestsLoading || incomingRequests.length > 0 || outgoingRequests.length > 0}
-                <div class="h-px bg-outline-variant"></div>
-                <div class="flex flex-col gap-1.5">
-                    <div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant">Requests</div>
-                    {#if requestsLoading}
-                        <div class="text-xs text-on-surface-variant">Loading requests...</div>
-                    {:else}
-                        <div class="grid gap-1.5 md:grid-cols-2">
-                            {#if incomingRequests.length > 0}
-                                <div class="flex flex-col gap-1">
-                                    <div class="text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">Incoming</div>
-                                    {#each incomingRequests as req (req.request_id)}
-                                        <div class="flex flex-row items-center justify-between gap-2 bg-surface-container-lowest rounded-md px-2 py-1.5 border border-outline-variant">
-                                            <div class="text-sm truncate">{req.from.name} ({req.from.id})</div>
-                                            <div class="flex flex-row gap-1 shrink-0">
-                                                <button
-                                                    class="px-2 py-1 rounded bg-primary text-on-primary text-xs disabled:opacity-50"
-                                                    disabled={actionLoadingId !== '' && actionLoadingId !== `accept-${req.request_id}`}
-                                                    onclick={() => acceptRequest(req.request_id)}
-                                                >
-                                                    Accept
-                                                </button>
-                                                <button
-                                                    class="px-2 py-1 rounded bg-error text-on-error text-xs disabled:opacity-50"
-                                                    disabled={actionLoadingId !== '' && actionLoadingId !== `decline-${req.request_id}`}
-                                                    onclick={() => declineRequest(req.request_id)}
-                                                >
-                                                    Decline
-                                                </button>
-                                            </div>
-                                        </div>
-                                    {/each}
-                                </div>
-                            {/if}
-
-                            {#if outgoingRequests.length > 0}
-                                <div class="flex flex-col gap-1">
-                                    <div class="text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">Outgoing</div>
-                                    {#each outgoingRequests as req (req.request_id)}
-                                        <div class="flex flex-row items-center justify-between gap-2 bg-surface-container-lowest rounded-md px-2 py-1.5 border border-outline-variant">
-                                            <div class="text-sm truncate">{req.to.name} ({req.to.id})</div>
-                                            <button
-                                                class="px-2 py-1 rounded bg-error text-on-error text-xs shrink-0 disabled:opacity-50"
-                                                disabled={actionLoadingId !== '' && actionLoadingId !== `cancel-${req.request_id}`}
-                                                onclick={() => cancelRequest(req.request_id)}
-                                            >
-                                                Cancel
-                                            </button>
-                                        </div>
-                                    {/each}
-                                </div>
-                            {/if}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-
-            <div class="h-px bg-outline-variant"></div>
-            <div class="flex flex-row gap-2 items-center flex-wrap">
-                <div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant whitespace-nowrap">Primary</div>
-                <span class="flex flex-row gap-0.5 shrink-0" title="Primary colors">
-                    <span class="w-2.5 h-2.5 rounded-full border border-outline-variant" style={`background-color:${(ownerColorMap[primaryUser] ?? OWNER_PALETTE[0]).lecture}`}></span>
-                    <span class="w-2.5 h-2.5 rounded-full border border-outline-variant" style={`background-color:${(ownerColorMap[primaryUser] ?? OWNER_PALETTE[0]).lab}`}></span>
-                </span>
-                <SelectOutlined
-                    label=""
-                    options={[
-                        { text: 'You', value: 'you' },
-                        ...friendList
-                            .filter((f) => selectedFriends.includes(f.id))
-                            .map((f) => ({ text: f.name, value: f.id }))
-                    ]}
-                    bind:value={primaryUser}
-                />
-            </div>
-
-            <div class="flex flex-col gap-1.5">
-                <div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant">Friends</div>
-                {#if friendsLoading || schedulesLoading}
-                    <div class="text-xs text-on-surface-variant">Loading friends...</div>
-                {:else if friendList.length === 0}
-                    <div class="text-xs text-on-surface-variant">No accepted friends yet.</div>
-                {:else}
-                    <div class="flex flex-wrap gap-1.5">
-                        {#each friendList as friend (friend.id)}
-                            {@const friendColors = ownerColorMap[friend.id] ?? OWNER_PALETTE[0]}
-                            <div class="flex flex-row gap-1 items-center border border-outline-variant rounded-md px-1.5 py-1">
-                                <span class="flex flex-row gap-0.5 shrink-0">
-                                    <span class="w-2.5 h-2.5 rounded-full border border-outline-variant" style={`background-color:${friendColors.lecture}`}></span>
-                                    <span class="w-2.5 h-2.5 rounded-full border border-outline-variant" style={`background-color:${friendColors.lab}`}></span>
-                                </span>
-                                <Chip
-                                    variant="input"
-                                    selected={selectedFriends.includes(friend.id)}
-                                    onclick={() => {
-                                        const exists = selectedFriends.includes(friend.id);
-                                        const next = exists
-                                            ? selectedFriends.filter((id) => id !== friend.id)
-                                            : [...selectedFriends, friend.id];
-                                        selectedFriends = next;
-                                        if (primaryUser !== 'you' && !next.includes(primaryUser)) {
-                                            primaryUser = 'you';
-                                        }
-                                    }}
-                                >
-                                    {friend.name}
-                                </Chip>
-                                <button
-                                    class="px-2 py-1 rounded bg-error text-on-error text-xs disabled:opacity-50"
-                                    disabled={actionLoadingId !== '' && actionLoadingId !== `unfriend-${friend.id}`}
-                                    onclick={() => unfriend(friend.id)}
-                                >
-                                    Remove
-                                </button>
-                            </div>
-                        {/each}
-                    </div>
-                {/if}
-            </div>
-        </div>
+        <FriendsToolbar
+            {friendList}
+            {selectedFriends}
+            {primaryUser}
+            {ownerColorMap}
+            {friendsLoading}
+            {schedulesLoading}
+            {manageOpen}
+            {pendingRequestCount}
+            ontoggleFriend={toggleFriend}
+            onsetPrimary={setPrimary}
+            ontoggleManage={() => { manageOpen = !manageOpen; }}
+        />
+        {#if manageOpen}
+            <FriendsManagePanel
+                bind:sendFriendIdInput
+                {incomingRequests}
+                {outgoingRequests}
+                {friendList}
+                {requestsLoading}
+                {actionLoadingId}
+                onsendRequest={sendFriendRequest}
+                onacceptRequest={acceptRequest}
+                ondeclineRequest={declineRequest}
+                oncancelRequest={cancelRequest}
+                onunfriend={unfriend}
+            />
+        {/if}
     </div>
     <div class="w-full max-w-3xl">
         <VariableTabs
@@ -992,7 +910,7 @@
         {/if}
     {:else}
         <div class="flex flex-col gap-3 w-full max-w-3xl mt-2">
-            <div class="flex flex-row gap-3 items-center justify-between flex-wrap">
+            <div class="flex flex-col gap-3">
                 <div class="flex flex-col">
                     <div class="text-sm text-on-surface-variant">Best times to meet</div>
                     <div class="text-xs text-on-surface-variant">Common free time for selected friends, between 8am–8pm.</div>
@@ -1002,9 +920,15 @@
                     <TextFieldOutlined type="number" label="Buffer (min)" bind:value={meetBufferMinutesInput} />
                     <TextFieldOutlined type="time" label="Start" bind:value={meetRangeStartInput} />
                     <TextFieldOutlined type="time" label="End" bind:value={meetRangeEndInput} />
-                    <Chip variant="input" selected={meetBetweenClassesOnly} onclick={() => { meetBetweenClassesOnly = !meetBetweenClassesOnly; }}>
-                        Between classes
-                    </Chip>
+                </div>
+                <div class="flex flex-row gap-3 items-center justify-between">
+                    <div class="flex flex-col">
+                        <div class="text-sm font-medium">Between classes</div>
+                        <div class="text-xs text-on-surface-variant">Only suggest gaps that fall between scheduled classes.</div>
+                    </div>
+                    <label class="flex items-center">
+                        <Switch bind:checked={meetBetweenClassesOnly} />
+                    </label>
                 </div>
             </div>
         </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
+    import { resolve } from '$app/paths';
     import { processedData as storedProcessedData, icsUrl as storedIcsUrl, enrolledTerms } from '$lib/store';
     import type { Course, MeetingTime, ResponseData, TermResponse, DayItem, GetPreferencesResponse, TemplateVariables, ResolvedData, NotificationSetting, ReminderSettings, NotificationMethod } from '$lib/types';
     import { Button, LoadingIndicator, SelectOutlined, VariableTabs, TextFieldOutlined, ConnectedButtons, TextFieldOutlinedMultiline, Chip } from 'm3-svelte';
@@ -930,6 +931,12 @@
     let shouldClearData = browser && sessionStorage.getItem('clearCalendarData') === 'true';
     let tab = $state(shouldReturnToSettings ? "settings" : "a");
 
+    $effect(() => {
+        if (tab === 'friends') {
+            void goto(resolve('/friends'));
+        }
+    });
+
     // Clear data immediately if switching environments (before render)
     if (shouldClearData && browser) {
         sessionStorage.removeItem('returnToSettings');
@@ -1124,7 +1131,6 @@
                 </p>
                 <div class="flex flex-row gap-2 items-center">
                     <Button variant="outlined" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
-                    <Button variant="outlined" square onclick={() => goto('/friends')}>View Friends</Button>
                 </div>
             </div>
         </div>
@@ -1132,6 +1138,7 @@
             <VariableTabs secondary={true}
                 items={[
                     { name: "Calendar", value: "a" },
+                    { name: "Friends", value: "friends" },
                     { name: "Settings", value: "settings" },
                     { name: "Help", value: "help" },
                 ]}
