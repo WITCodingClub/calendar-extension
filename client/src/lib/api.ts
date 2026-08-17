@@ -135,6 +135,18 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
+        if (!response.ok) {
+            let message = `Failed to fetch friends: ${response.status}`;
+            try {
+                const body = await response.json();
+                if (body?.error) message = String(body.error);
+                else if (body?.message) message = String(body.message);
+                else if (body?.detail) message = String(body.detail);
+            } catch {
+                /* ignore parse errors */
+            }
+            throw new Error(message);
+        }
         return response.json();
     }
 
