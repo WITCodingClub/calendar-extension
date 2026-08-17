@@ -79,7 +79,7 @@
 										<Button
 											variant="filled"
 											square
-											disabled={actionLoadingId !== '' && actionLoadingId !== `accept-${req.request_id}`}
+													disabled={actionLoadingId !== ''}
 											onclick={() => onacceptRequest(req.request_id)}
 										>
 											Accept
