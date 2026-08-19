@@ -263,7 +263,7 @@
     type MeetWindow = { start: number; end: number; duration: number };
     type MeetInterval = { start: number; end: number };
 
-    let tab = $state<'calendar' | 'meeting'>('calendar');
+    let tab = $state<'calendar' | 'meeting'>('meeting');
     let manageOpen = $state(false);
     let manageOpenedForPending = false;
 
@@ -849,8 +849,8 @@
         <VariableTabs
             secondary={true}
             items={[
-                { name: 'Calendar', value: 'calendar' },
-                { name: 'Meeting Times', value: 'meeting' }
+                { name: 'Meeting Times', value: 'meeting' },
+                { name: 'Calendar', value: 'calendar' }
             ]}
             bind:tab
         />
