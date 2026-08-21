@@ -44,6 +44,7 @@
     let activeCourse = $state<Course | undefined>(undefined);
     let activeMeeting = $state<MeetingTime | undefined>(undefined);
     let activeDay = $state<DayItem | undefined>(undefined);
+    let activeSharedOwnerIds = $state<string[]>([]);
     let friendIdentities = $state<FriendIdentity[]>([]);
     let friendList = $state<Array<{ id: string; name: string; courses: Course[] }>>([]);
     let incomingRequests = $state<FriendRequestIncoming[]>([]);
@@ -71,6 +72,19 @@
         return scheduleType.toLowerCase() === 'laboratory' ? pair.lab : pair.lecture;
     }
 
+    function ownerDisplayName(ownerId: string): string {
+        if (ownerId === 'you') return 'You';
+        return friendIdentities.find((f) => f.id === ownerId)?.name ?? ownerId;
+    }
+
+    function formatSharedWith(ownerIds: string[]): string {
+        const names = ownerIds.filter((id) => id !== 'you').map(ownerDisplayName);
+        if (names.length === 0) return '';
+        if (names.length === 1) return `Shared with: ${names[0]}`;
+        if (names.length === 2) return `Shared with: ${names[0]} & ${names[1]}`;
+        return `Shared with: ${names.join(', ')}`;
+    }
+
     type RawFriendMeeting = {
         id?: number | string;
         begin_time: string;
@@ -93,6 +107,7 @@
                 abbreviation?: string;
             };
             room?: string;
+            rooms?: string[];
         };
     };
 
@@ -176,6 +191,7 @@
                     m.saturday !== undefined ||
                     m.sunday !== undefined
                 );
+                const mappedRooms = m.location?.rooms;
                 return {
                     id: m.id ?? `${friendId}-${ci}-${mi}-${dayKey}`,
                     begin_time: begin,
@@ -187,7 +203,9 @@
                             name: m.location?.building?.name ?? '',
                             abbreviation: m.location?.building?.abbreviation ?? ''
                         },
-                        room: m.location?.room ?? ''
+                        rooms: Array.isArray(mappedRooms)
+                            ? mappedRooms
+                            : (m.location?.room ? [m.location.room] : [])
                     },
                     monday: hasDayFlags ? Boolean(m.monday) : dayKey === 'monday',
                     tuesday: hasDayFlags ? Boolean(m.tuesday) : dayKey === 'tuesday',
@@ -392,7 +410,6 @@
         startTotal: number;
         endTotal: number;
         bgColor: string;
-        borderColor: string;
         textColor: string;
         stackIndex: number;
         overlapCount: number;
@@ -531,12 +548,7 @@
                 const startOffset = ((startHour - 8) * 60 + startMin) / 60 * 8;
                 const width = (block.endTotal - block.startTotal) / 60 * 8;
                 const scheduleType = block.course.schedule_type;
-                let bgColor = ownerScheduleColor(block.ownerId, scheduleType);
-                let borderColor = bgColor;
-                if (block.isShared && block.sharedOwnerIds.length >= 2) {
-                    const otherOwnerId = block.sharedOwnerIds.find((id) => id !== block.ownerId) ?? block.sharedOwnerIds[1];
-                    borderColor = ownerScheduleColor(otherOwnerId, scheduleType);
-                }
+                const bgColor = ownerScheduleColor(block.ownerId, scheduleType);
                 const textColor = getTextColor(bgColor);
                 const currentOverlap = active.length + 1;
                 const item: PositionedMeeting = {
@@ -547,7 +559,6 @@
                     startTotal: block.startTotal,
                     endTotal: block.endTotal,
                     bgColor,
-                    borderColor,
                     textColor,
                     stackIndex: 0,
                     overlapCount: currentOverlap,
@@ -892,14 +903,20 @@
                                         {@const overlapCount = Math.max(item.overlapCount ?? 1, 1)}
                                         {@const heightPct = Math.max((100 - (overlapCount + 1) * stackGapPct) / overlapCount, 0)}
                                         {@const topPct = stackGapPct + item.stackIndex * (heightPct + stackGapPct)}
+                                        {@const rooms = item.meeting.location.rooms.filter(Boolean).join(' / ')}
                                         <button
-                                            class={['absolute rounded px-2 py-1 text-xs overflow-hidden cursor-pointer hover:shadow-md transition-shadow', item.isShared ? 'border-2' : 'border-t-2']}
-                                            style={`background-color:${item.bgColor}; color:${item.textColor}; left:${item.startOffset}rem; width:${item.width}rem; top:${topPct}%; height:${heightPct}%; opacity:${item.isPrimary ? 1 : 0.5}; border-color:${item.borderColor};`}
-                                            onclick={() => {activeCourse = item.course; activeMeeting = item.meeting; activeDay = day;}}
+                                            class="absolute rounded px-2 py-1 text-xs overflow-hidden cursor-pointer hover:shadow-md transition-shadow border-t-2"
+                                            style={`background-color:${item.bgColor}; color:${item.textColor}; left:${item.startOffset}rem; width:${item.width}rem; top:${topPct}%; height:${heightPct}%; opacity:${item.isPrimary ? 1 : 0.5}; border-color:${item.bgColor};`}
+                                            onclick={() => {activeCourse = item.course; activeMeeting = item.meeting; activeDay = day; activeSharedOwnerIds = item.isShared ? item.sharedOwnerIds : [];}}
                                         >
+                                            {#if item.isShared}
+                                                <svg class="absolute top-0.5 right-0.5 w-3 h-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                                    <path d="M16.5 12c1.38 0 2.5-1.12 2.5-2.5S17.88 7 16.5 7 14 8.12 14 9.5s1.12 2.5 2.5 2.5zM9 12c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm7.5 1c-1.83 0-5.5.92-5.5 2.75V17h11v-1.25c0-1.83-3.67-2.75-5.5-2.75zM9 13c-2.33 0-7 1.17-7 3.5V17h7v-1.25c0-.85.33-2.24 2.31-3.36C10.5 13.1 9.66 13 9 13z"/>
+                                                </svg>
+                                            {/if}
                                             <div class="font-medium truncate">{item.meeting.title_overrides?.[day.key] ?? item.course.title}</div>
                                             <div class="opacity-80">{convertTo12Hour(item.meeting.begin_time)} - {convertTo12Hour(item.meeting.end_time)}</div>
-                                            <div class="opacity-70 text-[10px]">{item.meeting.location.building.abbreviation} {item.meeting.location.room}</div>
+                                            <div class="opacity-70 text-[10px] whitespace-nowrap">{item.meeting.location.building.abbreviation}{rooms ? ` - ${rooms}` : ''}</div>
                                         </button>
                                     {/each}
                                 </div>
@@ -973,8 +990,8 @@
         class="fixed inset-0 bg-scrim/60 z-50 flex items-center justify-center p-4"
         role="button"
         tabindex="0"
-        onclick={(e) => { if (e.target === e.currentTarget) { activeCourse = undefined; activeMeeting = undefined; activeDay = undefined; } }}
-        onkeydown={(e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { activeCourse = undefined; activeMeeting = undefined; activeDay = undefined; } }}
+        onclick={(e) => { if (e.target === e.currentTarget) { activeCourse = undefined; activeMeeting = undefined; activeDay = undefined; activeSharedOwnerIds = []; } }}
+        onkeydown={(e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { activeCourse = undefined; activeMeeting = undefined; activeDay = undefined; activeSharedOwnerIds = []; } }}
     >
         <div
             transition:scale={{ duration: 200, start: 0.95 }}
@@ -986,7 +1003,7 @@
                     <button
                         class="p-2 rounded-full hover:bg-surface-container-high text-on-surface"
                         aria-label="Close"
-                        onclick={() => {activeCourse = undefined; activeMeeting = undefined; activeDay = undefined;}}
+                        onclick={() => {activeCourse = undefined; activeMeeting = undefined; activeDay = undefined; activeSharedOwnerIds = [];}}
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="m12 13.4l-4.9 4.9q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7l4.9-4.9l-4.9-4.9q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.9 4.9l4.9-4.9q.275-.275.7-.275t.7.275t.275.7t-.275.7L13.4 12l4.9 4.9q.275.275.275.7t-.275.7t-.7.275t-.7-.275z"/></svg>
                     </button>
@@ -995,6 +1012,9 @@
                     <div class="text-sm text-on-surface-variant">
                         {activeDay.label}: {convertTo12Hour(activeMeeting.begin_time)} - {convertTo12Hour(activeMeeting.end_time)}
                     </div>
+                    {#if activeSharedOwnerIds.length > 0}
+                        <div class="text-sm text-on-surface-variant">{formatSharedWith(activeSharedOwnerIds)}</div>
+                    {/if}
                 {/if}
             </div>
         </div>
