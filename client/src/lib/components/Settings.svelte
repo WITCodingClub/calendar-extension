@@ -100,10 +100,13 @@
             // Fetch uni cal color preference
             try {
                 const calPrefs = await API.getCalendarPreferences();
-                // Check if any uni_cal_category has a color set (they should all be the same)
+                // The uni_cal preference covers the whole university calendar. Fall
+                // back to a category color for users saved before issue #498, whose
+                // color still sits on the per-category preferences.
                 const firstCategory = Object.values(calPrefs.uni_cal_categories || {})[0];
-                if (firstCategory?.color_id) {
-                    const colorId = String(firstCategory.color_id);
+                const storedColorId = calPrefs.uni_cal_global?.color_id ?? firstCategory?.color_id;
+                if (storedColorId) {
+                    const colorId = String(storedColorId);
                     const resolvedColor = COLOR_ID_TO_HEX[colorId];
                     if (resolvedColor) {
                         uniCalColor = resolvedColor;

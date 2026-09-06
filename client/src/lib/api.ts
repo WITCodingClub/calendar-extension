@@ -532,6 +532,7 @@ export class API {
     // University calendar preferences
     public static async getCalendarPreferences(): Promise<{
         global: any;
+        uni_cal_global: { color_id?: number } | null;
         event_types: Record<string, any>;
         uni_cal_categories: Record<string, any>;
     }> {
@@ -564,17 +565,29 @@ export class API {
         return response.json();
     }
 
-    // Set color for all university calendar categories at once
-    // colorId should be a Google Calendar color ID (1-11)
+    // Set the color for every university calendar event at once.
+    // colorId should be a Google Calendar color ID (1-11).
+    //
+    // This writes the one uni_cal preference that covers the whole university
+    // calendar. Do not go back to writing one preference per category: that
+    // needs a copy of the backend category list here, and an out of date copy
+    // leaves the missing category on the default Graphite color. That is what
+    // happened to Study Day in issue #498.
     public static async setAllUniCalCategoriesColor(colorId: string): Promise<void> {
-        const categories = [
-            'holiday', 'term_dates', 'registration', 'deadline', 'finals',
-            'graduation', 'academic', 'campus_event', 'meeting', 'exhibit',
-            'announcement', 'other'
-        ];
-        await Promise.all(
-            categories.map(cat => this.setUniCalCategoryPreference(cat, { color_id: colorId }))
-        );
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/calendar_preferences/uni_cal`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ calendar_preference: { color_id: colorId } })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to set university calendar color (HTTP ${response.status})`);
+        }
     }
 
 }
