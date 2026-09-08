@@ -531,6 +531,42 @@
         currentEventPrefs = data;
     }
 
+    function mergeProcessedClasses(existing: Course[] | undefined, fresh: Course[]): Course[] {
+        if (!existing?.length) return fresh;
+        const overlayById = new Map(
+            existing.flatMap((c) =>
+                c.meeting_times.map((mt) => [String(mt.id), { color: mt.color, title_overrides: mt.title_overrides }] as const)
+            )
+        );
+        return fresh.map((c) => ({
+            ...c,
+            meeting_times: c.meeting_times.map((mt) => {
+                const overlay = overlayById.get(String(mt.id));
+                return overlay ? { ...mt, color: overlay.color, title_overrides: overlay.title_overrides } : mt;
+            })
+        }));
+    }
+
+    async function syncProcessedEventsForTerm(termId: string) {
+        try {
+            const events = await API.getProcessedEvents(termId);
+            if (!Array.isArray(events?.classes)) return;
+            storedProcessedData.update((list) => {
+                const tid = String(termId);
+                const i = list.findIndex((x) => String(x.termId) === tid);
+                const next = [...list];
+                const ics = (i >= 0 ? list[i].responseData.ics_url : '') || $storedIcsUrl || '';
+                const existing = i >= 0 ? list[i].responseData.classes : undefined;
+                const classes = mergeProcessedClasses(existing, events.classes);
+                if (i >= 0) next[i] = { termId: tid, responseData: { ics_url: ics, classes } };
+                else next.push({ termId: tid, responseData: { ics_url: ics, classes } });
+                return next;
+            });
+        } catch (e) {
+            console.error('Failed to sync processed events:', e);
+        }
+    }
+
     async function refreshAllEventPrefsForCurrentTerm() {
         if (!selected || !processedData) return;
         const ids = Array.from(new Set(processedData.flatMap(c => c.meeting_times.map(mt => mt.id))));
@@ -723,14 +759,15 @@
 
             const actualRefreshTermId = String(eventsToReprocess[0]?.term ?? termId);
 
-            // Update the store with fresh data
             const events = await API.getProcessedEvents(actualRefreshTermId);
             storedProcessedData.update((list) => {
                 const tid = String(actualRefreshTermId);
                 const i = list.findIndex((x) => String(x.termId) === tid);
                 const next = [...list];
                 const ics = response.ics_url || $storedIcsUrl || '';
-                const responseData: ResponseData = { ics_url: ics, classes: events.classes };
+                const existing = i >= 0 ? list[i].responseData.classes : undefined;
+                const classes = mergeProcessedClasses(existing, events.classes);
+                const responseData: ResponseData = { ics_url: ics, classes };
                 if (i >= 0) next[i] = { termId: tid, responseData };
                 else next.push({ termId: tid, responseData });
                 return next;
@@ -746,7 +783,7 @@
                 const courseNames = response.removed_courses.map(c => c.title).join(', ');
                 snackbar(`Schedule refreshed. Removed ${response.removed_enrollments} class${response.removed_enrollments > 1 ? 'es' : ''}: ${courseNames}`, undefined, true);
             } else {
-                snackbar('Schedule refreshed. No changes detected.', undefined, true);
+                snackbar('Schedule refreshed.', undefined, true);
             }
 
             // Refresh event preferences after reprocessing
@@ -1040,11 +1077,15 @@
     });
 
     $effect(() => {
-        if (selected && !$storedProcessedData.some((d) => String(d.termId) === selected) && !loading && !attemptedTerms.has(selected)) {
+        if (selected && !loading && !attemptedTerms.has(selected)) {
             const next = new Set(attemptedTerms);
             next.add(selected);
             attemptedTerms = next;
-            ensureProcessedForTerm(selected);
+            if ($storedProcessedData.some((d) => String(d.termId) === selected)) {
+                syncProcessedEventsForTerm(selected);
+            } else {
+                ensureProcessedForTerm(selected);
+            }
         }
     });
     
@@ -1206,7 +1247,8 @@
                                         {@const overlapCount = Math.max(item.overlapCount ?? 1, 1)}
                                         {@const heightPct = Math.max((100 - (overlapCount + 1) * stackGapPct) / overlapCount, 0)}
                                         {@const topPct = stackGapPct + item.stackIndex * (heightPct + stackGapPct)}
-                                        {@const rooms = item.meeting.location.rooms.filter(Boolean).join(' / ')}
+                                        {@const rooms = (item.meeting.location?.rooms ?? []).filter(Boolean).join(' / ')}
+                                        {@const buildingAbbr = item.meeting.location?.building?.abbreviation ?? ''}
                                         <button
                                             class="absolute rounded px-2 py-1 text-xs overflow-hidden cursor-pointer hover:shadow-md transition-shadow border-t-2"
                                             style={`background-color:${item.bgColor}; color:${item.textColor}; left:${item.startOffset}rem; width:${item.width}rem; top:${topPct}%; height:${heightPct}%; border-color:${item.bgColor};`}
@@ -1214,7 +1256,7 @@
                                         >
 											<div class="font-medium truncate">{item.meeting.title_overrides?.[day.key] ?? item.course.title}</div>
 											<div class="opacity-80">{convertTo12Hour(item.meeting.begin_time)} - {convertTo12Hour(item.meeting.end_time)}</div>
-                                            <div class="opacity-70 text-[10px] whitespace-nowrap">{item.meeting.location.building.abbreviation}{rooms ? ` - ${rooms}` : ''}</div>
+                                            <div class="opacity-70 text-[10px] whitespace-nowrap">{[buildingAbbr, rooms].filter(Boolean).join(' - ')}</div>
                                         </button>
                                     {/each}
                                 </div>
