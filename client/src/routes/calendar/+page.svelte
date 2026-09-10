@@ -1,5 +1,6 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
+    import { resolve } from '$app/paths';
     import { processedData as storedProcessedData, icsUrl as storedIcsUrl, enrolledTerms } from '$lib/store';
     import type { Course, MeetingTime, ResponseData, TermResponse, DayItem, GetPreferencesResponse, TemplateVariables, ResolvedData, NotificationSetting, ReminderSettings, NotificationMethod } from '$lib/types';
     import { Button, LoadingIndicator, SelectOutlined, VariableTabs, TextFieldOutlined, ConnectedButtons, TextFieldOutlinedMultiline, Chip } from 'm3-svelte';
@@ -43,6 +44,38 @@
     let lectureColor = $derived($storedUserSettings?.default_color_lecture ?? "#039be5");
     let labColor = $derived($storedUserSettings?.default_color_lab ?? "#f6bf26");
     let advancedEditing = $derived($storedUserSettings?.advanced_editing ?? false);
+
+    const EVENT_HEX_TO_WITCC: Record<string, string> = {
+        "#a4bdfc": "#7986cb",
+        "#7ae7bf": "#33b679",
+        "#dbadff": "#8e24aa",
+        "#ff887c": "#e67c73",
+        "#fbd75b": "#f6bf26",
+        "#ffb878": "#f4511e",
+        "#46d6db": "#039be5",
+        "#e1e1e1": "#616161",
+        "#5484ed": "#3f51b5",
+        "#51b749": "#0b8043",
+        "#dc2127": "#d50000",
+    };
+    const COLOR_ID_TO_WITCC: Record<string, string> = {
+        "1": "#7986cb",
+        "2": "#33b679",
+        "3": "#8e24aa",
+        "4": "#e67c73",
+        "5": "#f6bf26",
+        "6": "#f4511e",
+        "7": "#039be5",
+        "8": "#616161",
+        "9": "#3f51b5",
+        "10": "#0b8043",
+        "11": "#d50000",
+    };
+    function toDropdownColor(color: string | number | null | undefined): string {
+        if (color == null || color === "") return "#d50000";
+        const normalized = String(color).toLowerCase();
+        return EVENT_HEX_TO_WITCC[normalized] ?? COLOR_ID_TO_WITCC[normalized] ?? (normalized.startsWith("#") ? normalized : "#d50000");
+    }
     let currentEventPrefs = $state<GetPreferencesResponse | undefined>(undefined);
     let templates: TemplateVariables | undefined = $derived(currentEventPrefs?.templates);
     let resolved: ResolvedData | undefined = $derived(currentEventPrefs?.resolved);
@@ -343,6 +376,8 @@
             if (!isOnTargetPage) {
                 tabToUse = await chrome.tabs.create({ url: targetUrl });
                 shouldCloseTab = true;
+                const openedTabId = tabToUse.id;
+                if (!openedTabId) return;
 
                 await new Promise<void>((resolve) => {
                     const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
@@ -496,6 +531,42 @@
         currentEventPrefs = data;
     }
 
+    function mergeProcessedClasses(existing: Course[] | undefined, fresh: Course[]): Course[] {
+        if (!existing?.length) return fresh;
+        const overlayById = new Map(
+            existing.flatMap((c) =>
+                c.meeting_times.map((mt) => [String(mt.id), { color: mt.color, title_overrides: mt.title_overrides }] as const)
+            )
+        );
+        return fresh.map((c) => ({
+            ...c,
+            meeting_times: c.meeting_times.map((mt) => {
+                const overlay = overlayById.get(String(mt.id));
+                return overlay ? { ...mt, color: overlay.color, title_overrides: overlay.title_overrides } : mt;
+            })
+        }));
+    }
+
+    async function syncProcessedEventsForTerm(termId: string) {
+        try {
+            const events = await API.getProcessedEvents(termId);
+            if (!Array.isArray(events?.classes)) return;
+            storedProcessedData.update((list) => {
+                const tid = String(termId);
+                const i = list.findIndex((x) => String(x.termId) === tid);
+                const next = [...list];
+                const ics = (i >= 0 ? list[i].responseData.ics_url : '') || $storedIcsUrl || '';
+                const existing = i >= 0 ? list[i].responseData.classes : undefined;
+                const classes = mergeProcessedClasses(existing, events.classes);
+                if (i >= 0) next[i] = { termId: tid, responseData: { ics_url: ics, classes } };
+                else next.push({ termId: tid, responseData: { ics_url: ics, classes } });
+                return next;
+            });
+        } catch (e) {
+            console.error('Failed to sync processed events:', e);
+        }
+    }
+
     async function refreshAllEventPrefsForCurrentTerm() {
         if (!selected || !processedData) return;
         const ids = Array.from(new Set(processedData.flatMap(c => c.meeting_times.map(mt => mt.id))));
@@ -522,7 +593,7 @@
                 const updatedMeetingTimes = c.meeting_times.map((mt) => {
                     const pref = map.get(mt.id);
                     if (!pref) return mt;
-                    const color = pref.resolved?.color_id ?? mt.color;
+                    const color = pref.resolved?.color_id ? toDropdownColor(pref.resolved.color_id) : mt.color;
                     let title_overrides = mt.title_overrides ?? {};
                     const title = pref.preview?.title;
                     if (title) {
@@ -605,10 +676,15 @@
             if (!isOnTargetPage) {
                 tabToUse = await chrome.tabs.create({ url: targetUrl });
                 shouldCloseTab = true;
+                const openedTabId = tabToUse.id;
+                if (!openedTabId) {
+                    snackbar('Failed to open LeopardWeb tab', undefined, true);
+                    return;
+                }
 
                 await new Promise<void>((resolve) => {
-                    const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-                        if (tabId === tabToUse.id && changeInfo.status === 'complete') {
+                    const listener = (tabId: number, changeInfo: { status?: string }) => {
+                        if (tabId === openedTabId && changeInfo.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
                             resolve();
                         }
@@ -683,14 +759,15 @@
 
             const actualRefreshTermId = String(eventsToReprocess[0]?.term ?? termId);
 
-            // Update the store with fresh data
             const events = await API.getProcessedEvents(actualRefreshTermId);
             storedProcessedData.update((list) => {
                 const tid = String(actualRefreshTermId);
                 const i = list.findIndex((x) => String(x.termId) === tid);
                 const next = [...list];
                 const ics = response.ics_url || $storedIcsUrl || '';
-                const responseData: ResponseData = { ics_url: ics, classes: events.classes };
+                const existing = i >= 0 ? list[i].responseData.classes : undefined;
+                const classes = mergeProcessedClasses(existing, events.classes);
+                const responseData: ResponseData = { ics_url: ics, classes };
                 if (i >= 0) next[i] = { termId: tid, responseData };
                 else next.push({ termId: tid, responseData });
                 return next;
@@ -706,7 +783,7 @@
                 const courseNames = response.removed_courses.map(c => c.title).join(', ');
                 snackbar(`Schedule refreshed. Removed ${response.removed_enrollments} class${response.removed_enrollments > 1 ? 'es' : ''}: ${courseNames}`, undefined, true);
             } else {
-                snackbar('Schedule refreshed. No changes detected.', undefined, true);
+                snackbar('Schedule refreshed.', undefined, true);
             }
 
             // Refresh event preferences after reprocessing
@@ -750,12 +827,13 @@
             event_preference.location_template = locationChanged ? editLocation : editLocationManual;
         }
 
-        const colorChanged = courseColor !== resolved?.color_id;
+        const colorChanged = courseColor !== toDropdownColor(resolved?.color_id);
         if (colorChanged) {
             event_preference.color_id = courseColor;
         }
 
-        //@ts-ignore
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        //@ts-expect-error
         const convertedNotifications: ReminderSettings[] = notifications.map(n => ({
             time: (n.time).toString(),
             type: n.type,
@@ -890,6 +968,12 @@
     let shouldClearData = browser && sessionStorage.getItem('clearCalendarData') === 'true';
     let tab = $state(shouldReturnToSettings ? "settings" : "a");
 
+    $effect(() => {
+        if (tab === 'friends') {
+            void goto(resolve('/friends'));
+        }
+    });
+
     // Clear data immediately if switching environments (before render)
     if (shouldClearData && browser) {
         sessionStorage.removeItem('returnToSettings');
@@ -920,13 +1004,14 @@
     }
 
     async function listenForEnvironmentChanges() {
-        chrome.storage.onChanged.addListener((changes: chrome.storage.StorageChanges) => {
+        chrome.storage.onChanged.addListener((changes) => {
             if ('environment_data' in changes) {
                 (async () => {
                     checkBetaAccess();
                     jwt_token = await API.getJwtToken();
                     if (!jwt_token) {
                         // No JWT token for current environment, redirect to welcome page
+                        // eslint-disable-next-line svelte/no-navigation-without-resolve
                         goto('/');
                         return;
                     }
@@ -952,6 +1037,7 @@
         jwt_token = await API.getJwtToken();
         if (!jwt_token) {
             // No JWT token for current environment, redirect to welcome page
+            // eslint-disable-next-line svelte/no-navigation-without-resolve
             goto('/');
             return;
         }
@@ -973,23 +1059,33 @@
 
     $effect(() => {
         if (!selected) {
-            if ($enrolledTerms.length > 0) {
+            if (displayTerms.length > 0) {
                 const processedTermIds = new Set($storedProcessedData.map(d => String(d.termId)));
-                const preferred = $enrolledTerms.find(t => processedTermIds.has(t.id)) ?? $enrolledTerms[0];
+                const preferred = displayTerms.find(t => processedTermIds.has(t.id)) ?? displayTerms[0];
                 selected = preferred.id;
             } else if (terms) {
                 const initial = terms?.current_term?.id ?? terms?.next_term?.id;
                 selected = initial != null ? String(initial) : undefined;
             }
+        } else if (displayTerms.length > 0 && !displayTerms.some(t => t.id === selected)) {
+            const currentId = terms?.current_term?.id != null ? String(terms.current_term.id) : undefined;
+            const preferred =
+                (currentId && displayTerms.find(t => t.id === currentId)) ??
+                displayTerms[0];
+            selected = preferred.id;
         }
     });
 
     $effect(() => {
-        if (selected && !$storedProcessedData.some((d) => String(d.termId) === selected) && !loading && !attemptedTerms.has(selected)) {
+        if (selected && !loading && !attemptedTerms.has(selected)) {
             const next = new Set(attemptedTerms);
             next.add(selected);
             attemptedTerms = next;
-            ensureProcessedForTerm(selected);
+            if ($storedProcessedData.some((d) => String(d.termId) === selected)) {
+                syncProcessedEventsForTerm(selected);
+            } else {
+                ensureProcessedForTerm(selected);
+            }
         }
     });
     
@@ -1010,7 +1106,7 @@
             editTitleManual = currentEventPrefs.preview?.title ?? "";
             editDescriptionManual = currentEventPrefs.preview?.description ?? "";
             editLocationManual = currentEventPrefs.preview?.location ?? "";
-            courseColor = resolved?.color_id ?? "#d50000";
+            courseColor = toDropdownColor(resolved?.color_id);
             notificationsDisabled = currentEventPrefs.notifications_disabled ?? false;
             
             if (resolved?.reminder_settings && resolved.reminder_settings.length > 0) {
@@ -1083,6 +1179,7 @@
             <VariableTabs secondary={true}
                 items={[
                     { name: "Calendar", value: "a" },
+                    { name: "Friends", value: "friends" },
                     { name: "Settings", value: "settings" },
                     { name: "Help", value: "help" },
                 ]}
@@ -1150,6 +1247,8 @@
                                         {@const overlapCount = Math.max(item.overlapCount ?? 1, 1)}
                                         {@const heightPct = Math.max((100 - (overlapCount + 1) * stackGapPct) / overlapCount, 0)}
                                         {@const topPct = stackGapPct + item.stackIndex * (heightPct + stackGapPct)}
+                                        {@const rooms = (item.meeting.location?.rooms ?? []).filter(Boolean).join(' / ')}
+                                        {@const buildingAbbr = item.meeting.location?.building?.abbreviation ?? ''}
                                         <button
                                             class="absolute rounded px-2 py-1 text-xs overflow-hidden cursor-pointer hover:shadow-md transition-shadow border-t-2"
                                             style={`background-color:${item.bgColor}; color:${item.textColor}; left:${item.startOffset}rem; width:${item.width}rem; top:${topPct}%; height:${heightPct}%; border-color:${item.bgColor};`}
@@ -1157,7 +1256,7 @@
                                         >
 											<div class="font-medium truncate">{item.meeting.title_overrides?.[day.key] ?? item.course.title}</div>
 											<div class="opacity-80">{convertTo12Hour(item.meeting.begin_time)} - {convertTo12Hour(item.meeting.end_time)}</div>
-                                            <div class="opacity-70 text-[10px]">{item.meeting.location.building.abbreviation} {item.meeting.location.room}</div>
+                                            <div class="opacity-70 text-[10px] whitespace-nowrap">{[buildingAbbr, rooms].filter(Boolean).join(' - ')}</div>
                                         </button>
                                     {/each}
                                 </div>

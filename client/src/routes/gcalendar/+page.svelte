@@ -65,15 +65,29 @@
         if (response.ok && data.oauth_url) {
             const screenWidth = window.screen.availWidth;
             const screenHeight = window.screen.availHeight;
-
-            await chrome.windows.create({
+            const createOptions: chrome.windows.CreateData = {
                 url: data.oauth_url,
                 width: 650,
                 height: 800,
                 left: Math.floor((screenWidth - 650) / 2),
                 top: Math.floor((screenHeight - 800) / 2),
                 type: 'popup'
-            });
+            };
+
+            try {
+                await chrome.windows.create(createOptions);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (!message.includes('Invalid value for bounds')) {
+                    throw error;
+                }
+                await chrome.windows.create({
+                    url: data.oauth_url,
+                    width: Math.min(650, screenWidth),
+                    height: Math.min(800, screenHeight),
+                    type: 'popup'
+                });
+            }
         } else if (response.ok && !data.oauth_url) {
             await chrome.storage.local.set({
                     oauth_status: 'success',
