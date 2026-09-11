@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WIT-Calendar",
-  "version": "3.0.1",
+  "version": "3.1.2",
   "description": "A Chrome extension to import WIT classes into your calendar!",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6Cg2AJDwx3cRiK93ve0oRDcA527FQJEhRWNkxdASTtpMKC4n/lE79mfT+XmIvKOGmCR+dE5dnoHuPugAqgZMPWdRlS4sC9VN1oT0pCnoMGU7GLveDquL6ROFE4Mh7dI2qsjICoJ+VsYEbx74ybmDOpM7FqfD2H7qMU1PP4Gle0GDuZkDI1jeYWXJc8KDIBgn/QDLIqlE0mCpzO7eVXJdq5mosWVWMZE7OTBK4R5jWN6EtL/ReF4slaDJiGeJT0q7sFFjG4IOjcCr4ixPZ4dHm7uEDt+mZ7LgQ4mL+LhibGFOborRtEsavNxr/10rYqVFMUIbSO0jEvmyHY6QEWFrXQIDAQAB",
   "side_panel": {
