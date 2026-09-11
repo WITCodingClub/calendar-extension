@@ -6,6 +6,8 @@
     import { onMount } from 'svelte';
     import { EnvironmentManager } from '$lib/environment';
     import { createWitTab } from '$lib/witTab';
+    import { getWitGoogleAccessToken } from '$lib/witGoogleAuth';
+    import { passkeysSupported, signInWithPasskey } from '$lib/passkeys';
 
     let schoolEmail = $state('');
     let preferredName = $state('');
@@ -13,6 +15,21 @@
 
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
+
+        // A passkey, if this device has one, skips both the LeopardWeb scrape
+        // and the Google round trip. Anything short of success falls through to
+        // the normal flow, so a device without a passkey notices nothing.
+        if (await passkeysSupported()) {
+            try {
+                if (await signInWithPasskey()) {
+                    goto('/onboard');
+                    return;
+                }
+            } catch (err) {
+                console.error('Passkey sign-in error:', err);
+            }
+        }
+
         fetchSchoolEmail();
     });
 
@@ -124,15 +141,45 @@
     }
 
     async function signIn() {
+        let accessToken: string;
+        try {
+            accessToken = await getWitGoogleAccessToken(schoolEmail || undefined);
+        } catch (err) {
+            console.error('Google auth error:', err);
+            error = 'google_signin_failed';
+            snackbar('Could not sign in with Google: ' + err, undefined, true);
+            return;
+        }
+
         try {
             const baseUrl = await API.baseUrl;
             const response = await fetch(`${baseUrl}/user/onboard`, {
                 method: 'POST',
-                body: JSON.stringify({email: schoolEmail, preferred_name: preferredName}),
+                // `email` is here only so this release also works against the
+                // backend that is live today, which still requires it and knows
+                // nothing of google_access_token. The new backend ignores it and
+                // reads the address from the verified token instead. Drop this
+                // field once calendar-backend#493 has shipped everywhere.
+                body: JSON.stringify({
+                    google_access_token: accessToken,
+                    preferred_name: preferredName,
+                    email: schoolEmail
+                }),
                 headers: {
                     'Content-Type': 'application/json'
                 }
             });
+
+            // The backend refuses anything but a WIT account. Say so plainly,
+            // because the fix is for the student to pick a different account
+            // rather than to try again with the same one.
+            if (response.status === 403) {
+                const body = await response.json().catch(() => ({})) as { code?: string };
+                if (body.code === 'WIT_ACCOUNT_REQUIRED') {
+                    error = 'wit_account_required';
+                    return;
+                }
+            }
 
             if (!response.ok) {
                 const responseText = await response.text();
@@ -167,6 +214,12 @@
         {#if error == 'not_logged_in'}
             <ErrorNotice title="Not logged in to WIT!" error="Please sign in to " includeStatusLink={false} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
+        {:else if error == 'google_signin_failed'}
+            <ErrorNotice title="Google sign-in failed" error="We couldn't sign you in with Google. Please try again." includeStatusLink={false} />
+            <Button variant="elevated" square onclick={() => signIn()}>Try Again</Button>
+        {:else if error == 'wit_account_required'}
+            <ErrorNotice title="Use your WIT account" error="Sign in with your @wit.edu Google account. You can connect a personal Google account for calendar sync afterwards." includeStatusLink={false} />
+            <Button variant="elevated" square onclick={() => signIn()}>Pick a different account</Button>
         {:else if error}
             <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>

@@ -4,23 +4,34 @@ export interface EnvironmentConfig {
     name: Environment;
     displayName: string;
     baseUrl: string;
+    /**
+     * OAuth client used for the WIT sign-in flow. This must be a **Web
+     * application** client with `https://<extension-id>.chromiumapp.org/`
+     * registered as a redirect URI — chrome.identity.launchWebAuthFlow does not
+     * work with a Chrome App client. The same id has to appear in the backend's
+     * GOOGLE_OAUTH_CLIENT_IDS, or the token's audience check fails.
+     */
+    googleClientId: string;
 }
 
 export const ENVIRONMENTS: Record<Environment, EnvironmentConfig> = {
     dev: {
         name: 'dev',
         displayName: 'Development',
-        baseUrl: 'https://heron-selected-literally.ngrok-free.app'
+        baseUrl: 'https://heron-selected-literally.ngrok-free.app',
+        googleClientId: '542377189189-at1sbv0820ooa8niirhakkmko1c1b8je.apps.googleusercontent.com'
     },
     staging: {
         name: 'staging',
         displayName: 'Staging',
-        baseUrl: 'https://staging-calendar.witcc.dev'
+        baseUrl: 'https://staging-calendar.witcc.dev',
+        googleClientId: '542377189189-at1sbv0820ooa8niirhakkmko1c1b8je.apps.googleusercontent.com'
     },
     prod: {
         name: 'prod',
         displayName: 'Production',
-        baseUrl: 'https://calendar.witcc.dev'
+        baseUrl: 'https://calendar.witcc.dev',
+        googleClientId: '542377189189-at1sbv0820ooa8niirhakkmko1c1b8je.apps.googleusercontent.com'
     }
 };
 
@@ -53,6 +64,11 @@ export class EnvironmentManager {
     public static async getBaseUrl(): Promise<string> {
         const config = await this.getCurrentEnvironmentConfig();
         return config.baseUrl;
+    }
+
+    public static async getGoogleClientId(): Promise<string> {
+        const config = await this.getCurrentEnvironmentConfig();
+        return config.googleClientId;
     }
 
     public static async getJwtToken(environment?: Environment): Promise<string | undefined> {
