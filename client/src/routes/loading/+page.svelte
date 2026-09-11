@@ -15,6 +15,27 @@
         fetchSchoolEmail();
     });
 
+    function waitForComplete(tabId: number) {
+        return new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                chrome.tabs.onUpdated.removeListener(listener);
+                reject(new Error('Timed out waiting for WIT page to load. Are you connected to the internet?'));
+            }, 15000);
+            const listener = (id: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+                if (id === tabId && changeInfo.status === 'complete') {
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    clearTimeout(timeout);
+                    resolve();
+                }
+            };
+            chrome.tabs.onUpdated.addListener(listener);
+        });
+    }
+
+    function isWitSession(url?: string) {
+        return !!url?.startsWith('https://selfservice.wit.edu/') && !url.includes('/login/cas');
+    }
+
     async function pageFetch(tabId: number, url: string): Promise<any> {
         const results = await chrome.scripting.executeScript({
             target: { tabId },
@@ -32,6 +53,7 @@
         const preferredNameUrl = 'https://selfservice.wit.edu/BannerGeneralSsb/ssb/PersonalInformationDetails/getPreferredName';
         const emailsUrl = 'https://selfservice.wit.edu/BannerGeneralSsb/ssb/PersonalInformationDetails/getEmails';
         const witHtmlUrl = 'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory';
+        const isFirefox = navigator.userAgent.includes('Firefox');
 
         let tabToUse: chrome.tabs.Tab | undefined;
         let createdNewTab = false;
@@ -39,43 +61,32 @@
         try {
             error = null;
 
-            const isFirefox = navigator.userAgent.includes('Firefox');
-            const tabUrl = isFirefox ? witHtmlUrl : preferredNameUrl;
             const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            const canReuseTab = isFirefox
-                ? currentTab?.url?.startsWith('https://selfservice.wit.edu/')
-                : currentTab?.url === preferredNameUrl;
-
-            if (canReuseTab) {
+            if (!isFirefox && currentTab?.url === preferredNameUrl) {
                 tabToUse = currentTab;
             } else {
-                tabToUse = await chrome.tabs.create({ url: tabUrl });
+                tabToUse = await chrome.tabs.create({ url: preferredNameUrl });
                 createdNewTab = true;
-
-                await new Promise<void>((resolve, reject) => {
-                    const timeout = setTimeout(() => {
-                        chrome.tabs.onUpdated.removeListener(listener);
-                        reject(new Error('Timed out waiting for WIT page to load. Are you connected to the internet?'));
-                    }, 15000);
-                    const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-                        if (tabId === tabToUse!.id && changeInfo.status === 'complete') {
-                            chrome.tabs.onUpdated.removeListener(listener);
-                            clearTimeout(timeout);
-                            resolve();
-                        }
-                    };
-                    chrome.tabs.onUpdated.addListener(listener);
-                });
+                await waitForComplete(tabToUse.id!);
             }
 
             if (!tabToUse?.id) {
                 throw new Error('Failed to get tab ID');
             }
 
-            const finalTab = await chrome.tabs.get(tabToUse.id);
-            if (finalTab.url && !finalTab.url.startsWith('https://selfservice.wit.edu/')) {
+            if (!isWitSession((await chrome.tabs.get(tabToUse.id)).url)) {
                 error = 'not_logged_in';
                 return;
+            }
+
+            if (isFirefox) {
+                const loaded = waitForComplete(tabToUse.id);
+                await chrome.tabs.update(tabToUse.id, { url: witHtmlUrl });
+                await loaded;
+                if (!isWitSession((await chrome.tabs.get(tabToUse.id)).url)) {
+                    error = 'not_logged_in';
+                    return;
+                }
             }
 
             const preferredData = await pageFetch(tabToUse.id, preferredNameUrl);
@@ -97,7 +108,7 @@
             await signIn();
         } catch (err) {
             const msg = String(err);
-            if (msg.includes('cas.wit.edu') || msg.includes('Cannot access contents of url')) {
+            if (msg.includes('cas.wit.edu') || msg.includes('Cannot access contents of url') || msg.includes('NetworkError') || msg.includes('login/cas')) {
                 error = 'not_logged_in';
             } else if (!error) {
                 error = msg;
