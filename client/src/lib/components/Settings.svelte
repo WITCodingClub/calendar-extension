@@ -6,6 +6,7 @@
     import { featureFlags } from "$lib/featureFlags";
     import { processedData as storedProcessedData, userSettings as storedUserSettings } from "$lib/store";
     import type { UserSettings } from "$lib/types";
+    import { listPasskeys, passkeysSupported, registerPasskey, removePasskey, type PasskeySummary } from "$lib/passkeys";
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
     import { onMount } from "svelte";
 
@@ -37,6 +38,10 @@
     let addEmailInput = $state("");
     let showEnvSwitcher = $state<boolean>(false);
     let isRefreshingFlags = $state<boolean>(false);
+    let passkeys = $state<PasskeySummary[]>([]);
+    let canUsePasskeys = $state(false);
+    let isAddingPasskey = $state(false);
+    let newPasskeyName = $state("");
     const UNI_CAL_COLOR_STORAGE_KEY = "uniCalColor";
     let uniCalColor = $state<string>(
         browser ? (localStorage.getItem(UNI_CAL_COLOR_STORAGE_KEY) ?? "") : "#616161"
@@ -63,12 +68,51 @@
         previousSettingsWasUndefined = $storedUserSettings === undefined;
     });
 
+    async function loadPasskeys() {
+        try {
+            passkeys = await listPasskeys();
+        } catch (e) {
+            // An older backend has no passkey endpoints. Leave the list empty
+            // rather than showing an error for a feature the user never asked for.
+            passkeys = [];
+        }
+    }
+
+    async function addPasskey() {
+        isAddingPasskey = true;
+        try {
+            await registerPasskey(newPasskeyName.trim() || undefined);
+            newPasskeyName = "";
+            await loadPasskeys();
+            snackbar("Passkey added");
+        } catch (e) {
+            snackbar("Could not add the passkey: " + e, undefined, true);
+        } finally {
+            isAddingPasskey = false;
+        }
+    }
+
+    async function deletePasskey(passkeyId: string) {
+        try {
+            await removePasskey(passkeyId);
+            await loadPasskeys();
+            snackbar("Passkey removed");
+        } catch (e) {
+            snackbar("Could not remove the passkey: " + e, undefined, true);
+        }
+    }
+
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
 
         // Load feature flags independently so flag-gated UI shows even if other API calls fail
         await featureFlags.loadFlags();
         showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
+
+        canUsePasskeys = await passkeysSupported();
+        if (canUsePasskeys) {
+            await loadPasskeys();
+        }
 
         try {
             // Load settings in parallel
@@ -588,6 +632,56 @@
             <Button variant="tonal" onclick={addGoogleAccount}>Add Account</Button>
         </div>
     </div>
+
+    <!-- Passkeys Section -->
+    {#if canUsePasskeys}
+        <div class="flex flex-col gap-3 mt-4 pt-4 border-t border-outline-variant">
+            <div class="flex flex-col gap-1">
+                <h2 class="text-md font-bold">Passkeys</h2>
+                <p class="text-sm text-outline">Sign in on a new device without going through Google again</p>
+            </div>
+
+            {#if passkeys.length > 0}
+                <div class="flex flex-col gap-2">
+                    {#each passkeys as passkey}
+                        <div class="flex flex-row gap-3 items-center justify-between bg-surface-container-low rounded-lg p-3">
+                            <div class="flex flex-col gap-1">
+                                <div class="flex flex-row gap-2 items-center">
+                                    <svg class="w-5 h-5 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M12 1a5 5 0 0 0-5 5c0 2.2 1.4 4.1 3.4 4.7L10 12v2H8v2h2v2l2 2 2-2V10.7A5 5 0 0 0 12 1zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/>
+                                    </svg>
+                                    <span class="text-sm">{passkey.nickname}</span>
+                                </div>
+                                <span class="text-xs text-outline ml-7">
+                                    {passkey.last_used_at ? `Last used ${new Date(passkey.last_used_at).toLocaleDateString()}` : 'Never used'}
+                                </span>
+                            </div>
+                            <Button variant="text" onclick={() => deletePasskey(passkey.id)}>
+                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                </svg>
+                            </Button>
+                        </div>
+                    {/each}
+                </div>
+            {:else}
+                <p class="text-sm text-outline-variant italic">No passkeys yet</p>
+            {/if}
+
+            <div class="flex flex-row gap-2 items-center">
+                <input
+                    type="text"
+                    placeholder="Name this device (optional)"
+                    bind:value={newPasskeyName}
+                    class="flex-1 px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface focus:border-primary focus:outline-none"
+                    onkeydown={(e) => e.key === 'Enter' && addPasskey()}
+                />
+                <Button variant="tonal" onclick={addPasskey} disabled={isAddingPasskey}>
+                    {isAddingPasskey ? 'Waiting…' : 'Add Passkey'}
+                </Button>
+            </div>
+        </div>
+    {/if}
 
     <!-- University Calendar Events Section -->
     <div class="flex flex-col gap-3 mt-4 pt-4 border-t border-outline-variant">

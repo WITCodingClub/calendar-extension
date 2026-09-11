@@ -33,13 +33,6 @@
     "identity",
     "identity.email"
   ],
-  "oauth2": {
-    "client_id": "542377189189-at1sbv0820ooa8niirhakkmko1c1b8je.apps.googleusercontent.com",
-    "scopes": [
-      "email",
-      "profile"
-    ]
-  },
   "icons": {
     "128": "icon128.png"
   },

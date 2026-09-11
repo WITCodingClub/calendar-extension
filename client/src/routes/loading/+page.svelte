@@ -6,6 +6,8 @@
     import { onMount } from 'svelte';
     import { EnvironmentManager } from '$lib/environment';
     import { createWitTab } from '$lib/witTab';
+    import { getWitGoogleAccessToken } from '$lib/witGoogleAuth';
+    import { passkeysSupported, signInWithPasskey } from '$lib/passkeys';
 
     let schoolEmail = $state('');
     let preferredName = $state('');
@@ -13,6 +15,21 @@
 
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
+
+        // A passkey, if this device has one, skips both the LeopardWeb scrape
+        // and the Google round trip. Anything short of success falls through to
+        // the normal flow, so a device without a passkey notices nothing.
+        if (await passkeysSupported()) {
+            try {
+                if (await signInWithPasskey()) {
+                    goto('/onboard');
+                    return;
+                }
+            } catch (err) {
+                console.error('Passkey sign-in error:', err);
+            }
+        }
+
         fetchSchoolEmail();
     });
 
@@ -123,25 +140,10 @@
         }
     }
 
-    // Obtains a Google OAuth access token for the user's Google account (their
-    // personal account — the same one they sync calendars to). The backend
-    // verifies this token with Google and keys the account to the verified
-    // email, so the server never trusts a client-supplied email.
-    async function getGoogleAccessToken(): Promise<string> {
-        // getAuthToken returns a bare string on older Chrome and { token } on
-        // newer MV3 builds — handle both.
-        const result: unknown = await chrome.identity.getAuthToken({ interactive: true });
-        const token = typeof result === 'string' ? result : (result as { token?: string } | null)?.token;
-        if (!token) {
-            throw new Error('Could not obtain a Google sign-in token');
-        }
-        return token;
-    }
-
-    async function signIn(isRetry = false) {
+    async function signIn() {
         let accessToken: string;
         try {
-            accessToken = await getGoogleAccessToken();
+            accessToken = await getWitGoogleAccessToken(schoolEmail || undefined);
         } catch (err) {
             console.error('Google auth error:', err);
             error = 'google_signin_failed';
@@ -153,18 +155,21 @@
             const baseUrl = await API.baseUrl;
             const response = await fetch(`${baseUrl}/user/onboard`, {
                 method: 'POST',
-                // wit_email is stored as metadata only — the backend keys the
-                // account to the verified Google token, not this value.
-                body: JSON.stringify({ google_access_token: accessToken, preferred_name: preferredName, wit_email: schoolEmail }),
+                body: JSON.stringify({ google_access_token: accessToken, preferred_name: preferredName }),
                 headers: {
                     'Content-Type': 'application/json'
                 }
             });
 
-            // A cached Google token may have expired; drop it and retry once.
-            if (response.status === 401 && !isRetry) {
-                await chrome.identity.removeCachedAuthToken({ token: accessToken });
-                return signIn(true);
+            // The backend refuses anything but a WIT account. Say so plainly,
+            // because the fix is for the student to pick a different account
+            // rather than to try again with the same one.
+            if (response.status === 403) {
+                const body = await response.json().catch(() => ({})) as { code?: string };
+                if (body.code === 'WIT_ACCOUNT_REQUIRED') {
+                    error = 'wit_account_required';
+                    return;
+                }
             }
 
             if (!response.ok) {
@@ -206,6 +211,9 @@
         {:else if error == 'google_signin_failed'}
             <ErrorNotice title="Google sign-in failed" error="We couldn't sign you in with Google. Please try again." includeStatusLink={false} />
             <Button variant="elevated" square onclick={() => signIn()}>Try Again</Button>
+        {:else if error == 'wit_account_required'}
+            <ErrorNotice title="Use your WIT account" error="Sign in with your @wit.edu Google account. You can connect a personal Google account for calendar sync afterwards." includeStatusLink={false} />
+            <Button variant="elevated" square onclick={() => signIn()}>Pick a different account</Button>
         {:else}
             <h1 class="text-3xl font-extrabold text-center text-primary mb-6">Signing in!</h1>
             <LoadingIndicator size={64} />
