@@ -42,6 +42,9 @@ interface CeremonyStart {
     options: EncodedOptions;
 }
 
+/** How long sign-in waits for the authenticator before falling back to Google. */
+const SIGN_IN_TIMEOUT_MS = 60_000;
+
 export interface PasskeySummary {
     id: string;
     nickname: string;
@@ -70,9 +73,18 @@ function bytesToBase64Url(buffer: ArrayBuffer): string {
     return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/** Does this device have an authenticator we can use at all? */
+/**
+ * Firefox gives each installation a random moz-extension:// origin, so there is
+ * no fixed origin for the backend to allow. Until that changes, passkeys are
+ * Chromium only and Firefox keeps the Google flow.
+ */
+function originCanBeAllowlisted(): boolean {
+    return location.protocol !== 'moz-extension:';
+}
+
+/** Can this browser and device run the ceremony at all? */
 export async function passkeysSupported(): Promise<boolean> {
-    if (typeof PublicKeyCredential === 'undefined') {
+    if (typeof PublicKeyCredential === 'undefined' || !originCanBeAllowlisted()) {
         return false;
     }
 
@@ -182,9 +194,14 @@ export async function signInWithPasskey(): Promise<boolean> {
         }))
     } as PublicKeyCredentialRequestOptions;
 
+    // This runs before onboarding, so a browser that never answers must not
+    // leave the student staring at a spinner. Give up and let Google take over.
+    const abort = new AbortController();
+    const giveUp = setTimeout(() => abort.abort(), SIGN_IN_TIMEOUT_MS);
+
     let credential: PublicKeyCredential | null;
     try {
-        credential = await navigator.credentials.get({ publicKey }) as PublicKeyCredential | null;
+        credential = await navigator.credentials.get({ publicKey, signal: abort.signal }) as PublicKeyCredential | null;
     } catch (err) {
         // NotAllowedError covers both "no passkey here" and "user closed the
         // prompt". Neither is an error worth showing — fall back to Google.
@@ -192,6 +209,8 @@ export async function signInWithPasskey(): Promise<boolean> {
             return false;
         }
         throw err;
+    } finally {
+        clearTimeout(giveUp);
     }
 
     if (!credential) {
