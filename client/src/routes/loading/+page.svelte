@@ -11,14 +11,27 @@
     let error = $state<string | null>(null);
 
     onMount(async () => {
-        // Migrate old JWT token format if needed
         await EnvironmentManager.migrateOldJwtToken();
         fetchSchoolEmail();
     });
 
+    async function pageFetch(tabId: number, url: string): Promise<any> {
+        const results = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            func: (fetchUrl: string) =>
+                fetch(fetchUrl, { credentials: 'include' })
+                    .then(r => r.json())
+                    .catch(e => ({ error: e.message })),
+            args: [url]
+        });
+        return results[0]?.result ?? {};
+    }
+
     async function fetchSchoolEmail() {
         const preferredNameUrl = 'https://selfservice.wit.edu/BannerGeneralSsb/ssb/PersonalInformationDetails/getPreferredName';
         const emailsUrl = 'https://selfservice.wit.edu/BannerGeneralSsb/ssb/PersonalInformationDetails/getEmails';
+        const witHtmlUrl = 'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory';
 
         let tabToUse: chrome.tabs.Tab | undefined;
         let createdNewTab = false;
@@ -26,14 +39,17 @@
         try {
             error = null;
 
+            const isFirefox = navigator.userAgent.includes('Firefox');
+            const tabUrl = isFirefox ? witHtmlUrl : preferredNameUrl;
             const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            const isOnPreferredNamePage = currentTab?.url === preferredNameUrl;
+            const canReuseTab = isFirefox
+                ? currentTab?.url?.startsWith('https://selfservice.wit.edu/')
+                : currentTab?.url === preferredNameUrl;
 
-            if (isOnPreferredNamePage) {
+            if (canReuseTab) {
                 tabToUse = currentTab;
-                createdNewTab = false;
             } else {
-                tabToUse = await chrome.tabs.create({ url: preferredNameUrl });
+                tabToUse = await chrome.tabs.create({ url: tabUrl });
                 createdNewTab = true;
 
                 await new Promise<void>((resolve, reject) => {
@@ -41,7 +57,6 @@
                         chrome.tabs.onUpdated.removeListener(listener);
                         reject(new Error('Timed out waiting for WIT page to load. Are you connected to the internet?'));
                     }, 15000);
-                    // @ts-expect-error
                     const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
                         if (tabId === tabToUse!.id && changeInfo.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
@@ -57,56 +72,26 @@
                 throw new Error('Failed to get tab ID');
             }
 
-            // Check the tab didn't redirect to a login page (expired session)
             const finalTab = await chrome.tabs.get(tabToUse.id);
             if (finalTab.url && !finalTab.url.startsWith('https://selfservice.wit.edu/')) {
                 error = 'not_logged_in';
                 return;
             }
 
-            // 1) Hit preferred name endpoint first (establish cookies/session)
-            const preferredRes = await chrome.scripting.executeScript({
-                target: { tabId: tabToUse.id },
-                world: 'MAIN',
-                func: (fetchUrl: string) => {
-                    return fetch(fetchUrl, { credentials: 'include' })
-                        .then(r => r.json())
-                        .catch(e => ({ error: e.message }));
-                },
-                args: [preferredNameUrl]
-            });
+            const preferredData = await pageFetch(tabToUse.id, preferredNameUrl);
+            if (preferredData.preferredName) preferredName = preferredData.preferredName;
+            if (preferredData.error) throw new Error(preferredData.error);
 
-            const preferredData = preferredRes[0]?.result ?? { preferredName: '' };
-            if (preferredData.preferredName) {
-                preferredName = preferredData.preferredName;
-            }
-
-
-            if (preferredData.error) {
-                throw new Error(preferredData.error);
-            }
-
-            // 2) Hit emails endpoint in the SAME tab
-            const emailRes = await chrome.scripting.executeScript({
-                target: { tabId: tabToUse.id },
-                world: 'MAIN',
-                func: (fetchUrl: string) => {
-                    return fetch(fetchUrl, { credentials: 'include' })
-                        .then(r => r.json())
-                        .catch(e => ({ error: e.message }));
-                },
-                args: [emailsUrl]
-            });
-            const data = emailRes[0]?.result ?? { emails: [] };
-            if (data.error) {
-                throw new Error(data.error);
-            }
+            const data = await pageFetch(tabToUse.id, emailsUrl);
+            if (data.error) throw new Error(data.error);
 
             if (Array.isArray(data.emails)) {
                 const witEmail = data.emails.find((email: any) => email?.emailType?.code === 'W');
-                if (witEmail?.emailAddress) {
-                    schoolEmail = witEmail.emailAddress;
-                }
+                if (witEmail?.emailAddress) schoolEmail = witEmail.emailAddress;
+            }
+
+            if (!schoolEmail) {
+                throw new Error('Could not read your WIT email. Please make sure you are signed in to LeopardWeb and try again.');
             }
 
             await signIn();
@@ -114,15 +99,14 @@
             const msg = String(err);
             if (msg.includes('cas.wit.edu') || msg.includes('Cannot access contents of url')) {
                 error = 'not_logged_in';
+            } else if (!error) {
+                error = msg;
             }
         } finally {
-            // Always close the tab — getPreferredName is an API endpoint, never useful to leave open
-            if (tabToUse?.id) {
+            if (createdNewTab && tabToUse?.id) {
                 try {
                     await chrome.tabs.remove(tabToUse.id);
-                } catch {
-                    // ignore close errors
-                }
+                } catch {}
             }
         }
     }
@@ -148,8 +132,8 @@
 
             if (data && data.beta_access === false) {
                 await chrome.storage.local.set({ beta_access: false });
-                goto('/beta-access-denied/');
-                return Promise.reject(new Error('Beta access denied')) as never;
+                await goto('/beta-access-denied/');
+                return;
             }
 
             if (data.jwt) {
@@ -157,7 +141,7 @@
             }
 
             await new Promise(resolve => setTimeout(resolve, 1500));
-            goto('/onboard');
+            await goto('/onboard');
         } catch (err) {
             console.error('Sign in error:', err);
             error = 'Server is (probably) down!';
@@ -171,7 +155,7 @@
         {#if error == 'not_logged_in'}
             <ErrorNotice title="Not logged in to WIT!" error="Please sign in to " includeStatusLink={false} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
-        {:else if error == 'Server is (probably) down!'}
+        {:else if error}
             <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else}
