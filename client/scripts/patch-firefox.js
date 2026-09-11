@@ -31,7 +31,7 @@ manifest.background = { scripts: ['service-worker.js'] };
 manifest.browser_specific_settings = {
 	gecko: {
 		id: 'wit-calendar@witcc.dev',
-		strict_min_version: '109.0'
+		strict_min_version: '128.0'
 	}
 };
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
