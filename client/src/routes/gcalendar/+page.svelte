@@ -25,10 +25,10 @@
     }
 
     async function tryForEmail() {
-        const info = await chrome.identity.getProfileUserInfo();
-        if (info && info.email) {
-            emailToSignInWith = info.email;
-        }
+        try {
+            const info = await chrome.identity.getProfileUserInfo();
+            if (info?.email) emailToSignInWith = info.email;
+        } catch {}
     }
 
     async function setupListener() {

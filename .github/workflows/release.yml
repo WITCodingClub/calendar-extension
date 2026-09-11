@@ -1,4 +1,4 @@
-name: Build and Release Chrome Extension
+name: Build and Release Extension
 
 on:
   push:
@@ -35,16 +35,29 @@ jobs:
         working-directory: client
         run: npm run build
 
-      - name: Create zip artifact
+      - name: Create Chrome zip artifact
         env:
           VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: |
           cd client/extension
           zip -r "../../wit-calendar-${VERSION}.zip" .
 
+      - name: Patch Firefox build
+        working-directory: client
+        run: npm run patch-firefox
+
+      - name: Create Firefox zip artifact
+        env:
+          VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: |
+          cd client/extension
+          zip -r "../../wit-calendar-${VERSION}-firefox.zip" .
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
-          files: wit-calendar-${{ github.event.inputs.version || github.ref_name }}.zip
+          files: |
+            wit-calendar-${{ github.event.inputs.version || github.ref_name }}.zip
+            wit-calendar-${{ github.event.inputs.version || github.ref_name }}-firefox.zip
           generate_release_notes: true
