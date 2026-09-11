@@ -69,13 +69,7 @@
     });
 
     async function loadPasskeys() {
-        try {
-            passkeys = await listPasskeys();
-        } catch (e) {
-            // An older backend has no passkey endpoints. Leave the list empty
-            // rather than showing an error for a feature the user never asked for.
-            passkeys = [];
-        }
+        passkeys = await listPasskeys();
     }
 
     async function addPasskey() {
@@ -109,9 +103,13 @@
         await featureFlags.loadFlags();
         showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
 
-        canUsePasskeys = await passkeysSupported();
-        if (canUsePasskeys) {
-            await loadPasskeys();
+        if (await passkeysSupported()) {
+            try {
+                await loadPasskeys();
+                canUsePasskeys = true;
+            } catch {
+                canUsePasskeys = false;
+            }
         }
 
         try {
@@ -643,7 +641,7 @@
 
             {#if passkeys.length > 0}
                 <div class="flex flex-col gap-2">
-                    {#each passkeys as passkey}
+                    {#each passkeys as passkey (passkey.id)}
                         <div class="flex flex-row gap-3 items-center justify-between bg-surface-container-low rounded-lg p-3">
                             <div class="flex flex-col gap-1">
                                 <div class="flex flex-row gap-2 items-center">

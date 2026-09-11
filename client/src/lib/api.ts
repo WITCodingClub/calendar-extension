@@ -1,5 +1,6 @@
 import { EnvironmentManager } from "./environment";
 import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, isProcessed, OkResponse, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
+import type { PasskeySummary } from "./passkeys";
 
 export class API {
     private static async getBaseUrl(): Promise<string> {
@@ -587,6 +588,87 @@ export class API {
 
         if (!response.ok) {
             throw new Error(`Failed to set university calendar color (HTTP ${response.status})`);
+        }
+    }
+
+    public static async startPasskeyRegistration(): Promise<{ handle: string; options: any }> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/user/passkeys/registration_options`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await this.getJwtToken()}`
+            }
+        });
+        if (!response.ok) {
+            throw new Error(`Could not start the passkey step (${response.status})`);
+        }
+        return response.json();
+    }
+
+    public static async startPasskeyAuthentication(): Promise<{ handle: string; options: any }> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/user/passkeys/authentication_options`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) {
+            throw new Error(`Could not start the passkey step (${response.status})`);
+        }
+        return response.json();
+    }
+
+    public static async createPasskey(body: unknown): Promise<{ passkey: PasskeySummary }> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/user/passkeys`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await this.getJwtToken()}`
+            },
+            body: JSON.stringify(body)
+        });
+        if (!response.ok) {
+            throw new Error(`Could not save the passkey (${response.status})`);
+        }
+        return response.json();
+    }
+
+    public static async authenticatePasskey(body: unknown): Promise<{ jwt?: string }> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/user/passkeys/authenticate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (response.status === 401) {
+            return {};
+        }
+        if (!response.ok) {
+            throw new Error(`Passkey sign-in failed (${response.status})`);
+        }
+        return response.json();
+    }
+
+    public static async listPasskeys(): Promise<{ passkeys: PasskeySummary[] }> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/user/passkeys`, {
+            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
+        });
+        if (!response.ok) {
+            throw new Error(`Could not list passkeys (${response.status})`);
+        }
+        return response.json();
+    }
+
+    public static async deletePasskey(passkeyId: string): Promise<void> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/user/passkeys/${passkeyId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
+        });
+        if (!response.ok) {
+            throw new Error(`Could not remove the passkey (${response.status})`);
         }
     }
 

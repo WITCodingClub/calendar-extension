@@ -30,7 +30,8 @@ const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const SCOPES = [ 'email', 'profile' ];
 
-function base64Url(bytes: Uint8Array): string {
+export function bytesToBase64Url(data: ArrayBuffer | Uint8Array): string {
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     let binary = '';
     for (let i = 0; i < bytes.length; i++) {
         binary += String.fromCharCode(bytes[i]);
@@ -38,11 +39,22 @@ function base64Url(bytes: Uint8Array): string {
     return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+export function base64UrlToBytes(value: string): ArrayBuffer {
+    const padded = value.replace(/-/g, '+').replace(/_/g, '/');
+    const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '='));
+    const buffer = new ArrayBuffer(binary.length);
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return buffer;
+}
+
 /** A fresh PKCE verifier and its S256 challenge. */
 async function createPkcePair(): Promise<{ verifier: string; challenge: string }> {
-    const verifier = base64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const verifier = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-    return { verifier, challenge: base64Url(new Uint8Array(digest)) };
+    return { verifier, challenge: bytesToBase64Url(new Uint8Array(digest)) };
 }
 
 /**
