@@ -155,7 +155,16 @@
             const baseUrl = await API.baseUrl;
             const response = await fetch(`${baseUrl}/user/onboard`, {
                 method: 'POST',
-                body: JSON.stringify({ google_access_token: accessToken, preferred_name: preferredName }),
+                // `email` is here only so this release also works against the
+                // backend that is live today, which still requires it and knows
+                // nothing of google_access_token. The new backend ignores it and
+                // reads the address from the verified token instead. Drop this
+                // field once calendar-backend#493 has shipped everywhere.
+                body: JSON.stringify({
+                    google_access_token: accessToken,
+                    preferred_name: preferredName,
+                    email: schoolEmail
+                }),
                 headers: {
                     'Content-Type': 'application/json'
                 }
