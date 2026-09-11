@@ -12,6 +12,7 @@
     import { userSettings as storedUserSettings } from '$lib/store';
     import { browser } from '$app/environment';
     import { snackbar } from 'm3-svelte';
+    import { createWitTab } from '$lib/witTab';
 
 	let selected: string | undefined = $state(undefined);
 	let responseData: ResponseData | undefined = $derived($storedProcessedData.find((d) => String(d.termId) === selected)?.responseData);
@@ -374,7 +375,7 @@
             const isOnTargetPage = currentTab.url === targetUrl;
             tabToUse = currentTab;
             if (!isOnTargetPage) {
-                tabToUse = await chrome.tabs.create({ url: targetUrl });
+                tabToUse = await createWitTab(targetUrl);
                 shouldCloseTab = true;
                 const openedTabId = tabToUse.id;
                 if (!openedTabId) return;
@@ -674,7 +675,7 @@
             const isOnTargetPage = currentTab.url === targetUrl;
             tabToUse = currentTab;
             if (!isOnTargetPage) {
-                tabToUse = await chrome.tabs.create({ url: targetUrl });
+                tabToUse = await createWitTab(targetUrl);
                 shouldCloseTab = true;
                 const openedTabId = tabToUse.id;
                 if (!openedTabId) {

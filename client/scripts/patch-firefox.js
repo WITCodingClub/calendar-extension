@@ -18,6 +18,11 @@ delete manifest.side_panel;
 manifest.permissions = (manifest.permissions ?? []).filter(
 	(permission) => permission !== 'sidePanel' && permission !== 'identity.email'
 );
+for (const permission of ['cookies', 'contextualIdentities']) {
+	if (!manifest.permissions.includes(permission)) {
+		manifest.permissions.push(permission);
+	}
+}
 manifest.sidebar_action = {
 	default_title: manifest.name,
 	default_panel: 'index.html',

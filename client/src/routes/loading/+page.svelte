@@ -5,6 +5,7 @@
     import ErrorNotice from '$lib/components/ErrorNotice.svelte';
     import { onMount } from 'svelte';
     import { EnvironmentManager } from '$lib/environment';
+    import { createWitTab } from '$lib/witTab';
 
     let schoolEmail = $state('');
     let preferredName = $state('');
@@ -65,7 +66,7 @@
             if (!isFirefox && currentTab?.url === preferredNameUrl) {
                 tabToUse = currentTab;
             } else {
-                tabToUse = await chrome.tabs.create({ url: preferredNameUrl });
+                tabToUse = await createWitTab(preferredNameUrl);
                 createdNewTab = true;
                 await waitForComplete(tabToUse.id!);
             }
