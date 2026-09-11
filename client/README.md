@@ -4,8 +4,9 @@
 1. Install [npm/node.js](https://nodejs.org/en/download)
 3. Run ``npm i`` in this directory (``/client``)
 4. Run ``npm run build`` to build the extension. Built files will be in ``/client/extension/``
+5. optional: if you're on firefox, run ``npm run build-firefox`` instead.
 
-## Testing the Extension
+## Testing the Extension (for chrome)
 
 1. Head to ``chrome://extensions``
 2. Enable Developer Mode
