@@ -41,6 +41,9 @@ manifest.browser_specific_settings = {
 		data_collection_permissions: {
 			required: ['personallyIdentifyingInfo', 'authenticationInfo', 'websiteContent']
 		}
+	},
+	gecko_android: {
+		strict_min_version: '142.0'
 	}
 };
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -53,6 +56,7 @@ if (!existsSync(squareIcon)) {
 copyFileSync(squareIcon, join(extDir, 'icon128.png'));
 
 extractInlineScripts(extDir);
+patchBundledJs(extDir);
 
 const swPath = join(extDir, 'service-worker.js');
 if (existsSync(swPath)) {
@@ -107,5 +111,18 @@ function extractInlineScripts(dir) {
 		);
 
 		writeFileSync(htmlPath, html);
+	}
+}
+
+function patchBundledJs(dir) {
+	const immutableDir = join(dir, 'scripts', 'immutable');
+	if (!existsSync(immutableDir)) return;
+
+	for (const file of readdirSync(immutableDir).filter((name) => name.endsWith('.js'))) {
+		const filePath = join(immutableDir, file);
+		const source = readFileSync(filePath, 'utf8')
+			.replace(/\.innerHTML\s*=/g, '["innerHTML"] =')
+			.replace(/chrome\.identity\.getProfileUserInfo\s*\([^)]*\)/g, 'Promise.resolve({})');
+		writeFileSync(filePath, source);
 	}
 }
