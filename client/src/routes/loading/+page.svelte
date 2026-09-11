@@ -214,15 +214,15 @@
         {#if error == 'not_logged_in'}
             <ErrorNotice title="Not logged in to WIT!" error="Please sign in to " includeStatusLink={false} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
-        {:else if error}
-            <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
-            <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else if error == 'google_signin_failed'}
             <ErrorNotice title="Google sign-in failed" error="We couldn't sign you in with Google. Please try again." includeStatusLink={false} />
             <Button variant="elevated" square onclick={() => signIn()}>Try Again</Button>
         {:else if error == 'wit_account_required'}
             <ErrorNotice title="Use your WIT account" error="Sign in with your @wit.edu Google account. You can connect a personal Google account for calendar sync afterwards." includeStatusLink={false} />
             <Button variant="elevated" square onclick={() => signIn()}>Pick a different account</Button>
+        {:else if error}
+            <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
+            <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else}
             <h1 class="text-3xl font-extrabold text-center text-primary mb-6">Signing in!</h1>
             <LoadingIndicator size={64} />
