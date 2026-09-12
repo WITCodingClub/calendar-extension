@@ -19,19 +19,19 @@ export const ENVIRONMENTS: Record<Environment, EnvironmentConfig> = {
         name: 'dev',
         displayName: 'Development',
         baseUrl: 'https://heron-selected-literally.ngrok-free.app',
-        googleClientId: '542377189189-at1sbv0820ooa8niirhakkmko1c1b8je.apps.googleusercontent.com'
+        googleClientId: '542377189189-hofk41jk6e2nada4ia4g2rmqfatmlitv.apps.googleusercontent.com'
     },
     staging: {
         name: 'staging',
         displayName: 'Staging',
         baseUrl: 'https://staging-calendar.witcc.dev',
-        googleClientId: '542377189189-at1sbv0820ooa8niirhakkmko1c1b8je.apps.googleusercontent.com'
+        googleClientId: '542377189189-hofk41jk6e2nada4ia4g2rmqfatmlitv.apps.googleusercontent.com'
     },
     prod: {
         name: 'prod',
         displayName: 'Production',
         baseUrl: 'https://calendar.witcc.dev',
-        googleClientId: '542377189189-at1sbv0820ooa8niirhakkmko1c1b8je.apps.googleusercontent.com'
+        googleClientId: '542377189189-hofk41jk6e2nada4ia4g2rmqfatmlitv.apps.googleusercontent.com'
     }
 };
 
