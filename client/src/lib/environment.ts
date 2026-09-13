@@ -34,9 +34,13 @@ export class EnvironmentManager {
 
     public static async getEnvironmentData(): Promise<StoredEnvironmentData> {
         const result = await chrome.storage.local.get(this.STORAGE_KEY);
-        return result[this.STORAGE_KEY] || {
-            current_environment: 'prod',
-            jwt_tokens: {}
+        const stored = result[this.STORAGE_KEY] as Partial<StoredEnvironmentData> | undefined;
+        const current_environment = stored?.current_environment && stored.current_environment in ENVIRONMENTS
+            ? stored.current_environment
+            : 'prod';
+        return {
+            current_environment,
+            jwt_tokens: stored?.jwt_tokens ?? {}
         };
     }
 
