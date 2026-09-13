@@ -3,8 +3,14 @@
 ## Setup
 1. Install [npm/node.js](https://nodejs.org/en/download)
 3. Run ``npm i`` in this directory (``/client``)
-4. Run ``npm run build`` to build the extension. Built files will be in ``/client/extension/``
+4. Run ``npm run build-dev`` to build the extension. Built files will be in ``/client/extension/``
 5. optional: if you're on firefox, run ``npm run build-firefox`` instead.
+
+``npm run build`` is the release build and leaves out the manifest ``key``, so
+Chrome gives the unpacked copy a random extension ID. Google sign-in is tied to
+one ID — the published one — so a plain build fails at sign-in with
+``redirect_uri_mismatch``. ``build-dev`` puts the key back and gives you the same
+ID as the Web Store copy.
 
 ## Testing the Extension (for chrome)
 
