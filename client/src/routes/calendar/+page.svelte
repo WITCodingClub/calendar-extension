@@ -9,6 +9,7 @@
     import { API } from '$lib/api';
     import Settings from '$lib/components/Settings.svelte';
     import Help from '$lib/components/Help.svelte';
+    import RgbColorPicker from '$lib/components/RgbColorPicker.svelte';
     import { userSettings as storedUserSettings } from '$lib/store';
     import { browser } from '$app/environment';
     import { snackbar } from 'm3-svelte';
@@ -1412,25 +1413,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M12 21q-.425 0-.712-.288T11 20v-7H4q-.425 0-.712-.288T3 12t.288-.712T4 11h7V4q0-.425.288-.712T12 3t.713.288T13 4v7h7q.425 0 .713.288T21 12t-.288.713T20 13h-7v7q0 .425-.288.713T12 21"/></svg>
                         </Button>
                         <h2 class="text-md">Color</h2>
-                        <div class="flex flex-row gap-2 items-center">
-                            <div class="w-6 h-6 rounded-full border-2 border-outline other-stuff" style="background-color: {courseColor};"></div>
-                            <SelectOutlined label=""
-                                options={[
-                                    { text: "Tomato", value: "#d50000" },
-                                    { text: "Flamingo", value: "#e67c73" },
-                                    { text: "Tangerine", value: "#f4511e" },
-                                    { text: "Banana", value: "#f6bf26" },
-                                    { text: "Sage", value: "#33b679" },
-                                    { text: "Basil", value: "#0b8043" },
-                                    { text: "Peacock", value: "#039be5" },
-                                    { text: "Blueberry", value: "#3f51b5" },
-                                    { text: "Lavender", value: "#7986cb" },
-                                    { text: "Grape", value: "#8e24aa" },
-                                    { text: "Graphite", value: "#616161" },
-                                ]}
-                                bind:value={courseColor}
-                            />
-                        </div>
+                        <RgbColorPicker bind:value={courseColor} label="Choose course color" />
                         <Button variant="tonal" square onclick={saveEventPerfs}>Save</Button>
                     </div>
                 </div>
