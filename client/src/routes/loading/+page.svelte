@@ -182,7 +182,7 @@
                 await EnvironmentManager.setJwtToken(data.jwt);
             }
 
-            await continueAfterSignIn();
+            await continueAfterSignIn({ offerPasskey: true });
         } catch (err) {
             console.error('Sign in error:', err);
             error = 'Server is (probably) down!';

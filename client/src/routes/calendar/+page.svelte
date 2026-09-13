@@ -28,14 +28,12 @@
     let showHistoricTerms = $derived($storedUserSettings?.show_historic_terms ?? false);
     let displayTerms = $derived((() => {
         const currentTermId = terms?.current_term?.id;
-        const base = $enrolledTerms.length > 0
-            ? $enrolledTerms
-            : terms
-                ? [
-                    { id: String(terms.current_term.id), name: terms.current_term.name },
-                    { id: String(terms.next_term.id), name: terms.next_term.name }
-                  ]
-                : [];
+        const fromEnrolled = $enrolledTerms.filter((t) => t?.id);
+        const fromApi = [
+            terms?.current_term && { id: String(terms.current_term.id), name: terms.current_term.name },
+            terms?.next_term && { id: String(terms.next_term.id), name: terms.next_term.name }
+        ].filter((t): t is { id: string; name: string } => !!t);
+        const base = fromEnrolled.length > 0 ? fromEnrolled : fromApi;
         if (!showHistoricTerms && currentTermId != null) {
             return base.filter(t => parseInt(t.id) >= currentTermId);
         }
@@ -277,9 +275,11 @@
             maxStacksByDay[key] = 1;
         }
         for (const course of processedData) {
-            const isLab = course.schedule_type.toLowerCase() === 'laboratory';
+            if (!course) continue;
+            const isLab = (course.schedule_type ?? '').toLowerCase() === 'laboratory';
             const bgColorBase = isLab ? labColor : lectureColor;
-            for (const meeting of course.meeting_times) {
+            for (const meeting of course.meeting_times ?? []) {
+                if (!meeting) continue;
                 for (const { key } of dayOrder) {
                     if (!meeting[key as keyof MeetingTime]) continue;
                     const startHour = parseInt(meeting.begin_time.split(':')[0]);
@@ -331,7 +331,8 @@
         let latestHour = 8;
 
         for (const course of courses) {
-            for (const meeting of course.meeting_times) {
+            for (const meeting of course.meeting_times ?? []) {
+                if (!meeting?.end_time) continue;
                 const endHour = parseInt(meeting.end_time.split(':')[0]);
                 const endMin = parseInt(meeting.end_time.split(':')[1]);
                 const roundedHour = endMin > 0 ? endHour + 1 : endHour;
@@ -372,12 +373,12 @@
                 currentWindow: true
             });
 
-            const isOnTargetPage = currentTab.url === targetUrl;
+            const isOnTargetPage = currentTab?.url === targetUrl;
             tabToUse = currentTab;
             if (!isOnTargetPage) {
                 tabToUse = await createWitTab(targetUrl);
                 shouldCloseTab = true;
-                const openedTabId = tabToUse.id;
+                const openedTabId = tabToUse?.id;
                 if (!openedTabId) return;
 
                 await new Promise<void>((resolve) => {
@@ -536,7 +537,9 @@
         if (!existing?.length) return fresh;
         const overlayById = new Map(
             existing.flatMap((c) =>
-                c.meeting_times.map((mt) => [String(mt.id), { color: mt.color, title_overrides: mt.title_overrides }] as const)
+                (c.meeting_times ?? [])
+                    .filter((mt) => mt?.id != null)
+                    .map((mt) => [String(mt.id), { color: mt.color, title_overrides: mt.title_overrides }] as const)
             )
         );
         return fresh.map((c) => ({
@@ -570,7 +573,7 @@
 
     async function refreshAllEventPrefsForCurrentTerm() {
         if (!selected || !processedData) return;
-        const ids = Array.from(new Set(processedData.flatMap(c => c.meeting_times.map(mt => mt.id))));
+        const ids = Array.from(new Set(processedData.flatMap(c => (c.meeting_times ?? []).filter(mt => mt?.id != null).map(mt => mt.id))));
         const responses = await Promise.all(ids.map(async (id) => {
             try {
                 const data: GetPreferencesResponse = await API.getMeetingTimePreference(id);
@@ -591,7 +594,8 @@
             if (i < 0) return list;
             const entry = list[i];
             const classes = entry.responseData.classes.map((c) => {
-                const updatedMeetingTimes = c.meeting_times.map((mt) => {
+                const updatedMeetingTimes = (c.meeting_times ?? []).map((mt) => {
+                    if (!mt) return mt;
                     const pref = map.get(mt.id);
                     if (!pref) return mt;
                     const color = pref.resolved?.color_id ? toDropdownColor(pref.resolved.color_id) : mt.color;
@@ -618,7 +622,7 @@
     }
 
     async function runScrapeAndProcess(termId: string | undefined) {
-        if (!termId || loading) return;
+        if (loading) return;
         try {
             loading = true;
             const res = await fetchFromCurrentPage(termId);
@@ -627,9 +631,10 @@
             }
             // Use the term code Banner returned; fall back to what we requested.
             const actualTermId = res.termId || termId;
-            // If Banner redirected to a different term (e.g. requested Summer but enrolled in Fall),
-            // update the selected tab to match.
-            if (actualTermId && actualTermId !== termId) {
+            if (!actualTermId) {
+                throw new Error('Could not determine which term to load');
+            }
+            if (actualTermId !== termId) {
                 selected = actualTermId;
             }
             storedIcsUrl.set(res.ics_url);
@@ -1063,17 +1068,17 @@
             if (displayTerms.length > 0) {
                 const processedTermIds = new Set($storedProcessedData.map(d => String(d.termId)));
                 const preferred = displayTerms.find(t => processedTermIds.has(t.id)) ?? displayTerms[0];
-                selected = preferred.id;
+                if (preferred?.id) selected = preferred.id;
             } else if (terms) {
                 const initial = terms?.current_term?.id ?? terms?.next_term?.id;
                 selected = initial != null ? String(initial) : undefined;
             }
-        } else if (displayTerms.length > 0 && !displayTerms.some(t => t.id === selected)) {
+        } else if (displayTerms.length > 0 && !displayTerms.some(t => t?.id === selected)) {
             const currentId = terms?.current_term?.id != null ? String(terms.current_term.id) : undefined;
             const preferred =
                 (currentId && displayTerms.find(t => t.id === currentId)) ??
                 displayTerms[0];
-            selected = preferred.id;
+            if (preferred?.id) selected = preferred.id;
         }
     });
 

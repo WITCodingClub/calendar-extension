@@ -194,8 +194,8 @@ interface NextTerm {
 }
 
 interface TermResponse {
-    current_term: CurrentTerm;
-    next_term: NextTerm;
+    current_term: CurrentTerm | null;
+    next_term: NextTerm | null;
 }
 
 interface DayItem {
