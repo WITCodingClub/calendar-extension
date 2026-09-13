@@ -14,10 +14,14 @@ import { EnvironmentManager } from './environment';
  * Google session instead, so the student can pick the WIT account they are
  * already signed into for LeopardWeb.
  *
- * The flow is authorization code with PKCE. Google has retired the implicit
- * grant for new integrations, and PKCE needs no client secret — which matters,
- * because an extension cannot keep one. Google documents client_secret as not
- * applicable to Chrome clients for exactly this reason.
+ * The flow is authorization code with PKCE, and it stops at the code. Google
+ * wants a client_secret at its token endpoint for a Web application client, and
+ * a published extension is not a place to keep one — anyone can read it back
+ * out of the package. So the backend finishes the exchange with the secret it
+ * already holds, and this only ever handles a code.
+ *
+ * PKCE still spans both halves: the verifier stays here and travels with the
+ * code, so a stolen code is useless without it.
  *
  * `hd` asks Google to offer only wit.edu accounts. It is a convenience, not a
  * control: the backend re-checks the domain against the verified token, which
@@ -27,7 +31,6 @@ import { EnvironmentManager } from './environment';
 export const WIT_HOSTED_DOMAIN = 'wit.edu';
 
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
-const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const SCOPES = [ 'email', 'profile' ];
 
 export function bytesToBase64Url(data: ArrayBuffer | Uint8Array): string {
@@ -57,12 +60,19 @@ async function createPkcePair(): Promise<{ verifier: string; challenge: string }
     return { verifier, challenge: bytesToBase64Url(new Uint8Array(digest)) };
 }
 
+/** What the backend needs to finish the exchange. */
+export interface WitGoogleAuthCode {
+    code: string;
+    codeVerifier: string;
+    redirectUri: string;
+}
+
 /**
  * @param loginHint the WIT address scraped from LeopardWeb, used only to
  *   pre-select the right account in Google's chooser. The backend ignores it
  *   and reads the address from the verified token instead.
  */
-export async function getWitGoogleAccessToken(loginHint?: string): Promise<string> {
+export async function getWitGoogleAuthCode(loginHint?: string): Promise<WitGoogleAuthCode> {
     const clientId = await EnvironmentManager.getGoogleClientId();
     const redirectUri = chrome.identity.getRedirectURL();
     const { verifier, challenge } = await createPkcePair();
@@ -105,29 +115,5 @@ export async function getWitGoogleAccessToken(loginHint?: string): Promise<strin
         throw new Error('Google did not return an authorization code');
     }
 
-    // No client secret: PKCE proves this is the same client that started the
-    // flow, and Google does not apply client_secret to Chrome clients.
-    const exchange = await fetch(TOKEN_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            client_id: clientId,
-            code,
-            code_verifier: verifier,
-            grant_type: 'authorization_code',
-            redirect_uri: redirectUri
-        })
-    });
-
-    if (!exchange.ok) {
-        const detail = await exchange.text().catch(() => '');
-        throw new Error(`Google refused the token exchange (${exchange.status}) ${detail}`);
-    }
-
-    const token = await exchange.json() as { access_token?: string };
-    if (!token.access_token) {
-        throw new Error('Google did not return a sign-in token');
-    }
-
-    return token.access_token;
+    return { code, codeVerifier: verifier, redirectUri };
 }

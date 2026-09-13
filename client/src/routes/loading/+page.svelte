@@ -6,7 +6,7 @@
     import { onMount } from 'svelte';
     import { EnvironmentManager } from '$lib/environment';
     import { createWitTab } from '$lib/witTab';
-    import { getWitGoogleAccessToken } from '$lib/witGoogleAuth';
+    import { getWitGoogleAuthCode } from '$lib/witGoogleAuth';
     import { passkeysSupported, signInWithPasskey } from '$lib/passkeys';
 
     let schoolEmail = $state('');
@@ -141,9 +141,9 @@
     }
 
     async function signIn() {
-        let accessToken: string;
+        let auth: Awaited<ReturnType<typeof getWitGoogleAuthCode>>;
         try {
-            accessToken = await getWitGoogleAccessToken(schoolEmail || undefined);
+            auth = await getWitGoogleAuthCode(schoolEmail || undefined);
         } catch (err) {
             console.error('Google auth error:', err);
             error = 'google_signin_failed';
@@ -155,13 +155,18 @@
             const baseUrl = await API.baseUrl;
             const response = await fetch(`${baseUrl}/user/onboard`, {
                 method: 'POST',
+                // The backend finishes the exchange: Google wants a client_secret
+                // for this client, and a published extension cannot keep one.
+                //
                 // `email` is here only so this release also works against the
                 // backend that is live today, which still requires it and knows
-                // nothing of google_access_token. The new backend ignores it and
-                // reads the address from the verified token instead. Drop this
-                // field once calendar-backend#493 has shipped everywhere.
+                // nothing of the code. The new backend ignores it and reads the
+                // address from the verified token instead. Drop this field once
+                // calendar-backend#493 has shipped everywhere.
                 body: JSON.stringify({
-                    google_access_token: accessToken,
+                    google_auth_code: auth.code,
+                    code_verifier: auth.codeVerifier,
+                    redirect_uri: auth.redirectUri,
                     preferred_name: preferredName,
                     email: schoolEmail
                 }),
