@@ -591,6 +591,23 @@ export class API {
         }
     }
 
+    // The /passkey page holds no session. This mints a single-use, short-lived
+    // grant it can spend to register a passkey, so the JWT never goes in a URL.
+    public static async createPasskeyHandoff(): Promise<{ code: string }> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/user/passkeys/handoff`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await this.getJwtToken()}`
+            }
+        });
+        if (!response.ok) {
+            throw new Error(`Could not start adding a passkey (${response.status})`);
+        }
+        return response.json();
+    }
+
     public static async exchangePasskeyCode(code: string): Promise<{ jwt?: string }> {
         const baseUrl = await this.getBaseUrl();
         const response = await fetch(`${baseUrl}/user/passkeys/exchange`, {

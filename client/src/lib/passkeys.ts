@@ -18,8 +18,12 @@ import { EnvironmentManager } from './environment';
  *   mode          authenticate | register
  *   redirect_uri  chrome.identity.getRedirectURL()
  *   nickname      optional, register only
- * Hash (register only, so the JWT is not in server logs):
- *   #token=<jwt>
+ *   handoff       register only. A single-use, two-minute grant minted from our
+ *                 JWT. The session token itself never travels in the URL: a
+ *                 fragment keeps it out of server logs but not out of the
+ *                 address bar, history, or any script on the page, and it is a
+ *                 90-day credential. If a handoff leaks, it registers one
+ *                 passkey within two minutes and nothing else.
  *
  * Redirect back:
  *   ?code=...              sign-in succeeded
@@ -42,7 +46,7 @@ export async function passkeysSupported(): Promise<boolean> {
 async function openPasskeyPage(params: {
     mode: 'authenticate' | 'register';
     nickname?: string;
-    token?: string;
+    handoff?: string;
 }): Promise<URLSearchParams | null> {
     const site = await EnvironmentManager.getBaseUrl();
     const redirectUri = chrome.identity.getRedirectURL();
@@ -52,8 +56,8 @@ async function openPasskeyPage(params: {
     if (params.nickname) {
         url.searchParams.set('nickname', params.nickname);
     }
-    if (params.token) {
-        url.hash = `token=${encodeURIComponent(params.token)}`;
+    if (params.handoff) {
+        url.searchParams.set('handoff', params.handoff);
     }
 
     let responseUrl: string | undefined;
@@ -79,7 +83,11 @@ export async function registerPasskey(nickname?: string): Promise<boolean> {
         throw new Error('Sign in before adding a passkey');
     }
 
-    const params = await openPasskeyPage({ mode: 'register', nickname, token });
+    // The page holds no session, so trade our JWT for a grant that can do one
+    // thing, once, for two minutes.
+    const { code } = await API.createPasskeyHandoff();
+
+    const params = await openPasskeyPage({ mode: 'register', nickname, handoff: code });
     if (!params) {
         return false;
     }
