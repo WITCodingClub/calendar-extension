@@ -1,3 +1,4 @@
+import { openCenteredAuthWindow } from './authWindow';
 import { EnvironmentManager } from './environment';
 
 /**
@@ -10,9 +11,9 @@ import { EnvironmentManager } from './environment';
  *
  * chrome.identity.getAuthToken is deliberately not used: it returns a token for
  * whichever account the browser profile is signed into, which for most students
- * is their personal one. launchWebAuthFlow runs the flow against the browser's
- * Google session instead, so the student can pick the WIT account they are
- * already signed into for LeopardWeb.
+ * is their personal one. The OAuth popup runs against the browser's Google
+ * session instead, so the student can pick the WIT account they are already
+ * signed into for LeopardWeb.
  *
  * The flow is authorization code with PKCE, and it stops at the code. Google
  * wants a client_secret at its token endpoint for a Web application client, and
@@ -93,17 +94,11 @@ export async function getWitGoogleAuthCode(loginHint?: string): Promise<WitGoogl
         url.searchParams.set('login_hint', loginHint);
     }
 
-    const responseUrl = await chrome.identity.launchWebAuthFlow({
-        url: url.toString(),
-        interactive: true
-    });
+    const params = await openCenteredAuthWindow(url.toString());
 
-    if (!responseUrl) {
+    if (!params) {
         throw new Error('Google sign-in was closed before it finished');
     }
-
-    // The code flow returns its result in the query string, not the fragment.
-    const params = new URL(responseUrl).searchParams;
 
     const error = params.get('error');
     if (error) {

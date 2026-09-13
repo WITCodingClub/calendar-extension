@@ -1,40 +1,21 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
     import { API } from '$lib/api';
+    import { continueAfterSignIn } from '$lib/afterSignIn';
     import { Button, LoadingIndicator, snackbar } from 'm3-svelte';
     import ErrorNotice from '$lib/components/ErrorNotice.svelte';
     import { onMount } from 'svelte';
     import { EnvironmentManager } from '$lib/environment';
     import { createWitTab } from '$lib/witTab';
     import { getWitGoogleAuthCode } from '$lib/witGoogleAuth';
-    import { passkeysSupported, signInWithPasskey } from '$lib/passkeys';
 
     let schoolEmail = $state('');
-    let preferredName = $state('');
     let error = $state<string | null>(null);
-    let canUsePasskeys = $state(false);
-    let isUsingPasskey = $state(false);
 
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
-        canUsePasskeys = await passkeysSupported();
         fetchSchoolEmail();
     });
-
-    async function tryPasskey() {
-        isUsingPasskey = true;
-        try {
-            if (await signInWithPasskey()) {
-                goto('/onboard');
-                return;
-            }
-        } catch (err) {
-            console.error('Passkey sign-in error:', err);
-            snackbar('Could not sign in with a passkey: ' + err, undefined, true);
-        } finally {
-            isUsingPasskey = false;
-        }
-    }
 
     function waitForComplete(tabId: number) {
         return new Promise<void>((resolve, reject) => {
@@ -71,7 +52,6 @@
     }
 
     async function fetchSchoolEmail() {
-        const preferredNameUrl = 'https://selfservice.wit.edu/BannerGeneralSsb/ssb/PersonalInformationDetails/getPreferredName';
         const emailsUrl = 'https://selfservice.wit.edu/BannerGeneralSsb/ssb/PersonalInformationDetails/getEmails';
         const witHtmlUrl = 'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory';
         const isFirefox = navigator.userAgent.includes('Firefox');
@@ -83,10 +63,10 @@
             error = null;
 
             const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!isFirefox && currentTab?.url === preferredNameUrl) {
+            if (!isFirefox && currentTab?.url === emailsUrl) {
                 tabToUse = currentTab;
             } else {
-                tabToUse = await createWitTab(preferredNameUrl);
+                tabToUse = await createWitTab(emailsUrl);
                 createdNewTab = true;
                 await waitForComplete(tabToUse.id!);
             }
@@ -109,10 +89,6 @@
                     return;
                 }
             }
-
-            const preferredData = await pageFetch(tabToUse.id, preferredNameUrl);
-            if (preferredData.preferredName) preferredName = preferredData.preferredName;
-            if (preferredData.error) throw new Error(preferredData.error);
 
             const data = await pageFetch(tabToUse.id, emailsUrl);
             if (data.error) throw new Error(data.error);
@@ -170,7 +146,6 @@
                     google_auth_code: auth.code,
                     code_verifier: auth.codeVerifier,
                     redirect_uri: auth.redirectUri,
-                    preferred_name: preferredName,
                     email: schoolEmail
                 }),
                 headers: {
@@ -207,8 +182,7 @@
                 await EnvironmentManager.setJwtToken(data.jwt);
             }
 
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            await goto('/onboard');
+            await continueAfterSignIn();
         } catch (err) {
             console.error('Sign in error:', err);
             error = 'Server is (probably) down!';
@@ -219,33 +193,21 @@
 
 <div class="flex flex-col items-center justify-center min-h-screen w-full px-4">
     <div class=" rounded-lg shadow-md p-8 flex flex-col items-center peak {error ? 'bg-error' : 'bg-surface-container-high'}">
-        {#snippet passkeyButton()}
-            {#if canUsePasskeys}
-                <Button variant="text" square onclick={tryPasskey} disabled={isUsingPasskey}>
-                    {isUsingPasskey ? 'Waiting…' : 'Use a passkey instead'}
-                </Button>
-            {/if}
-        {/snippet}
         {#if error == 'not_logged_in'}
             <ErrorNotice title="Not logged in to WIT!" error="Please sign in to " includeStatusLink={false} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
-            {@render passkeyButton()}
         {:else if error == 'google_signin_failed'}
             <ErrorNotice title="Google sign-in failed" error="We couldn't sign you in with Google. Please try again." includeStatusLink={false} />
             <Button variant="elevated" square onclick={() => signIn()}>Try Again</Button>
-            {@render passkeyButton()}
         {:else if error == 'wit_account_required'}
             <ErrorNotice title="Use your WIT account" error="Sign in with your @wit.edu Google account. You can connect a personal Google account for calendar sync afterwards." includeStatusLink={false} />
             <Button variant="elevated" square onclick={() => signIn()}>Pick a different account</Button>
-            {@render passkeyButton()}
         {:else if error}
             <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
-            {@render passkeyButton()}
         {:else}
             <h1 class="text-3xl font-extrabold text-center text-primary mb-6">Signing in!</h1>
             <LoadingIndicator size={64} />
-            {@render passkeyButton()}
         {/if}
     </div>
 </div>

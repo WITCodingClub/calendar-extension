@@ -1,4 +1,5 @@
 import { API } from './api';
+import { openCenteredAuthWindow } from './authWindow';
 import { EnvironmentManager } from './environment';
 
 /**
@@ -10,7 +11,7 @@ import { EnvironmentManager } from './environment';
  * in with Google at least once.
  *
  * The ceremony runs on /passkey on the site, not in this origin. This opens
- * that page with launchWebAuthFlow. On sign-in the page redirects back with a
+ * that page in a centered popup. On sign-in the page redirects back with a
  * short-lived code, which is traded for a JWT. On register it redirects with
  * ok=1 once the key is stored.
  *
@@ -40,7 +41,10 @@ export interface PasskeySummary {
 }
 
 export async function passkeysSupported(): Promise<boolean> {
-    return typeof chrome !== 'undefined' && !!chrome.identity?.launchWebAuthFlow;
+    return typeof chrome !== 'undefined'
+        && !!chrome.windows?.create
+        && !!chrome.tabs?.onUpdated
+        && !!chrome.identity?.getRedirectURL;
 }
 
 async function openPasskeyPage(params: {
@@ -60,21 +64,11 @@ async function openPasskeyPage(params: {
         url.searchParams.set('handoff', params.handoff);
     }
 
-    let responseUrl: string | undefined;
     try {
-        responseUrl = await chrome.identity.launchWebAuthFlow({
-            url: url.toString(),
-            interactive: true
-        });
+        return await openCenteredAuthWindow(url.toString());
     } catch {
         return null;
     }
-
-    if (!responseUrl) {
-        return null;
-    }
-
-    return new URL(responseUrl).searchParams;
 }
 
 export async function registerPasskey(nickname?: string): Promise<boolean> {
