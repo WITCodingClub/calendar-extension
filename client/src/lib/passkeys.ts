@@ -1,6 +1,5 @@
 import { API } from './api';
 import { EnvironmentManager } from './environment';
-import { base64UrlToBytes, bytesToBase64Url } from './witGoogleAuth';
 
 /**
  * Passkey sign-in for the extension.
@@ -10,41 +9,24 @@ import { base64UrlToBytes, bytesToBase64Url } from './witGoogleAuth';
  * needs a session, so a passkey can only belong to someone who already signed
  * in with Google at least once.
  *
- * Chrome 122 and later let an extension page claim a relying party id for any
- * domain in its host permissions. The manifest covers https://*.witcc.dev/*,
- * so the ceremony runs against the backend's own relying party id and the
- * credential is the same one the dashboard would create. The origin the
- * browser reports is chrome-extension://<id>, so that origin has to be in the
- * backend's WEBAUTHN_ORIGINS list.
+ * The ceremony runs on /passkey on the site, not in this origin. This opens
+ * that page with launchWebAuthFlow. On sign-in the page redirects back with a
+ * short-lived code, which is traded for a JWT. On register it redirects with
+ * ok=1 once the key is stored.
+ *
+ * Query the page understands:
+ *   mode          authenticate | register
+ *   redirect_uri  chrome.identity.getRedirectURL()
+ *   nickname      optional, register only
+ * Hash (register only, so the JWT is not in server logs):
+ *   #token=<jwt>
+ *
+ * Redirect back:
+ *   ?code=...              sign-in succeeded
+ *   ?ok=1                  register succeeded
+ *   ?error=cancelled       user dismissed, or no passkey here
+ *   ?error=...             anything else
  */
-
-/** A credential id as the backend sends it: base64url, not a buffer. */
-interface EncodedCredentialDescriptor {
-    type: string;
-    id: string;
-    transports?: string[];
-}
-
-/**
- * The options the backend returns, with every binary field still base64url
- * encoded. The unlisted fields (rp, pubKeyCredParams, timeout, and so on) pass
- * straight through to the browser untouched.
- */
-interface EncodedOptions {
-    challenge: string;
-    user?: { id: string; name: string; displayName: string };
-    excludeCredentials?: EncodedCredentialDescriptor[];
-    allowCredentials?: EncodedCredentialDescriptor[];
-    [key: string]: unknown;
-}
-
-interface CeremonyStart {
-    handle: string;
-    options: EncodedOptions;
-}
-
-/** How long sign-in waits for the authenticator before falling back to Google. */
-const SIGN_IN_TIMEOUT_MS = 60_000;
 
 export interface PasskeySummary {
     id: string;
@@ -53,133 +35,85 @@ export interface PasskeySummary {
     last_used_at: string | null;
 }
 
-/**
- * Firefox gives each installation a random moz-extension:// origin, so there is
- * no fixed origin for the backend to allow. Until that changes, passkeys are
- * Chromium only and Firefox keeps the Google flow.
- */
-function originCanBeAllowlisted(): boolean {
-    return location.protocol !== 'moz-extension:';
-}
-
-/** Can this browser run the ceremony at all, including hardware keys? */
 export async function passkeysSupported(): Promise<boolean> {
-    return typeof PublicKeyCredential !== 'undefined'
-        && !!navigator.credentials
-        && originCanBeAllowlisted();
+    return typeof chrome !== 'undefined' && !!chrome.identity?.launchWebAuthFlow;
 }
 
-/**
- * Registers a passkey for the signed-in user. Requires a JWT, so call it only
- * after onboarding has succeeded.
- */
-export async function registerPasskey(nickname?: string): Promise<PasskeySummary> {
+async function openPasskeyPage(params: {
+    mode: 'authenticate' | 'register';
+    nickname?: string;
+    token?: string;
+}): Promise<URLSearchParams | null> {
+    const site = await EnvironmentManager.getBaseUrl();
+    const redirectUri = chrome.identity.getRedirectURL();
+    const url = new URL(`${site}/passkey`);
+    url.searchParams.set('mode', params.mode);
+    url.searchParams.set('redirect_uri', redirectUri);
+    if (params.nickname) {
+        url.searchParams.set('nickname', params.nickname);
+    }
+    if (params.token) {
+        url.hash = `token=${encodeURIComponent(params.token)}`;
+    }
+
+    let responseUrl: string | undefined;
+    try {
+        responseUrl = await chrome.identity.launchWebAuthFlow({
+            url: url.toString(),
+            interactive: true
+        });
+    } catch {
+        return null;
+    }
+
+    if (!responseUrl) {
+        return null;
+    }
+
+    return new URL(responseUrl).searchParams;
+}
+
+export async function registerPasskey(nickname?: string): Promise<boolean> {
     const token = await API.getJwtToken();
     if (!token) {
         throw new Error('Sign in before adding a passkey');
     }
 
-    const { handle, options } = await API.startPasskeyRegistration() as CeremonyStart;
-
-    // The backend sends every binary field base64url encoded; the browser wants
-    // buffers. The rest of the options pass straight through.
-    const publicKey = {
-        ...options,
-        challenge: base64UrlToBytes(options.challenge),
-        user: {
-            ...options.user!,
-            id: base64UrlToBytes(options.user!.id)
-        },
-        excludeCredentials: (options.excludeCredentials ?? []).map((c) => ({
-            ...c,
-            id: base64UrlToBytes(c.id)
-        }))
-    } as PublicKeyCredentialCreationOptions;
-
-    const credential = await navigator.credentials.create({ publicKey }) as PublicKeyCredential | null;
-
-    if (!credential) {
-        throw new Error('No passkey was created');
-    }
-
-    const attestation = credential.response as AuthenticatorAttestationResponse;
-    const data = await API.createPasskey({
-        handle,
-        nickname,
-        credential: {
-            type: credential.type,
-            id: credential.id,
-            rawId: bytesToBase64Url(credential.rawId),
-            authenticatorAttachment: credential.authenticatorAttachment,
-            response: {
-                attestationObject: bytesToBase64Url(attestation.attestationObject),
-                clientDataJSON: bytesToBase64Url(attestation.clientDataJSON)
-            }
-        }
-    });
-
-    return data.passkey;
-}
-
-/**
- * Signs in with a passkey and stores the JWT it returns.
- *
- * Returns false when the user has no passkey for this site or dismisses the
- * prompt, which is the signal to fall back to the Google flow. It throws only
- * when something actually went wrong.
- */
-export async function signInWithPasskey(): Promise<boolean> {
-    const { handle, options } = await API.startPasskeyAuthentication() as CeremonyStart;
-
-    const publicKey = {
-        ...options,
-        challenge: base64UrlToBytes(options.challenge),
-        allowCredentials: (options.allowCredentials ?? []).map((c) => ({
-            ...c,
-            id: base64UrlToBytes(c.id)
-        }))
-    } as PublicKeyCredentialRequestOptions;
-
-    // This runs before onboarding, so a browser that never answers must not
-    // leave the student staring at a spinner. Give up and let Google take over.
-    const abort = new AbortController();
-    const giveUp = setTimeout(() => abort.abort(), SIGN_IN_TIMEOUT_MS);
-
-    let credential: PublicKeyCredential | null;
-    try {
-        credential = await navigator.credentials.get({ publicKey, signal: abort.signal }) as PublicKeyCredential | null;
-    } catch (err) {
-        // NotAllowedError covers both "no passkey here" and "user closed the
-        // prompt". Neither is an error worth showing — fall back to Google.
-        if (err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'AbortError')) {
-            return false;
-        }
-        throw err;
-    } finally {
-        clearTimeout(giveUp);
-    }
-
-    if (!credential) {
+    const params = await openPasskeyPage({ mode: 'register', nickname, token });
+    if (!params) {
         return false;
     }
 
-    const assertion = credential.response as AuthenticatorAssertionResponse;
-    const data = await API.authenticatePasskey({
-        handle,
-        credential: {
-            type: credential.type,
-            id: credential.id,
-            rawId: bytesToBase64Url(credential.rawId),
-            authenticatorAttachment: credential.authenticatorAttachment,
-            response: {
-                authenticatorData: bytesToBase64Url(assertion.authenticatorData),
-                clientDataJSON: bytesToBase64Url(assertion.clientDataJSON),
-                signature: bytesToBase64Url(assertion.signature),
-                userHandle: assertion.userHandle ? bytesToBase64Url(assertion.userHandle) : null
-            }
-        }
-    });
+    const error = params.get('error');
+    if (error === 'cancelled') {
+        return false;
+    }
+    if (error) {
+        throw new Error(error);
+    }
+    if (params.get('ok') !== '1') {
+        throw new Error('No passkey was created');
+    }
 
+    return true;
+}
+
+export async function signInWithPasskey(): Promise<boolean> {
+    const params = await openPasskeyPage({ mode: 'authenticate' });
+    if (!params) {
+        return false;
+    }
+
+    if (params.get('error')) {
+        return false;
+    }
+
+    const code = params.get('code');
+    if (!code) {
+        return false;
+    }
+
+    const data = await API.exchangePasskeyCode(code);
     if (!data.jwt) {
         return false;
     }
@@ -188,13 +122,11 @@ export async function signInWithPasskey(): Promise<boolean> {
     return true;
 }
 
-/** Lists the passkeys on the signed-in account. */
 export async function listPasskeys(): Promise<PasskeySummary[]> {
     const data = await API.listPasskeys();
     return data.passkeys;
 }
 
-/** Removes one passkey from the signed-in account. */
 export async function removePasskey(passkeyId: string): Promise<void> {
     await API.deletePasskey(passkeyId);
 }

@@ -75,7 +75,10 @@
     async function addPasskey() {
         isAddingPasskey = true;
         try {
-            await registerPasskey(newPasskeyName.trim() || undefined);
+            const added = await registerPasskey(newPasskeyName.trim() || undefined);
+            if (!added) {
+                return;
+            }
             newPasskeyName = "";
             await loadPasskeys();
             snackbar("Passkey added");

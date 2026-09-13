@@ -591,55 +591,12 @@ export class API {
         }
     }
 
-    public static async startPasskeyRegistration(): Promise<{ handle: string; options: any }> {
+    public static async exchangePasskeyCode(code: string): Promise<{ jwt?: string }> {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/user/passkeys/registration_options`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${await this.getJwtToken()}`
-            }
-        });
-        if (!response.ok) {
-            throw new Error(`Could not start the passkey step (${response.status})`);
-        }
-        return response.json();
-    }
-
-    public static async startPasskeyAuthentication(): Promise<{ handle: string; options: any }> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/user/passkeys/authentication_options`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (!response.ok) {
-            throw new Error(`Could not start the passkey step (${response.status})`);
-        }
-        return response.json();
-    }
-
-    public static async createPasskey(body: unknown): Promise<{ passkey: PasskeySummary }> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/user/passkeys`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${await this.getJwtToken()}`
-            },
-            body: JSON.stringify(body)
-        });
-        if (!response.ok) {
-            throw new Error(`Could not save the passkey (${response.status})`);
-        }
-        return response.json();
-    }
-
-    public static async authenticatePasskey(body: unknown): Promise<{ jwt?: string }> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/user/passkeys/authenticate`, {
+        const response = await fetch(`${baseUrl}/user/passkeys/exchange`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            body: JSON.stringify({ code })
         });
         if (response.status === 401) {
             return {};
