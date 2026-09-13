@@ -1,22 +1,45 @@
 <script lang="ts">
-    import { Button } from 'm3-svelte';
-    import { goto } from '$app/navigation';
+    import { Button, snackbar } from 'm3-svelte';
     import { onMount } from 'svelte';
     import { API } from '$lib/api';
+    import { continueAfterSignIn } from '$lib/afterSignIn';
+    import SignInWithGoogleButton from '$lib/components/SignInWithGoogleButton.svelte';
+    import { passkeysSupported, signInWithPasskey } from '$lib/passkeys';
+    import { goto } from '$app/navigation';
+
+    let canUsePasskeys = $state(false);
+    let isUsingPasskey = $state(false);
 
     onMount(() => {
         checkIfLoggedIn();
+        passkeysSupported().then((supported) => {
+            canUsePasskeys = supported;
+        });
     });
 
     async function checkIfLoggedIn() {
         const jwt_token = await API.getJwtToken();
         if (jwt_token) {
-            goto('/onboard');
+            await continueAfterSignIn();
         }
     }
 
-    async function signIn() {
+    function signInWithGoogle() {
         goto('/loading');
+    }
+
+    async function tryPasskey() {
+        isUsingPasskey = true;
+        try {
+            if (await signInWithPasskey()) {
+                await continueAfterSignIn();
+            }
+        } catch (err) {
+            console.error('Passkey sign-in error:', err);
+            snackbar('Could not sign in with a passkey: ' + err, undefined, true);
+        } finally {
+            isUsingPasskey = false;
+        }
     }
 </script>
 
@@ -48,8 +71,15 @@
             </li>
         </ul>
     </div>
-    <div class="flex justify-center items-center peak">
-        <Button onclick={signIn} variant="filled" square>Let's start!</Button>
+    <div class="flex flex-col justify-center items-center gap-3">
+        <SignInWithGoogleButton onclick={signInWithGoogle} disabled={isUsingPasskey} />
+        {#if canUsePasskeys}
+            <div class="peak">
+                <Button variant="text" square onclick={tryPasskey} disabled={isUsingPasskey}>
+                    {isUsingPasskey ? 'Waiting…' : 'Sign in with a passkey'}
+                </Button>
+            </div>
+        {/if}
     </div>
 </div>
 
@@ -78,5 +108,6 @@
 
     :global(.peak button) {
         height: 3rem !important;
+        min-width: 280px;
     }
 </style>

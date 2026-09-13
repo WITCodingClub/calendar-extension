@@ -1,14 +1,15 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
     import { API } from '$lib/api';
+    import { continueAfterSignIn } from '$lib/afterSignIn';
     import { Button, LoadingIndicator, snackbar } from 'm3-svelte';
     import ErrorNotice from '$lib/components/ErrorNotice.svelte';
     import { onMount } from 'svelte';
     import { EnvironmentManager } from '$lib/environment';
     import { createWitTab } from '$lib/witTab';
+    import { getWitGoogleAuthCode } from '$lib/witGoogleAuth';
 
     let schoolEmail = $state('');
-    let preferredName = $state('');
     let error = $state<string | null>(null);
 
     onMount(async () => {
@@ -51,7 +52,6 @@
     }
 
     async function fetchSchoolEmail() {
-        const preferredNameUrl = 'https://selfservice.wit.edu/BannerGeneralSsb/ssb/PersonalInformationDetails/getPreferredName';
         const emailsUrl = 'https://selfservice.wit.edu/BannerGeneralSsb/ssb/PersonalInformationDetails/getEmails';
         const witHtmlUrl = 'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory';
         const isFirefox = navigator.userAgent.includes('Firefox');
@@ -63,10 +63,10 @@
             error = null;
 
             const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!isFirefox && currentTab?.url === preferredNameUrl) {
+            if (!isFirefox && currentTab?.url === emailsUrl) {
                 tabToUse = currentTab;
             } else {
-                tabToUse = await createWitTab(preferredNameUrl);
+                tabToUse = await createWitTab(emailsUrl);
                 createdNewTab = true;
                 await waitForComplete(tabToUse.id!);
             }
@@ -89,10 +89,6 @@
                     return;
                 }
             }
-
-            const preferredData = await pageFetch(tabToUse.id, preferredNameUrl);
-            if (preferredData.preferredName) preferredName = preferredData.preferredName;
-            if (preferredData.error) throw new Error(preferredData.error);
 
             const data = await pageFetch(tabToUse.id, emailsUrl);
             if (data.error) throw new Error(data.error);
@@ -124,15 +120,49 @@
     }
 
     async function signIn() {
+        let auth: Awaited<ReturnType<typeof getWitGoogleAuthCode>>;
+        try {
+            auth = await getWitGoogleAuthCode(schoolEmail || undefined);
+        } catch (err) {
+            console.error('Google auth error:', err);
+            error = 'google_signin_failed';
+            snackbar('Could not sign in with Google: ' + err, undefined, true);
+            return;
+        }
+
         try {
             const baseUrl = await API.baseUrl;
             const response = await fetch(`${baseUrl}/user/onboard`, {
                 method: 'POST',
-                body: JSON.stringify({email: schoolEmail, preferred_name: preferredName}),
+                // The backend finishes the exchange: Google wants a client_secret
+                // for this client, and a published extension cannot keep one.
+                //
+                // `email` is here only so this release also works against the
+                // backend that is live today, which still requires it and knows
+                // nothing of the code. The new backend ignores it and reads the
+                // address from the verified token instead. Drop this field once
+                // calendar-backend#493 has shipped everywhere.
+                body: JSON.stringify({
+                    google_auth_code: auth.code,
+                    code_verifier: auth.codeVerifier,
+                    redirect_uri: auth.redirectUri,
+                    email: schoolEmail
+                }),
                 headers: {
                     'Content-Type': 'application/json'
                 }
             });
+
+            // The backend refuses anything but a WIT account. Say so plainly,
+            // because the fix is for the student to pick a different account
+            // rather than to try again with the same one.
+            if (response.status === 403) {
+                const body = await response.json().catch(() => ({})) as { code?: string };
+                if (body.code === 'WIT_ACCOUNT_REQUIRED') {
+                    error = 'wit_account_required';
+                    return;
+                }
+            }
 
             if (!response.ok) {
                 const responseText = await response.text();
@@ -152,8 +182,7 @@
                 await EnvironmentManager.setJwtToken(data.jwt);
             }
 
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            await goto('/onboard');
+            await continueAfterSignIn({ offerPasskey: true });
         } catch (err) {
             console.error('Sign in error:', err);
             error = 'Server is (probably) down!';
@@ -167,6 +196,12 @@
         {#if error == 'not_logged_in'}
             <ErrorNotice title="Not logged in to WIT!" error="Please sign in to " includeStatusLink={false} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
+        {:else if error == 'google_signin_failed'}
+            <ErrorNotice title="Google sign-in failed" error="We couldn't sign you in with Google. Please try again." includeStatusLink={false} />
+            <Button variant="elevated" square onclick={() => signIn()}>Try Again</Button>
+        {:else if error == 'wit_account_required'}
+            <ErrorNotice title="Use your WIT account" error="Sign in with your @wit.edu Google account. You can connect a personal Google account for calendar sync afterwards." includeStatusLink={false} />
+            <Button variant="elevated" square onclick={() => signIn()}>Pick a different account</Button>
         {:else if error}
             <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>

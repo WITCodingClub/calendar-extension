@@ -1,6 +1,10 @@
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const geckoId = 'wit-calendar@witcc.dev';
+const firefoxRedirectUrl = `https://${createHash('sha1').update(geckoId).digest('hex')}.extensions.allizom.org/*`;
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const extDir = join(scriptDir, '..', 'extension');
@@ -24,6 +28,11 @@ for (const permission of ['cookies', 'contextualIdentities']) {
 		manifest.permissions.push(permission);
 	}
 }
+const hostPermissions = manifest.host_permissions ?? [];
+if (!hostPermissions.includes(firefoxRedirectUrl)) {
+	hostPermissions.push(firefoxRedirectUrl);
+}
+manifest.host_permissions = hostPermissions;
 manifest.sidebar_action = {
 	default_title: manifest.name,
 	default_panel: 'index.html',
@@ -36,7 +45,7 @@ manifest.action = {
 manifest.background = { scripts: ['service-worker.js'] };
 manifest.browser_specific_settings = {
 	gecko: {
-		id: 'wit-calendar@witcc.dev',
+		id: geckoId,
 		strict_min_version: '140.0',
 		data_collection_permissions: {
 			required: ['personallyIdentifyingInfo', 'authenticationInfo', 'websiteContent']

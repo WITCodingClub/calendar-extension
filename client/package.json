@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "build-dev": "vite build && node scripts/patch-dev.js",
     "build-firefox": "vite build && node scripts/patch-firefox.js",
+    "patch-dev": "node scripts/patch-dev.js",
     "patch-firefox": "node scripts/patch-firefox.js",
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",

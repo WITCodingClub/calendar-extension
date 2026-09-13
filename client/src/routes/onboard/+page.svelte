@@ -3,11 +3,28 @@
     import { goto } from '$app/navigation'; 
     import { onMount } from 'svelte';
     import { browser } from '$app/environment';
+    import { API } from '$lib/api';
 
     async function checkGcalStatus() {
         const oauth_email = await chrome.storage.local.get('oauth_email');
         if (oauth_email.oauth_email !== undefined && oauth_email.oauth_email !== '') {
             goto('/calendar');
+            return;
+        }
+
+        try {
+            const accounts = await API.getConnectedAccounts();
+            const connected = accounts.oauth_credentials?.find(
+                (account) =>
+                    account.email &&
+                    !account.token_revoked &&
+                    account.has_calendar !== false
+            );
+            if (connected) {
+                await chrome.storage.local.set({ oauth_email: connected.email });
+                goto('/calendar');
+            }
+        } catch {
         }
     }
 
