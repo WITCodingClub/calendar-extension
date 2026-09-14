@@ -102,72 +102,86 @@
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
 
-        // Load feature flags independently so flag-gated UI shows even if other API calls fail
-        await featureFlags.loadFlags();
-        showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
+        // None of these requests depend on each other, so send them together
+        // instead of one after another. Each one handles its own failure.
+        await Promise.all([
+            // Feature flags load on their own so flag-gated UI shows even if other API calls fail
+            featureFlags.loadFlags().then(() => {
+                showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
+            }),
 
-        if (await passkeysSupported()) {
-            try {
-                await loadPasskeys();
-                canUsePasskeys = true;
-            } catch {
-                canUsePasskeys = false;
-            }
-        }
-
-        try {
-            // Load settings in parallel
-            const [userSettingsData, emailData] = await Promise.all([
-                API.userSettings(),
-                API.getUserEmail()
-            ]);
-
-            userSettings = userSettingsData;
-            storedUserSettings.set(userSettings);
-            email = emailData.email;
-
-            // Fetch notification DND status
-            try {
-                const status = await API.getNotificationStatus();
-                notificationsDisabled = status.notifications_disabled;
-            } catch (e) {
-                // DND status might not be available, that's okay
-            }
-
-            // Fetch connected accounts
-            try {
-                const accounts = await API.getConnectedAccounts();
-                connectedAccounts = accounts.oauth_credentials || [];
-            } catch (e) {
-                console.error('Failed to fetch connected accounts:', e);
-            }
-
-            // Fetch uni cal color preference
-            try {
-                const calPrefs = await API.getCalendarPreferences();
-                // The uni_cal preference covers the whole university calendar. Fall
-                // back to a category color for users saved before issue #498, whose
-                // color still sits on the per-category preferences.
-                const firstCategory = Object.values(calPrefs.uni_cal_categories || {})[0];
-                const storedColorId = calPrefs.uni_cal_global?.color_id ?? firstCategory?.color_id;
-                if (storedColorId) {
-                    const colorId = String(storedColorId);
-                    const resolvedColor = COLOR_ID_TO_HEX[colorId];
-                    if (resolvedColor) {
-                        uniCalColor = resolvedColor;
-                        if (browser) {
-                            localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, resolvedColor);
-                        }
+            (async () => {
+                if (await passkeysSupported()) {
+                    try {
+                        await loadPasskeys();
+                        canUsePasskeys = true;
+                    } catch {
+                        canUsePasskeys = false;
                     }
                 }
-            } catch (e) {
-                // Calendar preferences might not exist yet, that's okay
-            } finally {
-                hasLoadedUniCalColor = true;
-            }
-        } catch (error) {
-            console.error('Failed to load settings:', error);
-        }
+            })(),
+
+            (async () => {
+                try {
+                    const [userSettingsData, emailData] = await Promise.all([
+                        API.userSettings(),
+                        API.getUserEmail()
+                    ]);
+
+                    userSettings = userSettingsData;
+                    storedUserSettings.set(userSettings);
+                    email = emailData.email;
+                } catch (error) {
+                    console.error('Failed to load settings:', error);
+                }
+            })(),
+
+            // Fetch notification DND status
+            (async () => {
+                try {
+                    const status = await API.getNotificationStatus();
+                    notificationsDisabled = status.notifications_disabled;
+                } catch (e) {
+                    // DND status might not be available, that's okay
+                }
+            })(),
+
+            // Fetch connected accounts
+            (async () => {
+                try {
+                    const accounts = await API.getConnectedAccounts();
+                    connectedAccounts = accounts.oauth_credentials || [];
+                } catch (e) {
+                    console.error('Failed to fetch connected accounts:', e);
+                }
+            })(),
+
+            // Fetch uni cal color preference
+            (async () => {
+                try {
+                    const calPrefs = await API.getCalendarPreferences();
+                    // The uni_cal preference covers the whole university calendar. Fall
+                    // back to a category color for users saved before issue #498, whose
+                    // color still sits on the per-category preferences.
+                    const firstCategory = Object.values(calPrefs.uni_cal_categories || {})[0];
+                    const storedColorId = calPrefs.uni_cal_global?.color_id ?? firstCategory?.color_id;
+                    if (storedColorId) {
+                        const colorId = String(storedColorId);
+                        const resolvedColor = COLOR_ID_TO_HEX[colorId];
+                        if (resolvedColor) {
+                            uniCalColor = resolvedColor;
+                            if (browser) {
+                                localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, resolvedColor);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Calendar preferences might not exist yet, that's okay
+                } finally {
+                    hasLoadedUniCalColor = true;
+                }
+            })()
+        ]);
 
         currentEnvironment = await EnvironmentManager.getCurrentEnvironment();
         authenticatedEnvironments = await EnvironmentManager.getAuthenticatedEnvironments();
