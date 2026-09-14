@@ -23,7 +23,7 @@
                 chrome.tabs.onUpdated.removeListener(listener);
                 reject(new Error('Timed out waiting for WIT page to load. Are you connected to the internet?'));
             }, 15000);
-            const listener = (id: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+            const listener = (id: number, changeInfo: { status?: string }) => {
                 if (id === tabId && changeInfo.status === 'complete') {
                     chrome.tabs.onUpdated.removeListener(listener);
                     clearTimeout(timeout);

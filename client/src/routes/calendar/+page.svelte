@@ -14,6 +14,13 @@
     import { snackbar } from 'm3-svelte';
     import { createWitTab } from '$lib/witTab';
 
+    type RegistrationsLookupResult =
+        | { error: string }
+        | { termOptions: Array<{ id: string; name: string }>; registrations: unknown[]; usedTermId: string };
+    type RegistrationEventsLookupResult =
+        | { error: string }
+        | { termOptions: Array<{ id: string; name: string }>; events: unknown };
+
 	let selected: string | undefined = $state(undefined);
 	let responseData: ResponseData | undefined = $derived($storedProcessedData.find((d) => String(d.termId) === selected)?.responseData);
     let jwt_token: string | undefined = $state(undefined);
@@ -382,7 +389,7 @@
                 if (!openedTabId) return;
 
                 await new Promise<void>((resolve) => {
-                    const listener = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+                    const listener = (tabId: number, changeInfo: { status?: string }) => {
                         if (tabId === tabToUse!.id && changeInfo.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
                             resolve();
@@ -405,10 +412,10 @@
             const results = await chrome.scripting.executeScript({
                 target: { tabId: tabToUse.id },
                 world: 'MAIN',
-                func: async (termIdArg) => {
+                func: async (termIdArg: string): Promise<RegistrationsLookupResult> => {
                     try {
                         // Extract the student's enrolled terms from the page dropdown
-                        const select = document.querySelector('#lookupFilter');
+                        const select = document.querySelector<HTMLSelectElement>('#lookupFilter');
                         const termOptions = select
                             ? Array.from(select.options).map(o => ({ id: o.value, name: o.text.trim() }))
                             : [];
@@ -444,9 +451,11 @@
                 args: [termId ?? '']
             });
 
-            const result = results[0]?.result ?? {};
-
-            if (result?.error) {
+            const result = results[0]?.result;
+            if (!result) {
+                throw new Error('Unexpected response from LeopardWeb');
+            }
+            if ('error' in result) {
                 throw new Error(result.error);
             }
 
@@ -709,10 +718,10 @@
             const results = await chrome.scripting.executeScript({
                 target: { tabId: tabToUse.id },
                 world: 'MAIN',
-                func: async () => {
+                func: async (): Promise<RegistrationEventsLookupResult> => {
                     try {
                         // Extract enrolled terms from the page dropdown
-                        const select = document.querySelector('#lookupFilter');
+                        const select = document.querySelector<HTMLSelectElement>('#lookupFilter');
                         const termOptions = select
                             ? Array.from(select.options).map(o => ({ id: o.value, name: o.text.trim() }))
                             : [];
@@ -734,9 +743,11 @@
                 await chrome.tabs.remove(tabToUse.id);
             }
 
-            const refreshResult = results[0]?.result ?? {};
-
-            if (refreshResult?.error) {
+            const refreshResult = results[0]?.result;
+            if (!refreshResult) {
+                throw new Error('Unexpected response from LeopardWeb');
+            }
+            if ('error' in refreshResult) {
                 throw new Error(refreshResult.error);
             }
 
@@ -1076,7 +1087,7 @@
         } else if (displayTerms.length > 0 && !displayTerms.some(t => t?.id === selected)) {
             const currentId = terms?.current_term?.id != null ? String(terms.current_term.id) : undefined;
             const preferred =
-                (currentId && displayTerms.find(t => t.id === currentId)) ??
+                (currentId ? displayTerms.find(t => t.id === currentId) : undefined) ??
                 displayTerms[0];
             if (preferred?.id) selected = preferred.id;
         }
