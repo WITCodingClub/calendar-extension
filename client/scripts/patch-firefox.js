@@ -123,15 +123,66 @@ function extractInlineScripts(dir) {
 	}
 }
 
+const firefoxWindowsCreateShim = `async function __ffCookieStoreId(url) {
+	const href = Array.isArray(url) ? url[0] : url;
+	try {
+		if (typeof href === 'string') {
+			const host = new URL(href, 'https://invalid.invalid').hostname;
+			if (host && host !== 'invalid.invalid') {
+				const tabs = await chrome.tabs.query({});
+				const match = tabs.find((tab) => tab.cookieStoreId && tab.url && tab.url.includes(host));
+				if (match) return match.cookieStoreId;
+			}
+		}
+	} catch {}
+	try {
+		const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+		if (tab && tab.cookieStoreId) return tab.cookieStoreId;
+	} catch {}
+	return 'firefox-default';
+}
+function __ffWindowsCreate(createData, callback) {
+	if (typeof createData === 'function') {
+		callback = createData;
+		createData = {};
+	}
+	const promise = (async () => {
+		const data = { ...(createData || {}) };
+		if (!data.cookieStoreId) {
+			try {
+				data.cookieStoreId = await __ffCookieStoreId(data.url);
+			} catch {}
+		}
+		try {
+			return await chrome.windows.create(data);
+		} catch (error) {
+			if (!data.cookieStoreId) throw error;
+			delete data.cookieStoreId;
+			return chrome.windows.create(data);
+		}
+	})();
+	if (typeof callback === 'function') {
+		promise.then((win) => callback(win), () => callback());
+		return;
+	}
+	return promise;
+}
+`;
+
 function patchBundledJs(dir) {
 	const immutableDir = join(dir, 'scripts', 'immutable');
 	if (!existsSync(immutableDir)) return;
 
 	for (const file of readdirSync(immutableDir).filter((name) => name.endsWith('.js'))) {
 		const filePath = join(immutableDir, file);
-		const source = readFileSync(filePath, 'utf8')
+		let source = readFileSync(filePath, 'utf8')
 			.replace(/\.innerHTML\s*=/g, '["innerHTML"] =')
 			.replace(/chrome\.identity\.getProfileUserInfo\s*\([^)]*\)/g, 'Promise.resolve({})');
+		if (/chrome\.windows\.create\s*\(/.test(source)) {
+			source =
+				firefoxWindowsCreateShim +
+				source.replace(/chrome\.windows\.create\s*\(/g, '__ffWindowsCreate(');
+		}
 		writeFileSync(filePath, source);
 	}
 }
