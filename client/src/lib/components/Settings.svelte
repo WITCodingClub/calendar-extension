@@ -10,7 +10,9 @@
     import type { UserSettings } from "$lib/types";
     import { listPasskeys, passkeysSupported, registerPasskey, removePasskey, type PasskeySummary } from "$lib/passkeys";
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
+    import { cacheGeneration, setSettingsCache, settingsCache, updateSettingsCache, type ConnectedAccount } from "$lib/sessionCache";
     import { onMount } from "svelte";
+    import { get } from "svelte/store";
 
     // Google Calendar color ID to hex mapping
     const COLOR_ID_TO_HEX: Record<string, string> = {
@@ -36,7 +38,7 @@
     let currentEnvironment = $state<Environment>('prod');
     let authenticatedEnvironments = $state<Environment[]>([]);
     let notificationsDisabled = $state(false);
-    let connectedAccounts = $state<Array<{id: string, email: string, provider: string, needs_reauth: boolean, token_revoked: boolean}>>([]);
+    let connectedAccounts = $state<ConnectedAccount[]>([]);
     let addEmailInput = $state("");
     let showEnvSwitcher = $state<boolean>(false);
     let isRefreshingFlags = $state<boolean>(false);
@@ -75,6 +77,7 @@
 
     async function loadPasskeys() {
         passkeys = await listPasskeys();
+        updateSettingsCache({ passkeys: $state.snapshot(passkeys) });
     }
 
     async function addPasskey() {
@@ -107,6 +110,34 @@
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
 
+        const cached = get(settingsCache);
+        if (cached) {
+            // This page already loaded since the panel opened. Show that data
+            // without new requests. The panel loads it again when it opens next.
+            email = cached.email;
+            notificationsDisabled = cached.notificationsDisabled;
+            connectedAccounts = cached.connectedAccounts;
+            canUsePasskeys = cached.canUsePasskeys;
+            passkeys = cached.passkeys;
+            uniCalColor = cached.uniCalColor;
+            hasLoadedUniCalColor = true;
+            // Feature flags keep their own in-memory cache, so this sends no request.
+            await featureFlags.loadFlags();
+            showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
+        } else {
+            await loadSettingsData();
+        }
+
+        currentEnvironment = await EnvironmentManager.getCurrentEnvironment();
+        authenticatedEnvironments = await EnvironmentManager.getAuthenticatedEnvironments();
+    });
+
+    async function loadSettingsData() {
+        const startedAt = cacheGeneration();
+        // Only a load where the main requests succeed goes into the cache.
+        // After a failure, the next visit to this page tries again.
+        let complete = true;
+
         // None of these requests depend on each other, so send them together
         // instead of one after another. Each one handles its own failure.
         await Promise.all([
@@ -122,6 +153,7 @@
                         canUsePasskeys = true;
                     } catch {
                         canUsePasskeys = false;
+                        complete = false;
                     }
                 }
             })(),
@@ -138,6 +170,7 @@
                     email = emailData.email;
                 } catch (error) {
                     console.error('Failed to load settings:', error);
+                    complete = false;
                 }
             })(),
 
@@ -158,6 +191,7 @@
                     connectedAccounts = accounts.oauth_credentials || [];
                 } catch (e) {
                     console.error('Failed to fetch connected accounts:', e);
+                    complete = false;
                 }
             })(),
 
@@ -188,9 +222,17 @@
             })()
         ]);
 
-        currentEnvironment = await EnvironmentManager.getCurrentEnvironment();
-        authenticatedEnvironments = await EnvironmentManager.getAuthenticatedEnvironments();
-    });
+        if (complete) {
+            setSettingsCache({
+                email,
+                notificationsDisabled,
+                connectedAccounts: $state.snapshot(connectedAccounts),
+                canUsePasskeys,
+                passkeys: $state.snapshot(passkeys),
+                uniCalColor,
+            }, startedAt);
+        }
+    }
 
     let defaultColorLecture = $derived(userSettings?.default_color_lecture ?? "");
     let defaultColorLab = $derived(userSettings?.default_color_lab ?? "");
@@ -274,6 +316,7 @@
             if (browser) {
                 localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, newColor);
             }
+            updateSettingsCache({ uniCalColor: newColor });
             snackbar('University events color updated', undefined, true);
         } catch (error) {
             console.error('Failed to update university events color:', error);
@@ -363,6 +406,7 @@
                 await API.enableNotifications();
                 snackbar('Notifications re-enabled', undefined, true);
             }
+            updateSettingsCache({ notificationsDisabled: disabled });
         } catch (e) {
             console.error('Failed to update notification settings:', e);
             snackbar('Failed to update notification settings', undefined, true);
@@ -402,6 +446,7 @@
                         try {
                             const accounts = await API.getConnectedAccounts();
                             connectedAccounts = accounts.oauth_credentials || [];
+                            updateSettingsCache({ connectedAccounts: $state.snapshot(connectedAccounts) });
                             snackbar('Account connected successfully!', undefined, true);
                         } catch (e) {
                             console.error('Failed to refresh accounts:', e);
@@ -424,6 +469,7 @@
         try {
             await API.disconnectAccount(credentialId);
             connectedAccounts = connectedAccounts.filter(a => a.id !== credentialId);
+            updateSettingsCache({ connectedAccounts: $state.snapshot(connectedAccounts) });
             snackbar('Account disconnected', undefined, true);
         } catch (e) {
             console.error('Failed to disconnect account:', e);
@@ -448,6 +494,7 @@
                         try {
                             const accounts = await API.getConnectedAccounts();
                             connectedAccounts = accounts.oauth_credentials || [];
+                            updateSettingsCache({ connectedAccounts: $state.snapshot(connectedAccounts) });
                             snackbar('Account re-authenticated successfully!', undefined, true);
                         } catch (e) {
                             console.error('Failed to refresh accounts:', e);

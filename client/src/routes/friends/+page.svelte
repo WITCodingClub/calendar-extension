@@ -4,8 +4,10 @@
     import type { Course, DayItem, FriendIdentity, FriendProcessedEventsResponse, FriendRequestIncoming, FriendRequestOutgoing, MeetingTime } from '$lib/types';
     import { goto } from '$app/navigation';
     import { resolve } from '$app/paths';
+    import { cacheGeneration, friendsCache, getCachedSchedule, setCachedFriends, setCachedSchedule, setCachedTerms, termsCache } from '$lib/sessionCache';
     import { onMount } from 'svelte';
     import { on } from 'svelte/events';
+    import { get } from 'svelte/store';
     import { fade, scale } from 'svelte/transition';
     import { Button, Chip, Switch, TextFieldOutlined, VariableTabs } from 'm3-svelte';
     import FriendsToolbar from '$lib/components/FriendsToolbar.svelte';
@@ -683,16 +685,28 @@
         return latest;
     }
 
-    async function loadFriendsAndRequests() {
+    // Friend requests always load again, because other users can send or
+    // cancel them at any time. The friend list comes from the cache only when
+    // useCachedFriends is true. Actions that change the list ask the server.
+    async function loadFriendsAndRequests(useCachedFriends = false) {
         pageError = '';
-        friendsLoading = true;
+        const startedAt = cacheGeneration();
+        const cachedFriends = useCachedFriends ? get(friendsCache).friends : undefined;
+        if (cachedFriends) {
+            friendIdentities = cachedFriends;
+        }
+        friendsLoading = !cachedFriends;
         requestsLoading = true;
         try {
             const [friendsResponse, requestsResponse] = await Promise.all([
-                API.getFriends(),
+                cachedFriends ? Promise.resolve(undefined) : API.getFriends(),
                 API.getFriendRequests()
             ]);
-            friendIdentities = friendsResponse.friends ?? [];
+            if (friendsResponse) {
+                const friends = friendsResponse.friends ?? [];
+                friendIdentities = friends;
+                setCachedFriends(friends, startedAt);
+            }
             incomingRequests = requestsResponse.incoming ?? [];
             outgoingRequests = requestsResponse.outgoing ?? [];
             const pending = incomingRequests.length + outgoingRequests.length;
@@ -711,13 +725,25 @@
 
     async function loadFriendSchedules(termUid: string) {
         const loadVersion = ++schedulesLoadVersion;
-        schedulesLoading = true;
+        const startedAt = cacheGeneration();
+        // Only friends without a cached schedule for this term need a request.
+        if (friendIdentities.some((friend) => !getCachedSchedule(termUid, friend.id))) {
+            schedulesLoading = true;
+        }
         try {
             const coursesByFriend = await Promise.all(friendIdentities.map(async (friend) => {
+                const cachedCourses = getCachedSchedule(termUid, friend.id);
+                if (cachedCourses) {
+                    return { id: friend.id, courses: cachedCourses };
+                }
                 try {
                     const response = await API.getFriendProcessedEvents(friend.id, termUid);
-                    return { id: friend.id, courses: mapFriendCourses(response, friend.id) };
+                    const courses = mapFriendCourses(response, friend.id);
+                    setCachedSchedule(termUid, friend.id, courses, startedAt);
+                    return { id: friend.id, courses };
                 } catch (error) {
+                    // Failed and unprocessed schedules are not cached. The friend
+                    // can finish setup later, so the next visit asks again.
                     try {
                         const status = await API.friendIsProcessed(friend.id, termUid);
                         if (!status.processed) {
@@ -835,14 +861,16 @@
 
     onMount(async () => {
         try {
-            const terms = await API.getTerms();
+            const startedAt = cacheGeneration();
+            const terms = get(termsCache) ?? await API.getTerms();
+            setCachedTerms(terms, startedAt);
             if (terms?.current_term?.id != null) {
                 currentTermId = String(terms.current_term.id);
             }
         } finally {
             termsFetched = true;
         }
-        await loadFriendsAndRequests();
+        await loadFriendsAndRequests(true);
     });
 
     $effect(() => {

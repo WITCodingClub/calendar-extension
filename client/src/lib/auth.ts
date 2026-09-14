@@ -3,6 +3,7 @@ import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { snackbar } from 'm3-svelte';
 import { EnvironmentManager } from './environment';
+import { clearSessionCache } from './sessionCache';
 import { enrolledTerms, icsUrl, processedData, userSettings } from './store';
 
 export class AuthError extends Error {
@@ -102,6 +103,7 @@ export async function handleUnauthorized(): Promise<void> {
         }
 
         if (browser) {
+            clearSessionCache();
             userSettings.set(undefined);
             processedData.set([]);
             enrolledTerms.set([]);
@@ -130,6 +132,7 @@ export async function clearLocalData(): Promise<void> {
         await chrome.storage.local.clear();
         localStorage.clear();
         sessionStorage.clear();
+        clearSessionCache();
         userSettings.set(undefined);
         processedData.set([]);
         enrolledTerms.set([]);
