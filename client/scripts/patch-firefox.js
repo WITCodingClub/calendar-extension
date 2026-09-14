@@ -64,23 +64,6 @@ if (!existsSync(squareIcon)) {
 }
 copyFileSync(squareIcon, join(extDir, 'icon128.png'));
 
-extractInlineScripts(extDir);
-injectFirefoxAuthShim(extDir);
-patchBundledJs(extDir);
-
-const swPath = join(extDir, 'service-worker.js');
-if (existsSync(swPath)) {
-	writeFileSync(
-		swPath,
-		readFileSync(swPath, 'utf8').replace(
-			/chrome\.sidePanel[\s\S]*?\.catch\(\s*\(error\)\s*=>\s*console\.error\(error\)\s*\);/,
-			`browser.action.onClicked.addListener(() => {
-  browser.sidebarAction.toggle();
-});`
-		)
-	);
-}
-
 function extractInlineScripts(dir) {
 	const scriptsDir = join(dir, 'scripts');
 	for (const file of readdirSync(dir).filter((name) => name.endsWith('.html'))) {
@@ -339,4 +322,21 @@ function patchBundledJs(dir) {
 			.replace(/chrome\.identity\.getProfileUserInfo\s*\([^)]*\)/g, 'Promise.resolve({})');
 		writeFileSync(filePath, source);
 	}
+}
+
+extractInlineScripts(extDir);
+injectFirefoxAuthShim(extDir);
+patchBundledJs(extDir);
+
+const swPath = join(extDir, 'service-worker.js');
+if (existsSync(swPath)) {
+	writeFileSync(
+		swPath,
+		readFileSync(swPath, 'utf8').replace(
+			/chrome\.sidePanel[\s\S]*?\.catch\(\s*\(error\)\s*=>\s*console\.error\(error\)\s*\);/,
+			`browser.action.onClicked.addListener(() => {
+  browser.sidebarAction.toggle();
+});`
+		)
+	);
 }
