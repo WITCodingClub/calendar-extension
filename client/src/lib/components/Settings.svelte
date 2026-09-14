@@ -412,7 +412,8 @@
             snackbar('Account disconnected', undefined, true);
         } catch (e) {
             console.error('Failed to disconnect account:', e);
-            snackbar('Failed to disconnect account', undefined, true);
+            // disconnectAccount throws with the backend reason, for example the last credential.
+            snackbar(e instanceof Error && e.message ? e.message : 'Failed to disconnect account', undefined, true);
         }
     }
 

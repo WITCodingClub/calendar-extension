@@ -1,10 +1,9 @@
 <script lang="ts">
-	import { API, ApiRequestError } from '$lib/api';
-	import { featureFlags } from '$lib/featureFlags';
+	import { API } from '$lib/api';
 	import outlook from '$lib/images/outlook.svg';
+	import { connectOutlookCalendar, isWorkingOutlookAccount } from '$lib/outlookCalendar';
 	import type { OAuthCredential } from '$lib/types';
 	import { Button, snackbar } from 'm3-svelte';
-	import { onDestroy } from 'svelte';
 
 	interface Props {
 		// Only the credentials with provider "microsoft".
@@ -15,18 +14,11 @@
 
 	let { accounts, refreshAccounts }: Props = $props();
 
-	const POPUP_POLL_MS = 500;
-
 	let isConnecting = $state(false);
 	let disconnectingId = $state<string | null>(null);
-	let pollTimer: ReturnType<typeof setInterval> | undefined;
-
-	onDestroy(() => {
-		if (pollTimer !== undefined) clearInterval(pollTimer);
-	});
 
 	function needsAttention(account: OAuthCredential): boolean {
-		return account.needs_reauth || !account.has_calendar;
+		return !isWorkingOutlookAccount(account);
 	}
 
 	function statusText(account: OAuthCredential): string {
@@ -39,52 +31,22 @@
 	async function connect() {
 		if (isConnecting) return;
 		isConnecting = true;
-
-		let oauthUrl: string;
 		try {
-			oauthUrl = (await API.requestMicrosoftCalendarOAuth()).oauth_url;
-		} catch (e) {
-			isConnecting = false;
-			if (e instanceof ApiRequestError && e.status === 404) {
-				// The flag went off after the flags loaded. Reload them to hide this section.
+			// Success needs the /oauth/success page and a confirmed credential.
+			// A popup that closes early is a cancel, not a success.
+			const result = await connectOutlookCalendar(refreshAccounts);
+			if (result.status === 'connected') {
+				snackbar(`Outlook calendar connected for ${result.email}`, undefined, true);
+			} else if (result.status === 'cancelled') {
+				snackbar('Outlook connection cancelled', undefined, true);
+			} else if (result.status === 'unavailable') {
 				snackbar('Outlook calendar sync is not available for your account', undefined, true);
-				await featureFlags.reload();
-				return;
+			} else {
+				snackbar(result.error, undefined, true);
 			}
-			console.error('Failed to start the Outlook calendar connection:', e);
-			snackbar('Failed to connect Outlook calendar', undefined, true);
-			return;
-		}
-
-		// Same flow as the Google popup: the backend ends on /oauth/success or
-		// /oauth/failure, and the window closes. Then reload the credentials.
-		const popup = window.open(oauthUrl, 'Microsoft OAuth', 'width=500,height=600');
-		if (!popup) {
+		} finally {
 			isConnecting = false;
-			snackbar('Allow pop-ups to connect Outlook calendar', undefined, true);
-			return;
 		}
-
-		pollTimer = setInterval(async () => {
-			if (!popup.closed) return;
-			clearInterval(pollTimer);
-			pollTimer = undefined;
-			try {
-				const updated = await refreshAccounts();
-				const connected = updated.some(
-					(a) => a.provider === 'microsoft' && a.has_calendar && !a.needs_reauth
-				);
-				snackbar(
-					connected ? 'Outlook calendar connected!' : 'Outlook calendar was not connected',
-					undefined,
-					true
-				);
-			} catch (e) {
-				console.error('Failed to refresh accounts:', e);
-			} finally {
-				isConnecting = false;
-			}
-		}, POPUP_POLL_MS);
 	}
 
 	async function disconnect(account: OAuthCredential) {
@@ -94,7 +56,11 @@
 			snackbar('Outlook calendar disconnected', undefined, true);
 		} catch (e) {
 			console.error('Failed to disconnect Outlook calendar:', e);
-			snackbar('Failed to disconnect Outlook calendar', undefined, true);
+			snackbar(
+				e instanceof Error && e.message ? e.message : 'Failed to disconnect Outlook calendar',
+				undefined,
+				true
+			);
 			return;
 		} finally {
 			disconnectingId = null;
