@@ -1,6 +1,6 @@
 import { EnvironmentManager } from "./environment";
 import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
-import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, isProcessed, OkResponse, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
+import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
 import type { PasskeySummary } from "./passkeys";
 
 export class API {
@@ -407,6 +407,28 @@ export class API {
             return undefined;
         }
         return response.json();
+    }
+
+    // The same data as getMeetingTimePreference, for many meeting times in one
+    // request, keyed by the id that was sent. The backend takes up to 200 ids.
+    // Returns undefined when the request fails, for example on a backend that
+    // does not have this endpoint yet, so the caller can ask for each id instead.
+    public static async getMeetingTimePreferences(meetingTimeIds: Array<number | string>): Promise<Record<string, GetPreferencesResponse> | undefined> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await this.authedFetch(`${baseUrl}/meeting_times/preferences`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ meeting_time_ids: meetingTimeIds.map(String) })
+        });
+        if (!response.ok) {
+            return undefined;
+        }
+        const data = await response.json();
+        return data.preferences;
     }
 
     public static async updateMeetingTimePreference(meetingTimeId: number | string, preferences: any): Promise<any> {
