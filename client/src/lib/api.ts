@@ -1,6 +1,17 @@
 import { EnvironmentManager } from "./environment";
-import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, isProcessed, OkResponse, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
+import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, isProcessed, MicrosoftCalendarOAuthResponse, OAuthCredentialsResponse, OkResponse, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
 import type { PasskeySummary } from "./passkeys";
+
+// A failed API request. The status lets callers tell a 404 from other errors.
+export class ApiRequestError extends Error {
+    readonly status: number;
+
+    constructor(message: string, status: number) {
+        super(message);
+        this.name = 'ApiRequestError';
+        this.status = status;
+    }
+}
 
 export class API {
     private static async getBaseUrl(): Promise<string> {
@@ -492,8 +503,8 @@ export class API {
         return response.json();
     }
 
-    // Connected Google accounts
-    public static async getConnectedAccounts(): Promise<{ oauth_credentials: Array<{id: string, email: string, provider: string, needs_reauth: boolean, token_revoked: boolean, has_calendar?: boolean}> }> {
+    // Connected calendar accounts (Google and Microsoft)
+    public static async getConnectedAccounts(): Promise<OAuthCredentialsResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await fetch(`${baseUrl}/user/oauth_credentials`, {
@@ -519,15 +530,53 @@ export class API {
         return response.json();
     }
 
+    // Starts the Outlook (Microsoft Graph) calendar connection. Open the returned
+    // oauth_url in a popup, like the Google flow. The backend answers 404 while
+    // the microsoftGraphCalendar flag is off for this user.
+    public static async requestMicrosoftCalendarOAuth(): Promise<MicrosoftCalendarOAuthResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await fetch(`${baseUrl}/user/microsoft_calendar`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!response.ok) {
+            throw new ApiRequestError(
+                await this.errorMessage(response, 'Could not start the Outlook calendar connection'),
+                response.status
+            );
+        }
+        return response.json();
+    }
+
+    // Disconnects a Google or Microsoft credential.
     public static async disconnectAccount(credentialId: string): Promise<void> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        await fetch(`${baseUrl}/user/oauth_credentials/${credentialId}`, {
+        const response = await fetch(`${baseUrl}/user/oauth_credentials/${credentialId}`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
+        if (!response.ok) {
+            throw new ApiRequestError(
+                await this.errorMessage(response, 'Could not disconnect the account'),
+                response.status
+            );
+        }
+    }
+
+    private static async errorMessage(response: Response, fallback: string): Promise<string> {
+        try {
+            const body = await response.json();
+            if (body?.error) return String(body.error);
+        } catch {
+            /* ignore parse errors */
+        }
+        return `${fallback} (${response.status})`;
     }
 
     // University calendar preferences

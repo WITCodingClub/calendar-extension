@@ -3,9 +3,10 @@
     import { goto } from "$app/navigation";
     import { API } from "$lib/api";
     import { EnvironmentManager, ENVIRONMENTS, type Environment } from "$lib/environment";
-    import { featureFlags } from "$lib/featureFlags";
+    import { createFeatureFlagStore, featureFlags } from "$lib/featureFlags";
     import { processedData as storedProcessedData, userSettings as storedUserSettings } from "$lib/store";
-    import type { UserSettings } from "$lib/types";
+    import type { OAuthCredential, UserSettings } from "$lib/types";
+    import OutlookCalendarSection from "$lib/components/OutlookCalendarSection.svelte";
     import { listPasskeys, passkeysSupported, registerPasskey, removePasskey, type PasskeySummary } from "$lib/passkeys";
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
     import { onMount } from "svelte";
@@ -34,7 +35,17 @@
     let currentEnvironment = $state<Environment>('prod');
     let authenticatedEnvironments = $state<Environment[]>([]);
     let notificationsDisabled = $state(false);
-    let connectedAccounts = $state<Array<{id: string, email: string, provider: string, needs_reauth: boolean, token_revoked: boolean}>>([]);
+    let connectedAccounts = $state<OAuthCredential[]>([]);
+    // Microsoft credentials get their own section, shown only while the flag is on.
+    let googleAccounts = $derived(connectedAccounts.filter(a => a.provider !== 'microsoft'));
+    let microsoftAccounts = $derived(connectedAccounts.filter(a => a.provider === 'microsoft'));
+    const microsoftCalendarEnabled = createFeatureFlagStore('microsoftGraphCalendar');
+
+    async function refreshConnectedAccounts(): Promise<OAuthCredential[]> {
+        const accounts = await API.getConnectedAccounts();
+        connectedAccounts = accounts.oauth_credentials || [];
+        return connectedAccounts;
+    }
     let addEmailInput = $state("");
     let showEnvSwitcher = $state<boolean>(false);
     let isRefreshingFlags = $state<boolean>(false);
@@ -584,9 +595,9 @@
             <p class="text-sm text-outline">Add multiple Google accounts to sync your calendar</p>
         </div>
 
-        {#if connectedAccounts.length > 0}
+        {#if googleAccounts.length > 0}
             <div class="flex flex-col gap-2">
-                {#each connectedAccounts as account}
+                {#each googleAccounts as account (account.id)}
                     <div class="flex flex-row gap-3 items-center justify-between bg-surface-container-low rounded-lg p-3 {account.needs_reauth ? 'border border-error' : ''}">
                         <div class="flex flex-col gap-1">
                             <div class="flex flex-row gap-2 items-center">
@@ -607,7 +618,7 @@
                                     Re-auth
                                 </Button>
                             {/if}
-                            {#if connectedAccounts.length > 1}
+                            {#if googleAccounts.length > 1}
                                 <Button variant="text" onclick={() => disconnectAccount(account.id)}>
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                         <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -633,6 +644,11 @@
             <Button variant="tonal" onclick={addGoogleAccount}>Add Account</Button>
         </div>
     </div>
+
+    <!-- Outlook Calendar Section (microsoftGraphCalendar flag) -->
+    {#if $microsoftCalendarEnabled}
+        <OutlookCalendarSection accounts={microsoftAccounts} refreshAccounts={refreshConnectedAccounts} />
+    {/if}
 
     <!-- Passkeys Section -->
     {#if canUsePasskeys}

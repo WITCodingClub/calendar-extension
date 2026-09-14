@@ -20,7 +20,8 @@ const FEATURE_FLAGS = [
     "debugMode",
     "envSwitcher",
     "finalsRetroactive",
-    "bypassRateLimits"
+    "bypassRateLimits",
+    "microsoftGraphCalendar"
 ] as const;
 
 interface FeatureFlagEnabled {
@@ -30,6 +31,31 @@ interface FeatureFlagEnabled {
 
 interface FeatureFlagsResponse {
     feature_flags: Record<string, boolean>;
+}
+
+type OAuthProvider = "google" | "microsoft";
+
+// One entry from GET /api/user/oauth_credentials.
+interface OAuthCredential {
+    id: string;
+    email: string;
+    provider: OAuthProvider;
+    needs_reauth: boolean;
+    token_revoked: boolean;
+    has_calendar?: boolean;
+    calendar_id?: string | null;
+    created_at?: string;
+}
+
+interface OAuthCredentialsResponse {
+    oauth_credentials: OAuthCredential[];
+}
+
+// POST /api/user/microsoft_calendar. The backend answers 404 while the
+// microsoftGraphCalendar flag is off for the user.
+interface MicrosoftCalendarOAuthResponse {
+    oauth_url: string;
+    message?: string;
 }
 
 interface Location {
@@ -276,6 +302,6 @@ export {
     FEATURE_FLAGS,
     type Building,
     type CalendarConfig, type Course, type CurrentTerm, type DayItem,
-    type EventPreferences, type FeatureFlagsResponse, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location,
+    type EventPreferences, type FeatureFlagsResponse, type MicrosoftCalendarOAuthResponse, type OAuthCredential, type OAuthCredentialsResponse, type OAuthProvider, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location,
     type MeetingTime, type NextTerm, type NotificationMethod, type NotificationSetting, type NotificationType, type OkResponse, type Preview, type ProcessedEvents, type Professor, type ReminderSettings, type ResolvedData, type ResponseData, type TemplateVariables, type Term, type TermResponse, type UniversityCalendarEvent, type UniversityEventCategory, type UniversityEventCategoryWithCount, type UserSettings
 };
