@@ -13,6 +13,7 @@
     import { browser } from '$app/environment';
     import { snackbar } from 'm3-svelte';
     import { createWitTab } from '$lib/witTab';
+    import { cacheGeneration, clearSessionCache, setCachedTerms } from '$lib/sessionCache';
 
     type RegistrationsLookupResult =
         | { error: string }
@@ -1040,6 +1041,7 @@
         storedProcessedData.set([]);
         storedUserSettings.set(undefined);
         storedIcsUrl.set(undefined);
+        clearSessionCache();
         attemptedTerms = new Set();
         refreshedTerms = new Set();
     }
@@ -1062,7 +1064,10 @@
                     clearEnvironmentData();
 
                     // Now fetch fresh data for the current environment
-                    terms = await API.getTerms();
+                    const startedAt = cacheGeneration();
+                    const fetchedTerms = await API.getTerms();
+                    terms = fetchedTerms;
+                    setCachedTerms(fetchedTerms, startedAt);
                     const envSettings = await API.userSettings();
                     storedUserSettings.set(envSettings);
                     if (envSettings.enrolled_terms?.length && $enrolledTerms.length === 0) {
@@ -1090,12 +1095,16 @@
 
         // Now fetch fresh data for the current environment. The two requests do
         // not depend on each other, so send them together.
+        const startedAt = cacheGeneration();
         const termsRequest = API.getTerms();
         const settingsRequest = API.userSettings();
         // Keep a failed settings request from being reported as unhandled while
         // the terms request is still open. It still throws at its await below.
         settingsRequest.catch(() => undefined);
-        terms = await termsRequest;
+        const fetchedTerms = await termsRequest;
+        terms = fetchedTerms;
+        // The Friends page reads the terms from this cache instead of asking again.
+        setCachedTerms(fetchedTerms, startedAt);
         const settings = await settingsRequest;
         storedUserSettings.set(settings);
         if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
