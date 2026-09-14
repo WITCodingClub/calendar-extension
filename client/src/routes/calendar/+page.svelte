@@ -1205,9 +1205,8 @@
         </div>
         <hr class="w-full border-outline-variant" />
         {#if tab == "a"}
-            <div class="flex flex-row items-center pl-4 w-full">
-                <div class="flex-1"></div>
-                <div class="flex justify-center">
+            <div class="term-bar">
+                <div class="term-seg">
                     <ConnectedButtons>
                     {#each displayTerms as termOpt, i}
                         <input type="radio" name="seg" id="seg-{i}" bind:group={selected} value={termOpt.id} onchange={async () => { const tid = termOpt.id; if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !attemptedTerms.has(tid) && !loading) { const next = new Set(attemptedTerms); next.add(tid); attemptedTerms = next; await ensureProcessedForTerm(tid); } }} />
@@ -1215,7 +1214,7 @@
                     {/each}
                     </ConnectedButtons>
                 </div>
-                <div class="flex-1 flex justify-end gap-3 mr-4">
+                <div class="term-refresh">
                     {#if processedData && !refreshing}
                         <Button variant="tonal" onclick={() => refreshSchedule(selected)} disabled={refreshing || loading}>
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -1223,7 +1222,7 @@
                                 </svg>
                         </Button>
                     {:else if refreshing && processedData}
-                        <div class="flex flex-col items-center load-test gap-2 pl-4">
+                        <div class="flex flex-col items-center load-test gap-2">
                             <LoadingIndicator size={44} />
                         </div>
                     {/if}
@@ -1478,5 +1477,40 @@
     :global(.load-test svg) {
         margin-top: -0.5rem !important;
         margin-left: -1.5rem !important;
+    }
+
+    .term-bar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        column-gap: 0.5rem;
+        width: 100%;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .term-seg {
+        container-type: inline-size;
+        min-width: 0;
+        display: flex;
+        justify-content: center;
+    }
+
+    .term-seg > :global(.m3-container) {
+        display: flex !important;
+        flex-wrap: wrap;
+        justify-content: center;
+        max-width: 100%;
+    }
+
+    .term-seg :global(label.m3-container.s) {
+        white-space: nowrap;
+    }
+
+    @container (max-width: 14rem) {
+        .term-seg :global(label.m3-container.s) {
+            font-size: 0.75rem !important;
+            padding-inline: 0.7rem !important;
+        }
     }
 </style>
