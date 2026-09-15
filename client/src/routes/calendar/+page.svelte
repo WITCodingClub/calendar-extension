@@ -1141,7 +1141,7 @@
     });
 </script>
 
-<div class="calendar-page">
+<div class="@container flex h-full w-full min-w-0 flex-col gap-3 p-3 box-border @max-[20rem]:p-2">
     {#if !processedData && tab === "a"}
         <div class="w-full flex flex-col items-center gap-6 p-6 bg-surface-container rounded-2xl shadow-md max-w-lg mx-auto">
             <div class="flex flex-col gap-1 items-center">
@@ -1182,20 +1182,20 @@
             </div>
         </div>
     {:else if processedData || tab !== "a"}
-        <section class="calendar-top">
-            <header class="calendar-header">
-                <div class="calendar-heading">
-                    <div class="calendar-title">
-                        <h1 class="text-on-primary-container">Your Calendar</h1>
-                    </div>
+        <section class="w-full flex-none overflow-hidden rounded-2xl bg-surface-container shadow-[0_0.2rem_0.75rem_rgb(var(--m3-scheme-shadow)/0.12)]">
+            <header class="flex min-w-0 items-center justify-between gap-4 bg-primary-container px-[1.125rem] pt-4 pb-3.5 text-on-primary-container @max-[30rem]:flex-col @max-[30rem]:items-start @max-[30rem]:gap-3 @max-[30rem]:p-3.5">
+                <div class="min-w-0">
+                    <h1 class="m-0 text-[clamp(1.35rem,5cqi,1.8rem)] leading-[1.15] font-[750] tracking-[-0.025em] text-on-primary-container">
+                        {tab === "settings" ? "Settings" : tab === "help" ? "Help" : "Your Calendar"}
+                    </h1>
                 </div>
                 {#if isOtherCalendar}
-                    <div class="calendar-action">
+                    <div class="shrink-0 @max-[30rem]:w-full @max-[30rem]:[&_.m3-container]:w-full">
                         <Button variant="tonal" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
                     </div>
                 {/if}
             </header>
-            <div class="calendar-tabs not-peak">
+            <div class="not-peak bg-surface-container-lowest">
                 <VariableTabs secondary={true}
                     items={[
                         { name: "Calendar", value: "a" },
@@ -1230,6 +1230,11 @@
                         {/if}
                     </div>
                 </div>
+            {:else if tab === "settings"}
+                <div class="border-t border-outline-variant bg-surface-container-high px-4 py-3">
+                    <h2 class="m-0 text-sm font-bold text-on-surface">Calendar preferences</h2>
+                    <p class="m-0 mt-0.5 text-xs text-on-surface-variant">Manage your settings, account information, event notifications, and more!</p>
+                </div>
             {/if}
         </section>
     {/if}
@@ -1237,7 +1242,7 @@
     {#if tab === "a" && processedData}
         {@const latestHour = getLatestEndHour(processedData)}
         {@const numHours = latestHour - 8 + 1}
-            <div class="schedule-frame">
+            <div class="flex w-full min-w-0 min-h-48 flex-1 flex-col overflow-hidden rounded-2xl bg-surface-container-low shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
                 <div class="flex-1 overflow-x-auto overflow-y-hidden">
                     <div class="inline-flex flex-col min-w-full h-full">
                         <div class="flex flex-row border-b border-outline-variant bg-surface-container-high sticky top-0 z-10">
@@ -1453,77 +1458,6 @@
 {/if}
 
 <style>
-    .calendar-page {
-        container-type: inline-size;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        width: 100%;
-        height: 100%;
-        min-width: 0;
-        padding: 0.75rem;
-        box-sizing: border-box;
-    }
-
-    .calendar-top {
-        flex: 0 0 auto;
-        width: 100%;
-        overflow: hidden;
-        border-radius: 1rem;
-        background: rgb(var(--m3-scheme-surface-container));
-        box-shadow: 0 0.2rem 0.75rem rgb(var(--m3-scheme-shadow) / 0.12);
-    }
-
-    .calendar-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
-        min-width: 0;
-        padding: 1rem 1.125rem 0.875rem;
-        color: rgb(var(--m3-scheme-on-primary-container));
-        background: rgb(var(--m3-scheme-primary-container));
-    }
-
-    .calendar-heading {
-        display: flex;
-        align-items: center;
-        min-width: 0;
-    }
-
-    .calendar-title {
-        min-width: 0;
-    }
-
-    .calendar-title h1 {
-        margin: 0;
-        font-size: clamp(1.35rem, 5cqi, 1.8rem);
-        font-weight: 750;
-        line-height: 1.15;
-        letter-spacing: -0.025em;
-    }
-
-    .calendar-action {
-        flex: 0 0 auto;
-    }
-
-    .calendar-tabs {
-        background: rgb(var(--m3-scheme-surface-container-lowest));
-    }
-
-    .schedule-frame {
-        display: flex;
-        flex: 1 1 auto;
-        flex-direction: column;
-        width: 100%;
-        min-width: 0;
-        min-height: 12rem;
-        overflow: hidden;
-        border-radius: 1rem;
-        background: rgb(var(--m3-scheme-surface-container-low));
-        box-shadow: 0 1px 3px rgb(var(--m3-scheme-shadow) / 0.1);
-    }
-
     :global(.stuff-moment div.m3-container) {
         min-width: 7rem !important;
     }
@@ -1561,7 +1495,7 @@
         width: 100%;
         padding: 0.75rem 1rem;
         border-top: 1px solid rgb(var(--m3-scheme-outline-variant));
-        background: rgb(var(--m3-scheme-surface-container-high));
+        background: rgb(var(--m3-scheme-surface-container-low));
         box-sizing: border-box;
     }
 
@@ -1590,28 +1524,7 @@
         }
     }
 
-    @container (max-width: 30rem) {
-        .calendar-header {
-            align-items: flex-start;
-            flex-direction: column;
-            gap: 0.75rem;
-            padding: 0.875rem;
-        }
-
-        .calendar-action {
-            width: 100%;
-        }
-
-        .calendar-action :global(button) {
-            width: 100%;
-        }
-    }
-
     @container (max-width: 20rem) {
-        .calendar-page {
-            padding: 0.5rem;
-        }
-
         .term-bar {
             grid-template-columns: minmax(0, 1fr);
             row-gap: 0.5rem;
