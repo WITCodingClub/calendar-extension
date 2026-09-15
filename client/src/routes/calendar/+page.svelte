@@ -1143,7 +1143,7 @@
 
 <div class="calendar-page">
     {#if !processedData && tab === "a"}
-        <div class="w-full flex flex-col items-center gap-6 p-6 bg-surface-container-lowest rounded-md shadow-md border border-outline-variant max-w-lg mx-auto">
+        <div class="w-full flex flex-col items-center gap-6 p-6 bg-surface-container rounded-2xl shadow-md max-w-lg mx-auto">
             <div class="flex flex-col gap-1 items-center">
                 <div class="flex items-center w-full justify-center relative">
                     <div class="absolute left-0 unpeak">
@@ -1186,12 +1186,12 @@
             <header class="calendar-header">
                 <div class="calendar-heading">
                     <div class="calendar-title">
-                        <h1 class="text-on-surface">Your Calendar</h1>
+                        <h1 class="text-on-primary-container">Your Calendar</h1>
                     </div>
                 </div>
                 {#if isOtherCalendar}
                     <div class="calendar-action">
-                        <Button variant="outlined" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
+                        <Button variant="tonal" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
                     </div>
                 {/if}
             </header>
@@ -1240,7 +1240,7 @@
             <div class="schedule-frame">
                 <div class="flex-1 overflow-x-auto overflow-y-hidden">
                     <div class="inline-flex flex-col min-w-full h-full">
-                        <div class="flex flex-row border-b border-outline-variant bg-surface-container-lowest sticky top-0 z-10">
+                        <div class="flex flex-row border-b border-outline-variant bg-surface-container-high sticky top-0 z-10">
                             <div class="w-24 border-r border-outline-variant"></div>
                             {#each Array(numHours) as _, i}
                                 {@const hour = i + 8}
@@ -1253,8 +1253,8 @@
                         {#each dayOrder.slice(0, 5) as day}
                             {@const dayEvents = stackedMeetings.byDay?.[day.key] ?? []}
                             <div class="flex flex-row flex-1 min-h-[120px] border-b border-outline-variant relative">
-                                <div class="w-24 border-r border-outline-variant flex items-center justify-center bg-surface-container-low left-0 z-5">
-                                    <span class="font-medium text-sm">{day.label}</span>
+                                <div class="w-24 border-r border-outline-variant flex items-center justify-center bg-secondary-container text-on-secondary-container left-0 z-5">
+                                    <span class="font-semibold text-sm">{day.label}</span>
                                 </div>
 
                                 <div class="relative flex-1 flex">
@@ -1469,10 +1469,9 @@
         flex: 0 0 auto;
         width: 100%;
         overflow: hidden;
-        border: 1px solid rgb(var(--m3-scheme-outline-variant));
         border-radius: 1rem;
-        background: rgb(var(--m3-scheme-surface-container-lowest));
-        box-shadow: 0 0.2rem 0.75rem rgb(0 0 0 / 0.06);
+        background: rgb(var(--m3-scheme-surface-container));
+        box-shadow: 0 0.2rem 0.75rem rgb(var(--m3-scheme-shadow) / 0.12);
     }
 
     .calendar-header {
@@ -1482,6 +1481,8 @@
         gap: 1rem;
         min-width: 0;
         padding: 1rem 1.125rem 0.875rem;
+        color: rgb(var(--m3-scheme-on-primary-container));
+        background: rgb(var(--m3-scheme-primary-container));
     }
 
     .calendar-heading {
@@ -1507,7 +1508,7 @@
     }
 
     .calendar-tabs {
-        border-top: 1px solid rgb(var(--m3-scheme-outline-variant));
+        background: rgb(var(--m3-scheme-surface-container-lowest));
     }
 
     .schedule-frame {
@@ -1518,9 +1519,9 @@
         min-width: 0;
         min-height: 12rem;
         overflow: hidden;
-        border: 1px solid rgb(var(--m3-scheme-outline-variant));
         border-radius: 1rem;
-        background: rgb(var(--m3-scheme-surface-container-lowest));
+        background: rgb(var(--m3-scheme-surface-container-low));
+        box-shadow: 0 1px 3px rgb(var(--m3-scheme-shadow) / 0.1);
     }
 
     :global(.stuff-moment div.m3-container) {
@@ -1560,7 +1561,7 @@
         width: 100%;
         padding: 0.75rem 1rem;
         border-top: 1px solid rgb(var(--m3-scheme-outline-variant));
-        background: rgb(var(--m3-scheme-surface-container-low));
+        background: rgb(var(--m3-scheme-surface-container-high));
         box-sizing: border-box;
     }
 

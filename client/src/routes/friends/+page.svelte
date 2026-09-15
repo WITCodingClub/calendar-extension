@@ -821,18 +821,18 @@
 </script>
 
 <div class="@container flex h-full w-full min-w-0 flex-col gap-3 box-border p-3 @max-[20rem]:p-2">
-    <section class="w-full flex-none overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-[0_0.2rem_0.75rem_rgb(0_0_0/0.06)]">
-        <header class="flex min-w-0 items-center justify-between gap-4 px-[1.125rem] pt-4 pb-3.5 @max-[30rem]:flex-col @max-[30rem]:items-start @max-[30rem]:gap-3 @max-[30rem]:p-3.5">
+    <section class="w-full flex-none overflow-hidden rounded-2xl bg-surface-container shadow-[0_0.2rem_0.75rem_rgb(var(--m3-scheme-shadow)/0.12)]">
+        <header class="flex min-w-0 items-center justify-between gap-4 bg-primary-container px-[1.125rem] pt-4 pb-3.5 text-on-primary-container @max-[30rem]:flex-col @max-[30rem]:items-start @max-[30rem]:gap-3 @max-[30rem]:p-3.5">
             <div class="min-w-0">
-                <h1 class="m-0 text-[clamp(1.35rem,5cqi,1.8rem)] leading-[1.15] font-[750] tracking-[-0.025em] text-on-surface">Friends</h1>
+                <h1 class="m-0 text-[clamp(1.35rem,5cqi,1.8rem)] leading-[1.15] font-[750] tracking-[-0.025em] text-on-primary-container">Friends</h1>
             </div>
             <div class="shrink-0 @max-[30rem]:w-full @max-[30rem]:[&_.m3-container]:w-full">
-                <Button variant="outlined" square onclick={() => goto(resolve('/calendar'))}>
+                <Button variant="tonal" square onclick={() => goto(resolve('/calendar'))}>
                     Back to Calendar
                 </Button>
             </div>
         </header>
-        <div class="border-t border-outline-variant">
+        <div class="bg-surface-container-lowest">
             <VariableTabs
                 secondary={true}
                 items={[
@@ -842,7 +842,7 @@
                 bind:tab
             />
         </div>
-        <div class="border-t border-outline-variant bg-surface-container-low px-4 py-3 @max-[20rem]:px-2.5">
+        <div class="border-t border-outline-variant bg-surface-container-high px-4 py-3 @max-[20rem]:px-2.5">
         <FriendsToolbar
             {friendList}
             {selectedFriends}
@@ -864,7 +864,7 @@
     {/if}
 
     {#if manageOpen}
-        <section class="max-h-[45%] w-full min-w-0 flex-[0_1_auto] overflow-y-auto rounded-2xl border border-outline-variant bg-surface-container-lowest p-4">
+        <section class="max-h-[45%] w-full min-w-0 flex-[0_1_auto] overflow-y-auto rounded-2xl bg-surface-container p-4 shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
             <FriendsManagePanel
                 bind:sendFriendIdInput
                 {incomingRequests}
@@ -886,10 +886,10 @@
             {@const latestHour = getLatestEndHourFromBlocks()}
             {@const numHours = latestHour - 8 + 1}
             {@const hourIndices = Array.from({ length: numHours }, (_, i) => i)}
-            <div class="flex w-full min-w-0 min-h-48 flex-1 flex-col overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest">
+            <div class="flex w-full min-w-0 min-h-48 flex-1 flex-col overflow-hidden rounded-2xl bg-surface-container-low shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
                 <div class="flex-1 overflow-x-auto overflow-y-hidden">
                     <div class="inline-flex flex-col min-w-full h-full">
-                        <div class="flex flex-row border-b border-outline-variant bg-surface-container-lowest sticky top-0 z-10">
+                        <div class="flex flex-row border-b border-outline-variant bg-surface-container-high sticky top-0 z-10">
                             <div class="w-24 border-r border-outline-variant"></div>
                             {#each hourIndices as i (i)}
                                 {@const hour = i + 8}
@@ -904,8 +904,8 @@
                             {@const dayStacks = Math.max(stackedMeetings.maxStacksByDay?.[day.key] ?? 1, 1)}
                             {@const dayHeight = Math.min(Math.max(120, dayStacks * 52), 190)}
                             <div class="flex flex-row flex-1 border-b border-outline-variant relative" style={`height:${dayHeight}px; min-height:${dayHeight}px;`}>
-                                <div class="w-24 border-r border-outline-variant flex items-center justify-center bg-surface-container-low left-0 z-5">
-                                    <span class="font-medium text-sm">{day.label}</span>
+                                <div class="w-24 border-r border-outline-variant flex items-center justify-center bg-secondary-container text-on-secondary-container left-0 z-5">
+                                    <span class="font-semibold text-sm">{day.label}</span>
                                 </div>
 
                                 <div class="relative flex-1 flex">
@@ -940,18 +940,18 @@
                 </div>
             </div>
         {:else}
-            <div class="grid w-full min-w-0 min-h-48 flex-1 place-content-center rounded-2xl border border-outline-variant bg-surface-container-lowest px-4 py-8 text-center">
+            <div class="grid w-full min-w-0 min-h-48 flex-1 place-content-center rounded-2xl bg-secondary-container px-4 py-8 text-center text-on-secondary-container">
                 <h2 class="m-0 text-base font-bold">No calendar data available</h2>
-                <p class="m-[0.35rem_0_0] max-w-96 text-[0.8rem] leading-[1.4] text-on-surface-variant">Select a friend to compare calendars with!</p>
+                <p class="m-[0.35rem_0_0] max-w-96 text-[0.8rem] leading-[1.4] text-on-secondary-container/80">Select a friend to compare calendars with!</p>
             </div>
         {/if}
     {:else}
-        <section class="w-full min-w-0 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-outline-variant bg-surface-container-lowest">
-            <div class="px-[1.125rem] pt-4 pb-3.5">
-                <h2 class="m-0 text-base leading-tight font-bold text-on-surface">Best times to meet</h2>
-                <p class="mt-1 mb-0 text-[0.78rem] leading-[1.35] text-on-surface-variant">Find common free time across the friends selected above</p>
+        <section class="w-full min-w-0 min-h-0 flex-1 overflow-y-auto rounded-2xl bg-surface-container-low shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
+            <div class="bg-tertiary-container px-[1.125rem] pt-4 pb-3.5 text-on-tertiary-container">
+                <h2 class="m-0 text-base leading-tight font-bold text-on-tertiary-container">Best times to meet</h2>
+                <p class="mt-1 mb-0 text-[0.78rem] leading-[1.35] text-on-tertiary-container/80">Find common free time across the friends selected above</p>
             </div>
-            <div class="border-y border-outline-variant bg-surface-container-low px-4 py-3.5 @max-[20rem]:px-2.5">
+            <div class="bg-surface-container px-4 py-3.5 @max-[20rem]:px-2.5">
                 <div class="grid grid-cols-4 gap-2.5 @max-[38rem]:grid-cols-2 @max-[20rem]:grid-cols-1">
                     <TextFieldOutlined type="number" label="Min (min)" bind:value={meetMinDurationMinutesInput} />
                     <TextFieldOutlined type="number" label="Buffer (min)" bind:value={meetBufferMinutesInput} />
@@ -969,7 +969,7 @@
                 </div>
             </div>
 
-            <div class="p-4 @max-[20rem]:px-2.5">
+            <div class="border-t border-outline-variant bg-surface-container-lowest p-4 @max-[20rem]:px-2.5">
             {#if selectedFriends.length === 0}
                 <div class="px-4 py-6 text-center text-[0.82rem] text-on-surface-variant">Select at least one friend to see suggestions.</div>
             {:else if !meetRangeValid}
@@ -979,7 +979,7 @@
                     {#each dayOrder.slice(0, 5) as day (day.key)}
                         {@const windows = bestMeetTimesByDay?.[day.key] ?? []}
                         {#if windows.length > 0}
-                            <div class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-3 rounded-xl border border-outline-variant bg-surface-container-low p-3 @max-[30rem]:grid-cols-1">
+                            <div class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-3 rounded-xl bg-surface-container p-3 transition-colors hover:bg-surface-container-high @max-[30rem]:grid-cols-1">
                                 <div class="text-[0.82rem] font-semibold text-on-surface">{day.label}</div>
                                 <div class="flex min-w-0 flex-wrap justify-end gap-2 @max-[30rem]:justify-start">
                                     {#each windows as w (`${day.key}-${w.start}-${w.end}`)}

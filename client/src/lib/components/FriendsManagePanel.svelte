@@ -28,10 +28,10 @@
 	} = $props();
 </script>
 
-<div class="flex w-full flex-col gap-2.5">
-	<div class="flex flex-col gap-2">
+<div class="flex w-full flex-col gap-3">
+	<div class="flex flex-col gap-2 rounded-xl bg-surface-container-lowest p-3">
 		<div class="flex flex-col gap-0.5">
-			<div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant">Send friend request</div>
+			<div class="text-xs font-bold uppercase tracking-wide text-primary">Send friend request</div>
 			<div class="text-[11px] text-on-surface-variant">Use their email or user ID</div>
 		</div>
 		<div class="flex flex-row gap-2 items-center flex-wrap">
@@ -58,9 +58,9 @@
 	</div>
 
 	{#if requestsLoading || incomingRequests.length > 0 || outgoingRequests.length > 0}
-		<div class="h-px bg-outline-variant"></div>
+		<div class="h-px bg-primary/20"></div>
 		<div class="flex flex-col gap-1.5">
-			<div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant">Requests</div>
+			<div class="text-xs font-bold uppercase tracking-wide text-primary">Requests</div>
 			{#if requestsLoading}
 				<div class="text-xs text-on-surface-variant">Loading requests...</div>
 			{:else}
@@ -72,7 +72,7 @@
 							</div>
 							{#each incomingRequests as req (req.request_id)}
 								<div
-									class="flex flex-row items-center justify-between gap-2 bg-surface-container-lowest rounded-md px-2 py-1.5 border border-outline-variant"
+									class="flex flex-row items-center justify-between gap-2 rounded-xl bg-primary-container px-3 py-2 text-on-primary-container"
 								>
 									<div class="text-sm truncate">{req.from.name} ({req.from.id})</div>
 									<div class="flex flex-row gap-1 shrink-0">
@@ -105,7 +105,7 @@
 							</div>
 							{#each outgoingRequests as req (req.request_id)}
 								<div
-									class="flex flex-row items-center justify-between gap-2 bg-surface-container-lowest rounded-md px-2 py-1.5 border border-outline-variant"
+									class="flex flex-row items-center justify-between gap-2 rounded-xl bg-secondary-container px-3 py-2 text-on-secondary-container"
 								>
 									<div class="text-sm truncate">{req.to.name} ({req.to.id})</div>
 									<Button
@@ -126,12 +126,12 @@
 	{/if}
 
 	{#if friendList.length > 0}
-		<div class="h-px bg-outline-variant"></div>
+		<div class="h-px bg-primary/20"></div>
 		<div class="flex flex-col gap-1.5">
-			<div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant">Remove friends</div>
+			<div class="text-xs font-bold uppercase tracking-wide text-primary">Remove friends</div>
 			{#each friendList as friend (friend.id)}
 				<div
-					class="flex flex-row items-center justify-between gap-2 bg-surface-container-lowest rounded-md px-2 py-1.5 border border-outline-variant"
+					class="flex flex-row items-center justify-between gap-2 rounded-xl bg-surface-container-high px-3 py-2"
 				>
 					<div class="text-sm truncate">{friend.name}</div>
 					<Button
