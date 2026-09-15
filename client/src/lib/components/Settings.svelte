@@ -4,7 +4,7 @@
     import { API } from "$lib/api";
     import { EnvironmentManager, ENVIRONMENTS, type Environment } from "$lib/environment";
     import { featureFlags } from "$lib/featureFlags";
-    import { processedData as storedProcessedData, userSettings as storedUserSettings } from "$lib/store";
+    import { processedData as storedProcessedData, userSettings as storedUserSettings, icsUrl as storedIcsUrl } from "$lib/store";
     import type { UserSettings } from "$lib/types";
     import { listPasskeys, passkeysSupported, registerPasskey, removePasskey, type PasskeySummary } from "$lib/passkeys";
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
@@ -47,6 +47,7 @@
         browser ? (localStorage.getItem(UNI_CAL_COLOR_STORAGE_KEY) ?? "") : "#616161"
     );
     let hasLoadedUniCalColor = $state(false);
+    let isOtherCalendar = $state(browser ? localStorage.getItem('isOtherCalendar') === 'true' : false);
 
     $effect(() => {
         userSettings = $storedUserSettings;
@@ -456,6 +457,22 @@
             isRefreshingFlags = false;
         }
     }
+
+    async function copyIcsToClipboard() {
+        const icsUrlToCopy = $storedIcsUrl;
+        if (!icsUrlToCopy) {
+            console.error('No ICS URL available');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(icsUrlToCopy);
+            snackbar('ICS URL copied to clipboard!', undefined, true);
+        } catch (error) {
+            console.error('Failed to copy ICS URL to clipboard:', error);
+            snackbar('Failed to copy ICS URL to clipboard: ' + error, undefined, true);
+        }
+    }
 </script>
 
 <div class="flex flex-row items-center justify-between mb-4">
@@ -489,6 +506,15 @@
             />
         </div>
     </div>
+    {/if}
+    {#if !isOtherCalendar}
+        <div class="flex flex-row gap-3 items-center justify-between">
+            <div class="flex flex-col">
+                <h2 class="text-md font-bold">Calendar Link</h2>
+                <p class="text-sm text-outline">Copy your calendar feed URL to subscribe in other apps</p>
+            </div>
+            <Button variant="outlined" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
+        </div>
     {/if}
     <div class="flex flex-row gap-3 items-center justify-between">
         <h2 class="text-md font-bold">Default Lecture Color</h2>

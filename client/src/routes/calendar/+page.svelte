@@ -50,6 +50,7 @@
     let lectureColor = $derived($storedUserSettings?.default_color_lecture ?? "#039be5");
     let labColor = $derived($storedUserSettings?.default_color_lab ?? "#f6bf26");
     let advancedEditing = $derived($storedUserSettings?.advanced_editing ?? false);
+    let isOtherCalendar = $state(browser ? localStorage.getItem('isOtherCalendar') === 'true' : false);
 
     const EVENT_HEX_TO_WITCC: Record<string, string> = {
         "#a4bdfc": "#7986cb",
@@ -1184,12 +1185,14 @@
         <div>
             <div class="flex flex-col gap-1 items-center">
                 <h1 class="text-xl font-bold text-primary text-center mb-1">Your Calendar</h1>
-                <p class="text-md text-secondary text-center">
-                    Subscribe in any calendar app with the link below.
-                </p>
-                <div class="flex flex-row gap-2 items-center">
-                    <Button variant="outlined" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
-                </div>
+                {#if isOtherCalendar}
+                    <p class="text-md text-secondary text-center">
+                        Subscribe in any calendar app with the link below.
+                    </p>
+                    <div class="flex flex-row gap-2 items-center">
+                        <Button variant="outlined" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
+                    </div>
+                {/if}
             </div>
         </div>
         <div class="not-peak">
