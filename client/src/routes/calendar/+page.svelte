@@ -78,10 +78,17 @@
         "10": "#0b8043",
         "11": "#d50000",
     };
-    function toDropdownColor(color: string | number | null | undefined): string {
-        if (color == null || color === "") return "#d50000";
+    function toDropdownColor(color: string | number | null | undefined, fallback = "#d50000"): string {
+        if (color == null || color === "") return fallback;
         const normalized = String(color).toLowerCase();
-        return EVENT_HEX_TO_WITCC[normalized] ?? COLOR_ID_TO_WITCC[normalized] ?? (normalized.startsWith("#") ? normalized : "#d50000");
+        return EVENT_HEX_TO_WITCC[normalized] ?? COLOR_ID_TO_WITCC[normalized] ?? (normalized.startsWith("#") ? normalized : fallback);
+    }
+    function defaultEventColor(): string {
+        const isLab = (activeCourse?.schedule_type ?? '').toLowerCase() === 'laboratory';
+        return toDropdownColor(isLab ? labColor : lectureColor, isLab ? "#f6bf26" : "#039be5");
+    }
+    function resolvedEventColor(): string {
+        return toDropdownColor(resolved?.color_id || activeMeeting?.color, defaultEventColor());
     }
     let currentEventPrefs = $state<GetPreferencesResponse | undefined>(undefined);
     let templates: TemplateVariables | undefined = $derived(currentEventPrefs?.templates);
@@ -111,7 +118,7 @@
 			const op = m[2];
 			const right = m[4];
 			const leftVal = String(templates?.[left] ?? '');
-			return op === '==' ? leftVal === right : leftVal !== right;
+			return op === '==' ? leftVal.toLowerCase() === right.toLowerCase() : leftVal.toLowerCase() !== right.toLowerCase();
 		};
 		let s = t;
 		while (true) {
@@ -144,6 +151,10 @@
 			}
 			const key = m[1] as keyof TemplateVariables;
 			let value = templates?.[key] ?? '';
+            if (!value && m[1] === 'schedule_type_short') {
+                const st = String(templates?.schedule_type ?? '').toLowerCase();
+                value = st === 'laboratory' ? 'Lab' : st === 'lecture' ? 'Lec' : (templates?.schedule_type ?? '');
+            }
             if (m[3]) {
                 value = value.replaceAll(m[3], '');
             }
@@ -155,6 +166,15 @@
 		}
 		return result;
 	}
+
+    function isPresetSelected(current: string, presets: string[], index: number): boolean {
+        const preset = presets[index];
+        if (!preset) return false;
+        const effective = current || presets[0];
+        if (!effective) return false;
+        if (effective === preset) return true;
+        return parseTemplate(effective).join('') === parseTemplate(preset).join('');
+    }
 
 	let derivedTemplates = $derived.by(() => {
 		return {
@@ -540,6 +560,7 @@
 
     async function getEventPerfs(eventId: number | string) {
         const data = await API.getMeetingTimePreference(eventId);
+        courseColor = toDropdownColor(data.resolved?.color_id || activeMeeting?.color, defaultEventColor());
         currentEventPrefs = data;
     }
 
@@ -845,7 +866,7 @@
             event_preference.location_template = locationChanged ? editLocation : editLocationManual;
         }
 
-        const colorChanged = courseColor !== toDropdownColor(resolved?.color_id);
+        const colorChanged = courseColor !== resolvedEventColor();
         if (colorChanged) {
             event_preference.color_id = courseColor;
         }
@@ -1124,7 +1145,7 @@
             editTitleManual = currentEventPrefs.preview?.title ?? "";
             editDescriptionManual = currentEventPrefs.preview?.description ?? "";
             editLocationManual = currentEventPrefs.preview?.location ?? "";
-            courseColor = toDropdownColor(resolved?.color_id);
+            courseColor = resolvedEventColor();
             notificationsDisabled = currentEventPrefs.notifications_disabled ?? false;
             
             if (resolved?.reminder_settings && resolved.reminder_settings.length > 0) {
@@ -1334,65 +1355,92 @@
         >
             <div
                 transition:scale={{ duration: 200, start: 0.95 }}
-                class="relative bg-surface-container-low rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+                class="@container relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-surface-container text-on-surface shadow-[0_0.75rem_2.5rem_rgb(var(--m3-scheme-shadow)/0.24)]"
                 role="dialog"
                 aria-modal="true"
+                aria-labelledby="edit-event-title"
                 tabindex="-1"
                 bind:this={modalEl}
                 onpointerdown={(e) => { onPointerDownInside(); e.stopPropagation(); }}
                 onclick={(e) => e.stopPropagation()}
                 onkeydown={(e) => e.stopPropagation()}
             >
-                <div class="flex flex-col gap-4 p-6">
-                    <div class="mb-2 flex flex-row gap-2 items-center">
-                        <div class="flex flex-row gap-2 items-center">
-                            <h1 class="text-2xl font-bold">Edit Calendar Event</h1>
-                            <Chip selected={editMode} variant="input" onclick={() => {editMode = !editMode}}>Edit Manually</Chip>
-                            <div class="tailwindcss flex flex-row items-center space-between absolute right-4">
-                                <Button variant="tonal" onclick={() => {activeCourse = undefined; activeMeeting = undefined; activeDay = undefined; notifications = []; courseColor = "#d50000"; currentEventPrefs = undefined; editTitle = ""; editDescription = ""; editLocation = ""; editTitleManual = ""; editDescriptionManual = ""; editLocationManual = ""; editMode = false;}}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="m12 13.4l-4.9 4.9q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7l4.9-4.9l-4.9-4.9q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.9 4.9l4.9-4.9q.275-.275.7-.275t.7.275t.275.7t-.275.7L13.4 12l4.9 4.9q.275.275.275.7t-.275.7t-.7.275t-.7-.275z"/></svg>
-                                </Button>
+                <header class="flex items-start justify-between gap-3 border-b border-outline-variant px-5 py-4 @max-[24rem]:px-4">
+                    <div class="min-w-0">
+                        <h1 id="edit-event-title" class="m-0 text-xl font-bold tracking-[-0.015em] text-on-surface">Edit Calendar Event</h1>
+                        <p class="m-0 mt-1 truncate text-sm text-on-surface-variant">{activeCourse.title}</p>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-2">
+                        <div class="flex items-center gap-1.5" role="group" aria-label="Edit mode">
+                            <Chip selected={!editMode} variant="input" onclick={() => {editMode = false}}>Presets</Chip>
+                            <Chip selected={editMode} variant="input" onclick={() => {editMode = true}}>{advancedEditing ? "Templates" : "Manual"}</Chip>
+                        </div>
+                        <button
+                            type="button"
+                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                            aria-label="Close"
+                            onclick={() => {activeCourse = undefined; activeMeeting = undefined; activeDay = undefined; notifications = []; courseColor = "#d50000"; currentEventPrefs = undefined; editTitle = ""; editDescription = ""; editLocation = ""; editTitleManual = ""; editDescriptionManual = ""; editLocationManual = ""; editMode = false;}}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 13.4l-4.9 4.9q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7l4.9-4.9l-4.9-4.9q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.9 4.9l4.9-4.9q.275-.275.7-.275t.7.275t.275.7t-.275.7L13.4 12l4.9 4.9q.275.275.275.7t-.275.7t-.7.275t-.7-.275z"/></svg>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="min-h-0 overflow-y-auto">
+                    <section class="flex flex-col gap-4 p-5 @max-[24rem]:p-4">
+                    {#if editMode && !advancedEditing}
+                        <div class="grid grid-cols-1 gap-3">
+                            <TextFieldOutlined label="Course Title" bind:value={editTitleManual} />
+                            <TextFieldOutlinedMultiline label="Course Description" bind:value={editDescriptionManual} rows={2} />
+                            <TextFieldOutlined label="Course Location" bind:value={editLocationManual} />
+                        </div>
+                    {:else if editMode && advancedEditing}
+                        <div class="grid grid-cols-1 gap-3">
+                            <TextFieldOutlined label="Course Title" bind:value={editTitle} />
+                            <TextFieldOutlinedMultiline label="Course Description" bind:value={editDescription} rows={2} />
+                            <TextFieldOutlined label="Course Location" bind:value={editLocation} />
+                        </div>
+                    {:else}
+                        <div class="flex flex-col divide-y divide-outline-variant">
+                            <div class="grid gap-2 py-3 first:pt-0 @min-[32rem]:grid-cols-[8rem_minmax(0,1fr)] @min-[32rem]:items-start">
+                                <h3 class="m-0 pt-2 text-sm font-bold text-on-surface">Title</h3>
+                                <div class="flex min-w-0 flex-wrap gap-2">
+                                    {#each derivedTemplates.titleTemplates as template, i (titleTemplates[i])}
+                                        {@const selected = isPresetSelected(editTitle || resolved?.title_template || '', titleTemplates, i)}
+                                        <Chip selected={selected} variant="input" onclick={() => {editTitle = titleTemplates[i];}}>{template.join('')}</Chip>
+                                    {/each}
+                                </div>
+                            </div>
+                            <div class="grid gap-2 py-3 @min-[32rem]:grid-cols-[8rem_minmax(0,1fr)] @min-[32rem]:items-start">
+                                <h3 class="m-0 pt-2 text-sm font-bold text-on-surface">Description</h3>
+                                <div class="desc-chips flex min-w-0 flex-wrap gap-2">
+                                    {#each derivedTemplates.descriptionTemplates as template, i (descriptionTemplates[i])}
+                                        {@const selected = (editDescription && descriptionTemplates.includes(editDescription)) ? (editDescription === descriptionTemplates[i]) : (resolved?.description_template === descriptionTemplates[i])}
+                                        <Chip selected={selected} variant="input" onclick={() => {editDescription = descriptionTemplates[i];}}>{template.join('')}</Chip>
+                                    {/each}
+                                </div>
+                            </div>
+                            <div class="grid gap-2 pt-3 @min-[32rem]:grid-cols-[8rem_minmax(0,1fr)] @min-[32rem]:items-start">
+                                <h3 class="m-0 pt-2 text-sm font-bold text-on-surface">Location</h3>
+                                <div class="flex min-w-0 flex-wrap gap-2">
+                                    {#each derivedTemplates.locationTemplates as template, i (locationTemplates[i])}
+                                        {@const selected = (editLocation && locationTemplates.includes(editLocation)) ? (editLocation === locationTemplates[i]) : (resolved?.location_template === locationTemplates[i])}
+                                        <Chip selected={selected} variant="input" onclick={() => {editLocation = locationTemplates[i];}}>{template.join('')}</Chip>
+                                    {/each}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    {#if editMode && !advancedEditing}
-                        <TextFieldOutlined label="Course Title" bind:value={editTitleManual} />
-                        <TextFieldOutlinedMultiline label="Course Description" bind:value={editDescriptionManual} rows={1} />
-                        <TextFieldOutlined label="Course Location" bind:value={editLocationManual} />
-                    {:else if editMode && advancedEditing}
-                        <TextFieldOutlined label="Course Title" bind:value={editTitle} />
-                        <TextFieldOutlinedMultiline label="Course Description" bind:value={editDescription} rows={1} />
-                        <TextFieldOutlined label="Course Location" bind:value={editLocation} />
-                    {:else}
-                    <div class="flex flex-col gap-2">
-                        <h2 class="text-md">Event Title</h2>
-						<div class="flex flex-row gap-2 items-center">
-							{#each derivedTemplates.titleTemplates as template, i}
-								{@const selected = (editTitle && titleTemplates.includes(editTitle)) ? (editTitle === titleTemplates[i]) : (resolved?.title_template === titleTemplates[i])}
-								<Chip selected={selected} variant="input" onclick={() => {editTitle = titleTemplates[i];}}>{template.join('')}</Chip>
-                            {/each}
-                        </div>
-                        <h2 class="text-md">Event Description</h2>
-                        <div class="flex flex-row flex-wrap gap-2 items-center peak desc-chips">
-							{#each derivedTemplates.descriptionTemplates as template, i}
-								{@const selected = (editDescription && descriptionTemplates.includes(editDescription)) ? (editDescription === descriptionTemplates[i]) : (resolved?.description_template === descriptionTemplates[i])}
-								<Chip selected={selected} variant="input" onclick={() => {editDescription = descriptionTemplates[i];}}>{template.join('')}</Chip>
-                            {/each}
-                        </div>
-                        <h2 class="text-md">Event Location</h2>
-                        <div class="flex flex-row gap-2 items-center">
-							{#each derivedTemplates.locationTemplates as template, i}
-								{@const selected = (editLocation && locationTemplates.includes(editLocation)) ? (editLocation === locationTemplates[i]) : (resolved?.location_template === locationTemplates[i])}
-								<Chip selected={selected} variant="input" onclick={() => {editLocation = locationTemplates[i];}}>{template.join('')}</Chip>
-                            {/each}
-                        </div>
-                    </div>
                     {/if}
-                    <div class="flex flex-col gap-3">
-                        <div class="flex flex-row items-center gap-2 justify-between">
-                            <h2 class="text-md">Remind me before class</h2>
+                    </section>
+
+                    <section class="flex flex-col gap-3 border-t border-outline-variant p-5 @max-[24rem]:p-4">
+                        <div class="flex flex-row items-center justify-between gap-3">
+                            <div>
+                                <h2 class="m-0 text-base font-bold text-on-surface">Reminders</h2>
+                                <p class="m-0 mt-0.5 text-xs text-on-surface-variant">Choose when and how to be notified</p>
+                            </div>
                             {#if notificationsDisabled}
-                                <div class="flex flex-row items-center gap-1 text-error" title="All reminders are currently disabled in Settings. Your reminder preferences are saved and will be restored when you re-enable notifications.">
+                                <div class="flex shrink-0 flex-row items-center gap-1 text-error" title="All reminders are currently disabled in Settings. Your reminder preferences are saved and will be restored when you re-enable notifications.">
                                     <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                         <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
                                         <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
@@ -1402,41 +1450,54 @@
                             {/if}
                         </div>
                         {#if notificationsDisabled}
-                            <p class="text-sm text-on-surface-variant bg-error-container/20 p-3 rounded-md border border-error-container">
+                            <p class="m-0 rounded-xl border border-error-container bg-error-container/20 p-3 text-sm text-on-surface-variant">
                                 <strong>Reminders are muted.</strong> Your settings are preserved but notifications are currently disabled. Re-enable notifications in Settings to activate them.
                             </p>
                         {/if}
-                        {#each notifications, i}
-                        <div class="flex flex-row gap-2 items-center stuff-moment peak {notificationsDisabled ? 'opacity-50' : ''}">
-                            <SelectOutlined label=""
-                                options={[
-                                { text: "Notification", value: "notification" },
-                                { text: "Email", value: "email" },
-                                ]}
-                                bind:value={notifications[i].method}
-                                disabled={notificationsDisabled}
-                            />
-                            <TextFieldOutlined type="number" label="" bind:value={notifications[i].time} disabled={notificationsDisabled} />
-                            <SelectOutlined label=""
-                                options={[
-                                { text: "minutes", value: "minutes" },
-                                { text: "hours", value: "hours" },
-                                { text: "days", value: "days" },
-                                ]}
-                                bind:value={notifications[i].type}
-                                disabled={notificationsDisabled}
-                            />
-                            <Button variant="tonal" onclick={() => { notifications = notifications.filter((_, idx) => idx !== i); }} disabled={notificationsDisabled}>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 13q-.425 0-.712-.288T5 12t.288-.712T6 11h12q.425 0 .713.288T19 12t-.288.713T18 13z"/></svg>
+                        {#each notifications as _, i (notifications[i])}
+                            <div class={["stuff-moment grid grid-cols-[minmax(0,1fr)_minmax(5rem,0.65fr)_minmax(0,0.8fr)_auto] items-center gap-2 rounded-xl bg-surface-container-low p-3 @max-[30rem]:grid-cols-2", notificationsDisabled && "opacity-50"]}>
+                                <SelectOutlined label="Method"
+                                    options={[
+                                    { text: "Notification", value: "notification" },
+                                    { text: "Email", value: "email" },
+                                    ]}
+                                    bind:value={notifications[i].method}
+                                    disabled={notificationsDisabled}
+                                />
+                                <TextFieldOutlined type="number" label="Time" bind:value={notifications[i].time} disabled={notificationsDisabled} />
+                                <SelectOutlined label="Unit"
+                                    options={[
+                                    { text: "minutes", value: "minutes" },
+                                    { text: "hours", value: "hours" },
+                                    { text: "days", value: "days" },
+                                    ]}
+                                    bind:value={notifications[i].type}
+                                    disabled={notificationsDisabled}
+                                />
+                                <div class="@max-[30rem]:justify-self-end">
+                                    <Button variant="tonal" onclick={() => { notifications = notifications.filter((_, idx) => idx !== i); }} disabled={notificationsDisabled}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 13q-.425 0-.712-.288T5 12t.288-.712T6 11h12q.425 0 .713.288T19 12t-.288.713T18 13z"/></svg>
+                                    </Button>
+                                </div>
+                            </div>
+                        {/each}
+                        <div class="flex justify-start">
+                            <Button variant="tonal" onclick={() => { notifications = [...notifications, { time: "30", type: "minutes", method: "notification" }]; }} disabled={notificationsDisabled}>
+                                <span class="flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 21q-.425 0-.712-.288T11 20v-7H4q-.425 0-.712-.288T3 12t.288-.712T4 11h7V4q0-.425.288-.712T12 3t.713.288T13 4v7h7q.425 0 .713.288T21 12t-.288.713T20 13h-7v7q0 .425-.288.713T12 21"/></svg>
+                                    Add reminder
+                                </span>
                             </Button>
                         </div>
-                        {/each}
-                        <Button variant="tonal" onclick={() => { notifications = [...notifications, { time: "30", type: "minutes", method: "notification" }]; }} disabled={notificationsDisabled}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M12 21q-.425 0-.712-.288T11 20v-7H4q-.425 0-.712-.288T3 12t.288-.712T4 11h7V4q0-.425.288-.712T12 3t.713.288T13 4v7h7q.425 0 .713.288T21 12t-.288.713T20 13h-7v7q0 .425-.288.713T12 21"/></svg>
-                        </Button>
-                        <h2 class="text-md">Color</h2>
-                        <div class="flex flex-row gap-2 items-center">
-                            <div class="w-6 h-6 rounded-full border-2 border-outline other-stuff" style="background-color: {courseColor};"></div>
+                    </section>
+
+                    <section class="flex items-center justify-between gap-4 border-t border-outline-variant p-5 @max-[24rem]:flex-col @max-[24rem]:items-stretch @max-[24rem]:p-4">
+                        <div>
+                            <h2 class="m-0 text-base font-bold text-on-surface">Event color</h2>
+                            <p class="m-0 mt-0.5 text-xs text-on-surface-variant">Used for this class on your calendar</p>
+                        </div>
+                        <div class="flex shrink-0 flex-row items-center gap-2">
+                            <div class="other-stuff h-7 w-7 shrink-0 rounded-full border-2 border-outline" style="background-color: {courseColor};"></div>
                             <SelectOutlined label=""
                                 options={[
                                     { text: "Tomato", value: "#d50000" },
@@ -1454,9 +1515,13 @@
                                 bind:value={courseColor}
                             />
                         </div>
-                        <Button variant="tonal" square onclick={saveEventPerfs}>Save</Button>
-                    </div>
+                    </section>
                 </div>
+
+                <footer class="flex items-center justify-end gap-2 border-t border-outline-variant bg-surface-container px-5 py-3.5 @max-[24rem]:px-4">
+                    <Button variant="text" onclick={() => {activeCourse = undefined; activeMeeting = undefined; activeDay = undefined; notifications = []; courseColor = "#d50000"; currentEventPrefs = undefined; editTitle = ""; editDescription = ""; editLocation = ""; editTitleManual = ""; editDescriptionManual = ""; editLocationManual = ""; editMode = false;}}>Cancel</Button>
+                    <Button variant="filled" square onclick={saveEventPerfs}>Save changes</Button>
+                </footer>
             </div>
         </div>
     {/if}
