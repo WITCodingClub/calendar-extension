@@ -30,7 +30,7 @@
 	const youColors = $derived(ownerColorMap['you'] ?? { lecture: '#039be5', lab: '#81d4fa' });
 </script>
 
-<div class="flex flex-col gap-2 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+<div class="flex w-full flex-col gap-2">
 	<div class="flex flex-row items-center justify-between gap-2">
 		<div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant">Overlay</div>
 		<Button variant={manageOpen ? 'tonal' : 'outlined'} square onclick={ontoggleManage}>

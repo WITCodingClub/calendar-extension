@@ -1141,7 +1141,7 @@
     });
 </script>
 
-<div class="flex flex-col gap-4 justify-center items-center h-full mt-4 w-full px-3">
+<div class="calendar-page">
     {#if !processedData && tab === "a"}
         <div class="w-full flex flex-col items-center gap-6 p-6 bg-surface-container-lowest rounded-md shadow-md border border-outline-variant max-w-lg mx-auto">
             <div class="flex flex-col gap-1 items-center">
@@ -1182,62 +1182,62 @@
             </div>
         </div>
     {:else if processedData || tab !== "a"}
-        <div>
-            <div class="flex flex-col gap-1 items-center">
-                <h1 class="text-xl font-bold text-primary text-center mb-1">Your Calendar</h1>
+        <section class="calendar-top">
+            <header class="calendar-header">
+                <div class="calendar-heading">
+                    <div class="calendar-title">
+                        <h1 class="text-on-surface">Your Calendar</h1>
+                    </div>
+                </div>
                 {#if isOtherCalendar}
-                    <p class="text-md text-secondary text-center">
-                        Subscribe in any calendar app with the link below.
-                    </p>
-                    <div class="flex flex-row gap-2 items-center">
+                    <div class="calendar-action">
                         <Button variant="outlined" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
                     </div>
                 {/if}
+            </header>
+            <div class="calendar-tabs not-peak">
+                <VariableTabs secondary={true}
+                    items={[
+                        { name: "Calendar", value: "a" },
+                        { name: "Friends", value: "friends" },
+                        { name: "Settings", value: "settings" },
+                        { name: "Help", value: "help" },
+                    ]}
+                    bind:tab
+                />
             </div>
-        </div>
-        <div class="not-peak">
-            <VariableTabs secondary={true}
-                items={[
-                    { name: "Calendar", value: "a" },
-                    { name: "Friends", value: "friends" },
-                    { name: "Settings", value: "settings" },
-                    { name: "Help", value: "help" },
-                ]}
-                bind:tab
-            />
-        </div>
-        <hr class="w-full border-outline-variant" />
-        {#if tab == "a"}
-            <div class="term-bar">
-                <div class="term-seg">
-                    <ConnectedButtons>
-                    {#each displayTerms as termOpt, i}
-                        <input type="radio" name="seg" id="seg-{i}" bind:group={selected} value={termOpt.id} onchange={async () => { const tid = termOpt.id; if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !attemptedTerms.has(tid) && !loading) { const next = new Set(attemptedTerms); next.add(tid); attemptedTerms = next; await ensureProcessedForTerm(tid); } }} />
-                        <Button for="seg-{i}" variant="filled">{termOpt.name}</Button>
-                    {/each}
-                    </ConnectedButtons>
+            {#if tab == "a"}
+                <div class="term-bar">
+                    <div class="term-seg">
+                        <ConnectedButtons>
+                        {#each displayTerms as termOpt, i}
+                            <input type="radio" name="seg" id="seg-{i}" bind:group={selected} value={termOpt.id} onchange={async () => { const tid = termOpt.id; if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !attemptedTerms.has(tid) && !loading) { const next = new Set(attemptedTerms); next.add(tid); attemptedTerms = next; await ensureProcessedForTerm(tid); } }} />
+                            <Button for="seg-{i}" variant="filled">{termOpt.name}</Button>
+                        {/each}
+                        </ConnectedButtons>
+                    </div>
+                    <div class="term-refresh">
+                        {#if processedData && !refreshing}
+                            <Button variant="tonal" onclick={() => refreshSchedule(selected)} disabled={refreshing || loading}>
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                            </Button>
+                        {:else if refreshing && processedData}
+                            <div class="flex flex-col items-center load-test gap-2">
+                                <LoadingIndicator size={44} />
+                            </div>
+                        {/if}
+                    </div>
                 </div>
-                <div class="term-refresh">
-                    {#if processedData && !refreshing}
-                        <Button variant="tonal" onclick={() => refreshSchedule(selected)} disabled={refreshing || loading}>
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                </svg>
-                        </Button>
-                    {:else if refreshing && processedData}
-                        <div class="flex flex-col items-center load-test gap-2">
-                            <LoadingIndicator size={44} />
-                        </div>
-                    {/if}
-                </div>
-            </div>
-        {/if}
+            {/if}
+        </section>
     {/if}
 
     {#if tab === "a" && processedData}
         {@const latestHour = getLatestEndHour(processedData)}
         {@const numHours = latestHour - 8 + 1}
-            <div class="flex flex-col w-full h-full overflow-hidden">
+            <div class="schedule-frame">
                 <div class="flex-1 overflow-x-auto overflow-y-hidden">
                     <div class="inline-flex flex-col min-w-full h-full">
                         <div class="flex flex-row border-b border-outline-variant bg-surface-container-lowest sticky top-0 z-10">
@@ -1453,6 +1453,76 @@
 {/if}
 
 <style>
+    .calendar-page {
+        container-type: inline-size;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        padding: 0.75rem;
+        box-sizing: border-box;
+    }
+
+    .calendar-top {
+        flex: 0 0 auto;
+        width: 100%;
+        overflow: hidden;
+        border: 1px solid rgb(var(--m3-scheme-outline-variant));
+        border-radius: 1rem;
+        background: rgb(var(--m3-scheme-surface-container-lowest));
+        box-shadow: 0 0.2rem 0.75rem rgb(0 0 0 / 0.06);
+    }
+
+    .calendar-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        min-width: 0;
+        padding: 1rem 1.125rem 0.875rem;
+    }
+
+    .calendar-heading {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+    }
+
+    .calendar-title {
+        min-width: 0;
+    }
+
+    .calendar-title h1 {
+        margin: 0;
+        font-size: clamp(1.35rem, 5cqi, 1.8rem);
+        font-weight: 750;
+        line-height: 1.15;
+        letter-spacing: -0.025em;
+    }
+
+    .calendar-action {
+        flex: 0 0 auto;
+    }
+
+    .calendar-tabs {
+        border-top: 1px solid rgb(var(--m3-scheme-outline-variant));
+    }
+
+    .schedule-frame {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        width: 100%;
+        min-width: 0;
+        min-height: 12rem;
+        overflow: hidden;
+        border: 1px solid rgb(var(--m3-scheme-outline-variant));
+        border-radius: 1rem;
+        background: rgb(var(--m3-scheme-surface-container-lowest));
+    }
+
     :global(.stuff-moment div.m3-container) {
         min-width: 7rem !important;
     }
@@ -1488,21 +1558,23 @@
         align-items: center;
         column-gap: 0.5rem;
         width: 100%;
-        padding-left: 1rem;
-        padding-right: 1rem;
+        padding: 0.75rem 1rem;
+        border-top: 1px solid rgb(var(--m3-scheme-outline-variant));
+        background: rgb(var(--m3-scheme-surface-container-low));
+        box-sizing: border-box;
     }
 
     .term-seg {
         container-type: inline-size;
         min-width: 0;
         display: flex;
-        justify-content: center;
+        justify-content: flex-start;
     }
 
     .term-seg > :global(.m3-container) {
         display: flex !important;
         flex-wrap: wrap;
-        justify-content: center;
+        justify-content: flex-start;
         max-width: 100%;
     }
 
@@ -1514,6 +1586,40 @@
         .term-seg :global(label.m3-container.s) {
             font-size: 0.75rem !important;
             padding-inline: 0.7rem !important;
+        }
+    }
+
+    @container (max-width: 30rem) {
+        .calendar-header {
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 0.875rem;
+        }
+
+        .calendar-action {
+            width: 100%;
+        }
+
+        .calendar-action :global(button) {
+            width: 100%;
+        }
+    }
+
+    @container (max-width: 20rem) {
+        .calendar-page {
+            padding: 0.5rem;
+        }
+
+        .term-bar {
+            grid-template-columns: minmax(0, 1fr);
+            row-gap: 0.5rem;
+            padding-inline: 0.625rem;
+        }
+
+        .term-refresh {
+            display: flex;
+            justify-content: center;
         }
     }
 </style>
