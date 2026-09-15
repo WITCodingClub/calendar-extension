@@ -26,6 +26,7 @@
 
     async function tryForEmail() {
         try {
+            if (typeof chrome.identity?.getProfileUserInfo !== 'function') return;
             const info = await chrome.identity.getProfileUserInfo();
             if (info?.email) emailToSignInWith = info.email;
         } catch {}

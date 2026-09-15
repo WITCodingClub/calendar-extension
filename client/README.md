@@ -20,3 +20,10 @@ ID as the Web Store copy.
 4. Select the folder (extension)
 5. Ensure the added Extension is enabled
 6. Simply click on the extension icon to use it.
+
+## Testing the Extension (for firefox)
+
+1. Head to ``about:debugging#/runtime/this-firefox``
+2. Hit Load Temporary Add-on
+3. Select the manifest.json from the built extension
+4. Simply click on the extension icon to use it.

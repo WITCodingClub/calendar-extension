@@ -16,7 +16,14 @@ const config = {
 			assets: 'extension',
 			fallback: undefined,
 			precompress: false,
-			strict: true
+			strict: true,
+			firefox: {
+				permissions: {
+					add: ['cookies', 'contextualIdentities']
+				},
+				apiReplacements: [{ find: /\.innerHTML\s*=/g, replace: '["innerHTML"] =' }],
+				warnIdentityProfile: false
+			}
 		}),
 		output: {
 			bundleStrategy: 'single'

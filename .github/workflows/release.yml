@@ -31,7 +31,7 @@ jobs:
         working-directory: client
         run: npm ci
 
-      - name: Build extension
+      - name: Build Chrome extension
         working-directory: client
         run: npm run build
 
@@ -42,9 +42,9 @@ jobs:
           cd client/extension
           zip -r "../../wit-calendar-${VERSION}.zip" .
 
-      - name: Patch Firefox build
+      - name: Build Firefox extension
         working-directory: client
-        run: npm run patch-firefox
+        run: npm run build-firefox
 
       - name: Create Firefox zip artifact
         env:

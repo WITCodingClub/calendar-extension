@@ -39,5 +39,17 @@
     "https://selfservice.wit.edu/*",
     "https://*.witcc.dev/*",
     "https://heron-selected-literally.ngrok-free.app/*"
-  ]
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "wit-calendar@witcc.dev",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["personallyIdentifyingInfo", "authenticationInfo", "websiteContent"]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  }
 }
