@@ -597,7 +597,7 @@
                             </div>
                             {#if account.needs_reauth}
                                 <span class="text-xs text-error ml-7">
-                                    {account.token_revoked ? 'Access revoked - please re-authenticate' : 'Authentication expired - please re-authenticate'}
+                                    {account.token_revoked ? 'Access revoked — please re-authenticate.' : 'Authentication expired — please re-authenticate.'}
                                 </span>
                             {/if}
                         </div>

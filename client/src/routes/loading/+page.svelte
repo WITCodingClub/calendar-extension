@@ -107,6 +107,10 @@
             const msg = String(err);
             if (msg.includes('cas.wit.edu') || msg.includes('Cannot access contents of url') || msg.includes('NetworkError') || msg.includes('login/cas')) {
                 error = 'not_logged_in';
+            } else if (msg.includes('Frame with ID') || msg.includes('showing error page')) {
+                // Chrome surfaces this when the tab hit a network/error page
+                // (e.g. server unreachable) instead of a real document.
+                error = 'server_down';
             } else if (!error) {
                 error = msg;
             }
@@ -185,7 +189,7 @@
             await continueAfterSignIn({ offerPasskey: true });
         } catch (err) {
             console.error('Sign in error:', err);
-            error = 'Server is (probably) down!';
+            error = 'server_down';
             snackbar('Failed to sign in: ' + err, undefined, true);
         }
     }
@@ -194,16 +198,21 @@
 <div class="flex flex-col items-center justify-center min-h-screen w-full px-4">
     <div class=" rounded-lg shadow-md p-8 flex flex-col items-center peak {error ? 'bg-error' : 'bg-surface-container-high'}">
         {#if error == 'not_logged_in'}
-            <ErrorNotice title="Not logged in to WIT!" error="Please sign in to " includeStatusLink={false} />
+            <ErrorNotice title="Not logged into WIT Self Service!">
+                Please sign into <a href="https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory" target="_blank" class="text-on-error underline">WIT Self Service</a> first, then try again. If the issue persists, please submit a bug report on <a class="text-on-error underline" href="https://github.com/WITCodingClub/calendar-backend/issues" target="_blank">GitHub</a>.
+            </ErrorNotice>
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else if error == 'google_signin_failed'}
-            <ErrorNotice title="Google sign-in failed" error="We couldn't sign you in with Google. Please try again." includeStatusLink={false} />
+            <ErrorNotice title="Google sign-in failed" error="We couldn't sign you in with Google. Please try again." />
             <Button variant="elevated" square onclick={() => signIn()}>Try Again</Button>
         {:else if error == 'wit_account_required'}
-            <ErrorNotice title="Use your WIT account" error="Sign in with your @wit.edu Google account. You can connect a personal Google account for calendar sync afterwards." includeStatusLink={false} />
+            <ErrorNotice title="Use your WIT account" error="Sign in with your @wit.edu Google account. You can connect a personal Google account for calendar sync afterwards." />
             <Button variant="elevated" square onclick={() => signIn()}>Pick a different account</Button>
+        {:else if error == 'server_down'}
+            <ErrorNotice title="Failed to sign in!" error="Server may be down." includeStatusLink={true} includeSelfServiceHint={false} />
+            <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else if error}
-            <ErrorNotice title="Failed to sign in!" error={error} includeStatusLink={true} />
+            <ErrorNotice title="Failed to sign in!" {error} includeSelfServiceHint={true} />
             <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
         {:else}
             <h1 class="text-3xl font-extrabold text-center text-primary mb-6">Signing in!</h1>

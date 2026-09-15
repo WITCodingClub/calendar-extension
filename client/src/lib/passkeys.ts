@@ -102,22 +102,31 @@ export async function registerPasskey(nickname?: string): Promise<boolean> {
 
 export async function signInWithPasskey(): Promise<boolean> {
     const params = await openPasskeyPage({ mode: 'authenticate' });
+    // Match Google auth: closed window / cancelled / missing code all fail
+    // loudly so the sign-in page can show a snackbar. Quiet returns hide the
+    // usual "no passkey on this device" case, which the site reports as
+    // error=cancelled.
     if (!params) {
-        return false;
+        throw new Error('Passkey sign-in was closed before it finished');
     }
 
-    if (params.get('error')) {
-        return false;
+    const error = params.get('error');
+    if (error) {
+        throw new Error(
+            error === 'cancelled'
+                ? 'Passkey sign-in was cancelled or no passkey is available on this device'
+                : error
+        );
     }
 
     const code = params.get('code');
     if (!code) {
-        return false;
+        throw new Error('No passkey sign-in code returned');
     }
 
     const data = await API.exchangePasskeyCode(code);
     if (!data.jwt) {
-        return false;
+        throw new Error('Passkey sign-in did not return a session');
     }
 
     await EnvironmentManager.setJwtToken(data.jwt);

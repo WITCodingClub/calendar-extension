@@ -33,10 +33,13 @@
         try {
             if (await signInWithPasskey()) {
                 await continueAfterSignIn();
+                return;
             }
+            snackbar('Could not sign in with a passkey', undefined, true);
         } catch (err) {
             console.error('Passkey sign-in error:', err);
-            snackbar('Could not sign in with a passkey: ' + err, undefined, true);
+            const message = err instanceof Error ? err.message : String(err);
+            snackbar('Could not sign in with a passkey: ' + message, undefined, true);
         } finally {
             isUsingPasskey = false;
         }
