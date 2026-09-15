@@ -1,68 +1,13 @@
-import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-const geckoId = 'wit-calendar@witcc.dev';
-const firefoxRedirectUrl = `https://${createHash('sha1').update(geckoId).digest('hex')}.extensions.allizom.org/*`;
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const extDir = join(scriptDir, '..', 'extension');
 if (!existsSync(extDir)) {
-	console.error('No extension build found. Run npm run build first.');
+	console.error('No extension build found. Run npm run build-firefox first.');
 	process.exit(1);
 }
-
-const manifestPath = join(extDir, 'manifest.json');
-const manifest = JSON.parse(
-	readFileSync(manifestPath, 'utf8').replace(/,\s*([\]}])/g, '$1')
-);
-const icons = manifest.icons ?? { 128: 'icon128.png' };
-
-delete manifest.side_panel;
-manifest.permissions = (manifest.permissions ?? []).filter(
-	(permission) => permission !== 'sidePanel' && permission !== 'identity.email'
-);
-for (const permission of ['cookies', 'contextualIdentities']) {
-	if (!manifest.permissions.includes(permission)) {
-		manifest.permissions.push(permission);
-	}
-}
-const hostPermissions = manifest.host_permissions ?? [];
-if (!hostPermissions.includes(firefoxRedirectUrl)) {
-	hostPermissions.push(firefoxRedirectUrl);
-}
-manifest.host_permissions = hostPermissions;
-manifest.sidebar_action = {
-	default_title: manifest.name,
-	default_panel: 'index.html',
-	default_icon: icons
-};
-manifest.action = {
-	default_title: manifest.name,
-	default_icon: icons
-};
-manifest.background = { scripts: ['service-worker.js'] };
-manifest.browser_specific_settings = {
-	gecko: {
-		id: geckoId,
-		strict_min_version: '140.0',
-		data_collection_permissions: {
-			required: ['personallyIdentifyingInfo', 'authenticationInfo', 'websiteContent']
-		}
-	},
-	gecko_android: {
-		strict_min_version: '142.0'
-	}
-};
-writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-
-const squareIcon = join(scriptDir, 'icon128-square.png');
-if (!existsSync(squareIcon)) {
-	console.error('Missing client/scripts/icon128-square.png');
-	process.exit(1);
-}
-copyFileSync(squareIcon, join(extDir, 'icon128.png'));
 
 function extractInlineScripts(dir) {
 	const scriptsDir = join(dir, 'scripts');
@@ -107,31 +52,4 @@ function extractInlineScripts(dir) {
 	}
 }
 
-function patchBundledJs(dir) {
-	const immutableDir = join(dir, 'scripts', 'immutable');
-	if (!existsSync(immutableDir)) return;
-
-	for (const file of readdirSync(immutableDir).filter((name) => name.endsWith('.js'))) {
-		const filePath = join(immutableDir, file);
-		const source = readFileSync(filePath, 'utf8')
-			.replace(/\.innerHTML\s*=/g, '["innerHTML"] =')
-			.replace(/chrome\.identity\.getProfileUserInfo\s*\([^)]*\)/g, 'Promise.resolve({})');
-		writeFileSync(filePath, source);
-	}
-}
-
 extractInlineScripts(extDir);
-patchBundledJs(extDir);
-
-const swPath = join(extDir, 'service-worker.js');
-if (existsSync(swPath)) {
-	writeFileSync(
-		swPath,
-		readFileSync(swPath, 'utf8').replace(
-			/chrome\.sidePanel[\s\S]*?\.catch\(\s*\(error\)\s*=>\s*console\.error\(error\)\s*\);/,
-			`browser.action.onClicked.addListener(() => {
-  browser.sidebarAction.toggle();
-});`
-		)
-	);
-}
