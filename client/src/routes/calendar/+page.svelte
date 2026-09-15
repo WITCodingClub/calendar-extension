@@ -1204,9 +1204,9 @@
         </div>
     {:else if processedData || tab !== "a"}
         <section class="w-full flex-none overflow-hidden rounded-2xl bg-surface-container shadow-[0_0.2rem_0.75rem_rgb(var(--m3-scheme-shadow)/0.12)]">
-            <header class="flex min-w-0 items-center justify-between gap-4 bg-primary-container px-[1.125rem] pt-4 pb-3.5 text-on-primary-container @max-[30rem]:flex-col @max-[30rem]:items-start @max-[30rem]:gap-3 @max-[30rem]:p-3.5">
+            <header class="flex min-w-0 items-center justify-between gap-4 bg-secondary-container px-[1.125rem] pt-4 pb-3.5 text-on-primary-container @max-[30rem]:flex-col @max-[30rem]:items-start @max-[30rem]:gap-3 @max-[30rem]:p-3.5">
                 <div class="min-w-0">
-                    <h1 class="m-0 text-[clamp(1.35rem,5cqi,1.8rem)] leading-[1.15] font-[750] tracking-[-0.025em] text-on-primary-container">
+                    <h1 class="m-0 text-[clamp(1.35rem,5cqi,1.8rem)] leading-[1.15] font-[750] tracking-[-0.025em] text-on-secondary-container">
                         {tab === "settings" ? "Settings" : tab === "help" ? "Help" : "Your Calendar"}
                     </h1>
                 </div>
