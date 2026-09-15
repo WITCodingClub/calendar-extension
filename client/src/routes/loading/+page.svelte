@@ -7,6 +7,7 @@
     import { onMount } from 'svelte';
     import { EnvironmentManager } from '$lib/environment';
     import { getWitGoogleAuthCode } from '$lib/witGoogleAuth';
+    import { track } from '$lib/telemetry';
 
     let error = $state<string | null>(null);
 
@@ -23,6 +24,7 @@
             auth = await getWitGoogleAuthCode();
         } catch (err) {
             console.error('Google auth error:', err);
+            track('sign_in_google_failed');
             error = 'google_signin_failed';
             snackbar('Could not sign in with Google: ' + err, undefined, true);
             return;
@@ -50,6 +52,7 @@
             if (response.status === 403) {
                 const body = await response.json().catch(() => ({})) as { code?: string };
                 if (body.code === 'WIT_ACCOUNT_REQUIRED') {
+                    track('sign_in_wrong_account');
                     error = 'wit_account_required';
                     return;
                 }
@@ -73,9 +76,11 @@
                 await EnvironmentManager.setJwtToken(data.jwt);
             }
 
+            track('sign_in_google_succeeded');
             await continueAfterSignIn({ offerPasskey: true });
         } catch (err) {
             console.error('Sign in error:', err);
+            track('sign_in_google_failed');
             error = 'server_down';
             snackbar('Failed to sign in: ' + err, undefined, true);
         }
