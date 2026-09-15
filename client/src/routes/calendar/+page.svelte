@@ -13,6 +13,7 @@
     import { browser } from '$app/environment';
     import { snackbar } from 'm3-svelte';
     import { createWitTab } from '$lib/witTab';
+    import { cacheGeneration, clearSessionCache, setCachedTerms } from '$lib/sessionCache';
 
     type RegistrationsLookupResult =
         | { error: string }
@@ -580,21 +581,45 @@
         }
     }
 
+    const PREFERENCES_BATCH_SIZE = 200;
+
+    // Asks for the preferences of every meeting time in one request per 200 ids,
+    // instead of one request per meeting time. If the backend has no batch
+    // endpoint yet, it asks for each id on its own, as before.
+    async function fetchPreferencesFor(ids: Array<number | string>): Promise<Map<number | string, GetPreferencesResponse>> {
+        const map = new Map<number | string, GetPreferencesResponse>();
+        const chunks: Array<Array<number | string>> = [];
+        for (let i = 0; i < ids.length; i += PREFERENCES_BATCH_SIZE) {
+            chunks.push(ids.slice(i, i + PREFERENCES_BATCH_SIZE));
+        }
+
+        await Promise.all(chunks.map(async (chunk) => {
+            const batch = await API.getMeetingTimePreferences(chunk).catch(() => undefined);
+            if (batch) {
+                for (const id of chunk) {
+                    const data = batch[String(id)];
+                    if (data) map.set(id, data);
+                }
+                return;
+            }
+
+            await Promise.all(chunk.map(async (id) => {
+                try {
+                    const data: GetPreferencesResponse = await API.getMeetingTimePreference(id);
+                    if (data) map.set(id, data);
+                } catch {
+                    // Skip this meeting time, as the page did before.
+                }
+            }));
+        }));
+
+        return map;
+    }
+
     async function refreshAllEventPrefsForCurrentTerm() {
         if (!selected || !processedData) return;
         const ids = Array.from(new Set(processedData.flatMap(c => (c.meeting_times ?? []).filter(mt => mt?.id != null).map(mt => mt.id))));
-        const responses = await Promise.all(ids.map(async (id) => {
-            try {
-                const data: GetPreferencesResponse = await API.getMeetingTimePreference(id);
-                return { id, data };
-            } catch {
-                return undefined;
-            }
-        }));
-        const map = new Map<number | string, GetPreferencesResponse>();
-        for (const r of responses) {
-            if (r?.id != null && r.data) map.set(r.id, r.data);
-        }
+        const map = await fetchPreferencesFor(ids);
         if (map.size === 0) return;
         const dayKeys = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const;
         storedProcessedData.update((list) => {
@@ -1016,6 +1041,7 @@
         storedProcessedData.set([]);
         storedUserSettings.set(undefined);
         storedIcsUrl.set(undefined);
+        clearSessionCache();
         attemptedTerms = new Set();
         refreshedTerms = new Set();
     }
@@ -1038,7 +1064,10 @@
                     clearEnvironmentData();
 
                     // Now fetch fresh data for the current environment
-                    terms = await API.getTerms();
+                    const startedAt = cacheGeneration();
+                    const fetchedTerms = await API.getTerms();
+                    terms = fetchedTerms;
+                    setCachedTerms(fetchedTerms, startedAt);
                     const envSettings = await API.userSettings();
                     storedUserSettings.set(envSettings);
                     if (envSettings.enrolled_terms?.length && $enrolledTerms.length === 0) {
@@ -1064,9 +1093,19 @@
             clearEnvironmentData();
         }
 
-        // Now fetch fresh data for the current environment
-        terms = await API.getTerms();
-        const settings = await API.userSettings();
+        // Now fetch fresh data for the current environment. The two requests do
+        // not depend on each other, so send them together.
+        const startedAt = cacheGeneration();
+        const termsRequest = API.getTerms();
+        const settingsRequest = API.userSettings();
+        // Keep a failed settings request from being reported as unhandled while
+        // the terms request is still open. It still throws at its await below.
+        settingsRequest.catch(() => undefined);
+        const fetchedTerms = await termsRequest;
+        terms = fetchedTerms;
+        // The Friends page reads the terms from this cache instead of asking again.
+        setCachedTerms(fetchedTerms, startedAt);
+        const settings = await settingsRequest;
         storedUserSettings.set(settings);
         if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
             enrolledTerms.set(settings.enrolled_terms);
