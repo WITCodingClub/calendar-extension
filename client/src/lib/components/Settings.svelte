@@ -3,14 +3,14 @@
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { API } from "$lib/api";
-    import { clearLocalData } from "$lib/auth";
+    import { AuthError, clearLocalData } from "$lib/auth";
     import { EnvironmentManager, ENVIRONMENTS, type Environment } from "$lib/environment";
     import { featureFlags } from "$lib/featureFlags";
     import { processedData as storedProcessedData, userSettings as storedUserSettings, icsUrl as storedIcsUrl } from "$lib/store";
     import type { UserSettings } from "$lib/types";
     import { listPasskeys, passkeysSupported, registerPasskey, removePasskey, type PasskeySummary } from "$lib/passkeys";
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
-    import { cacheGeneration, setSettingsCache, settingsCache, updateSettingsCache, type ConnectedAccount } from "$lib/sessionCache";
+    import { cacheGeneration, setSettingsCache, settingsCache, updateSettingsCache, useEnvironment, type ConnectedAccount } from "$lib/sessionCache";
     import { onMount } from "svelte";
     import { get } from "svelte/store";
 
@@ -75,9 +75,12 @@
         previousSettingsWasUndefined = $storedUserSettings === undefined;
     });
 
-    async function loadPasskeys() {
+    // startedAt is the cache generation of the load that asked for the
+    // passkeys. A user action on the loaded page passes nothing, because it
+    // always belongs to the current generation.
+    async function loadPasskeys(startedAt?: number) {
         passkeys = await listPasskeys();
-        updateSettingsCache({ passkeys: $state.snapshot(passkeys) });
+        updateSettingsCache({ passkeys: $state.snapshot(passkeys) }, startedAt);
     }
 
     async function addPasskey() {
@@ -109,6 +112,10 @@
 
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
+
+        // Empties the cache when the environment changed, so the next lines
+        // never show the data of the environment that the user left.
+        useEnvironment(await EnvironmentManager.getCurrentEnvironment());
 
         const cached = get(settingsCache);
         if (cached) {
@@ -149,7 +156,7 @@
             (async () => {
                 if (await passkeysSupported()) {
                     try {
-                        await loadPasskeys();
+                        await loadPasskeys(startedAt);
                         canUsePasskeys = true;
                     } catch {
                         canUsePasskeys = false;
@@ -243,13 +250,24 @@
     let availableCategories = $derived(userSettings?.available_university_event_categories ?? []);
     let showHistoricTermsValue = $derived(userSettings?.show_historic_terms ?? false);
 
+    // Saves the settings in the background. The user already sees the new
+    // value, so a failure only needs a message, not a reload.
+    function saveUserSettings(settings: UserSettings) {
+        API.userSettings(settings).catch((error) => {
+            // The auth code already told the user that the session ended.
+            if (error instanceof AuthError) return;
+            console.error('Failed to save the user settings:', error);
+            snackbar('Failed to save the setting', undefined, true);
+        });
+    }
+
     const defaultColorLectureGetterSetter = {
         get value() { return defaultColorLecture; },
 		set value(value: string) {
 			if (!userSettings) return;
 			userSettings = { ...userSettings, default_color_lecture: value };
 			storedUserSettings.set(userSettings);
-			API.userSettings(userSettings);
+			saveUserSettings(userSettings);
 			clearStoredColors();
 		}
     }
@@ -260,7 +278,7 @@
 			if (!userSettings) return;
 			userSettings = { ...userSettings, military_time: value === "true" };
 			storedUserSettings.set(userSettings);
-			API.userSettings(userSettings);
+			saveUserSettings(userSettings);
 		}
     }
 
@@ -270,7 +288,7 @@
 			if (!userSettings) return;
 			userSettings = { ...userSettings, default_color_lab: value };
 			storedUserSettings.set(userSettings);
-			API.userSettings(userSettings);
+			saveUserSettings(userSettings);
 			clearStoredColors();
 		}
     }
@@ -281,7 +299,7 @@
 			if (!userSettings) return;
 			userSettings = { ...userSettings, advanced_editing: value };
 			storedUserSettings.set(userSettings);
-			API.userSettings(userSettings);
+			saveUserSettings(userSettings);
 		}
     }
 
@@ -291,7 +309,7 @@
 			if (!userSettings) return;
 			userSettings = { ...userSettings, sync_university_events: value };
 			storedUserSettings.set(userSettings);
-			API.userSettings(userSettings);
+			saveUserSettings(userSettings);
 		}
     }
 
@@ -301,7 +319,7 @@
             if (!userSettings) return;
             userSettings = { ...userSettings, show_historic_terms: value };
             storedUserSettings.set(userSettings);
-            API.userSettings(userSettings);
+            saveUserSettings(userSettings);
         }
     }
 
@@ -344,7 +362,7 @@
 
         userSettings = { ...userSettings, university_event_categories: newCategories };
         storedUserSettings.set(userSettings);
-        API.userSettings(userSettings);
+        saveUserSettings(userSettings);
     }
 
     function isCategorySelected(categoryId: string): boolean {

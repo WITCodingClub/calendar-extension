@@ -4,7 +4,8 @@
     import type { Course, DayItem, FriendIdentity, FriendProcessedEventsResponse, FriendRequestIncoming, FriendRequestOutgoing, MeetingTime } from '$lib/types';
     import { goto } from '$app/navigation';
     import { resolve } from '$app/paths';
-    import { cacheGeneration, friendsCache, getCachedSchedule, setCachedFriends, setCachedSchedule, setCachedTerms, termsCache } from '$lib/sessionCache';
+    import { EnvironmentManager } from '$lib/environment';
+    import { cacheGeneration, friendsCache, getCachedSchedule, setCachedFriends, setCachedSchedule, setCachedTerms, termsCache, useEnvironment } from '$lib/sessionCache';
     import { onMount } from 'svelte';
     import { on } from 'svelte/events';
     import { get } from 'svelte/store';
@@ -860,6 +861,9 @@
     }
 
     onMount(async () => {
+        // Empties the cache when the environment changed, so the next lines
+        // never show the data of the environment that the user left.
+        useEnvironment(await EnvironmentManager.getCurrentEnvironment());
         try {
             const startedAt = cacheGeneration();
             const terms = get(termsCache) ?? await API.getTerms();
@@ -867,6 +871,10 @@
             if (terms?.current_term?.id != null) {
                 currentTermId = String(terms.current_term.id);
             }
+        } catch (error) {
+            // Without the terms the page cannot pick a term, but the friend
+            // list and the requests below still load.
+            console.error('Failed to load terms', error);
         } finally {
             termsFetched = true;
         }

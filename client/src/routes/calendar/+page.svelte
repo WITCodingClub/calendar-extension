@@ -15,7 +15,9 @@
     import { browser } from '$app/environment';
     import { snackbar } from 'm3-svelte';
     import { createWitTab } from '$lib/witTab';
-    import { cacheGeneration, clearSessionCache, setCachedTerms } from '$lib/sessionCache';
+    import { cacheGeneration, clearSessionCache, getCalendarSession, markCalendarLoaded, markTermAttempted, markTermRefreshed, setCachedTerms, termsCache, useEnvironment } from '$lib/sessionCache';
+    import { EnvironmentManager } from '$lib/environment';
+    import { get } from 'svelte/store';
 
     type RegistrationsLookupResult =
         | { error: string }
@@ -33,8 +35,11 @@
     let activeDay: DayItem | undefined = $state(undefined);
     let loading = $state(false);
     let terms = $state<TermResponse | undefined>(undefined);
-	let attemptedTerms = $state(new Set<string>());
-	let refreshedTerms = $state(new Set<string>());
+	// Seeded from the panel session, because the router destroys this page when
+	// the user opens another one. Without this, coming back would ask for every
+	// term again. markTermAttempted and markTermRefreshed keep the two in step.
+	let attemptedTerms = $state(new Set<string>(getCalendarSession().attemptedTerms));
+	let refreshedTerms = $state(new Set<string>(getCalendarSession().refreshedTerms));
     let showHistoricTerms = $derived($storedUserSettings?.show_historic_terms ?? false);
     let displayTerms = $derived((() => {
         const currentTermId = terms?.current_term?.id;
@@ -1105,10 +1110,61 @@
         refreshedTerms = new Set();
     }
 
+    // Loads the terms and the user settings. Neither depends on the other, so
+    // they go out together. Returns false when either one failed, so the caller
+    // does not record the load as done and the next visit tries again.
+    async function loadTermsAndSettings(startedAt: number): Promise<boolean> {
+        const termsRequest = API.getTerms();
+        const settingsRequest = API.userSettings();
+        // Keep a failed request from being reported as unhandled while the
+        // other one is still open. Both still throw at their await below.
+        termsRequest.catch(() => undefined);
+        settingsRequest.catch(() => undefined);
+
+        let complete = true;
+        let authFailed = false;
+
+        try {
+            const fetchedTerms = await termsRequest;
+            terms = fetchedTerms;
+            // The Friends page reads the terms from this cache instead of asking again.
+            setCachedTerms(fetchedTerms, startedAt);
+        } catch (e) {
+            console.error('Failed to load terms:', e);
+            complete = false;
+        }
+
+        try {
+            const settings = await settingsRequest;
+            storedUserSettings.set(settings);
+            if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
+                enrolledTerms.set(settings.enrolled_terms);
+            }
+        } catch (e) {
+            if (e instanceof AuthError) {
+                authFailed = true;
+            } else {
+                console.error('Failed to load user settings:', e);
+            }
+            complete = false;
+        }
+
+        // The auth code already sent the user to sign in. The caller stops here.
+        if (authFailed) {
+            throw new AuthError();
+        }
+        return complete;
+    }
+
     async function listenForEnvironmentChanges() {
         chrome.storage.onChanged.addListener((changes) => {
             if ('environment_data' in changes) {
                 (async () => {
+                    // IMPORTANT: Clear data FIRST before fetching anything for environment switches.
+                    // This runs before the token check, so an environment without
+                    // a token still drops the data of the one the user left.
+                    clearEnvironmentData();
+
                     checkBetaAccess();
                     jwt_token = await getUsableJwt();
                     if (!jwt_token) {
@@ -1118,20 +1174,12 @@
                         return;
                     }
 
-                    // IMPORTANT: Clear data FIRST before fetching anything for environment switches
-                    // Always clear on environment change detected via listener
-                    clearEnvironmentData();
-
                     // Now fetch fresh data for the current environment
+                    useEnvironment(await EnvironmentManager.getCurrentEnvironment());
+                    const startedAt = cacheGeneration();
                     try {
-                        const startedAt = cacheGeneration();
-                        const fetchedTerms = await API.getTerms();
-                        terms = fetchedTerms;
-                        setCachedTerms(fetchedTerms, startedAt);
-                        const envSettings = await API.userSettings();
-                        storedUserSettings.set(envSettings);
-                        if (envSettings.enrolled_terms?.length && $enrolledTerms.length === 0) {
-                            enrolledTerms.set(envSettings.enrolled_terms);
+                        if (await loadTermsAndSettings(startedAt)) {
+                            markCalendarLoaded(startedAt);
                         }
                     } catch (err) {
                         if (err instanceof AuthError) {
@@ -1159,29 +1207,31 @@
             clearEnvironmentData();
         }
 
-        // Now fetch fresh data for the current environment. The two requests do
-        // not depend on each other, so send them together.
-        try {
+        // Empties the cache when the environment changed while this page was closed.
+        useEnvironment(await EnvironmentManager.getCurrentEnvironment());
+
+        // The line above, or the Settings component below this page, can empty
+        // the session after the two sets above were seeded. Take them again.
+        attemptedTerms = new Set(getCalendarSession().attemptedTerms);
+        refreshedTerms = new Set(getCalendarSession().refreshedTerms);
+
+        if (getCalendarSession().loaded) {
+            // This page already loaded since the panel opened. Opening the
+            // Friends page and coming back destroys and rebuilds it, but the
+            // data is still good, so it sends no requests.
+            terms = get(termsCache);
+        } else {
             const startedAt = cacheGeneration();
-            const termsRequest = API.getTerms();
-            const settingsRequest = API.userSettings();
-            // Keep a failed settings request from being reported as unhandled while
-            // the terms request is still open. It still throws at its await below.
-            settingsRequest.catch(() => undefined);
-            const fetchedTerms = await termsRequest;
-            terms = fetchedTerms;
-            // The Friends page reads the terms from this cache instead of asking again.
-            setCachedTerms(fetchedTerms, startedAt);
-            const settings = await settingsRequest;
-            storedUserSettings.set(settings);
-            if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
-                enrolledTerms.set(settings.enrolled_terms);
+            try {
+                if (await loadTermsAndSettings(startedAt)) {
+                    markCalendarLoaded(startedAt);
+                }
+            } catch (err) {
+                if (err instanceof AuthError) {
+                    return;
+                }
+                throw err;
             }
-        } catch (err) {
-            if (err instanceof AuthError) {
-                return;
-            }
-            throw err;
         }
         listenForEnvironmentChanges();
     });
@@ -1210,6 +1260,7 @@
             const next = new Set(attemptedTerms);
             next.add(selected);
             attemptedTerms = next;
+            markTermAttempted(selected);
             if ($storedProcessedData.some((d) => String(d.termId) === selected)) {
                 syncProcessedEventsForTerm(selected);
             } else {
@@ -1223,6 +1274,7 @@
             const next = new Set(refreshedTerms);
             next.add(selected);
             refreshedTerms = next;
+            markTermRefreshed(selected);
             refreshAllEventPrefsForCurrentTerm();
         }
     });
@@ -1322,7 +1374,7 @@
                     <div class="term-seg">
                         <ConnectedButtons>
                         {#each displayTerms as termOpt, i}
-                            <input type="radio" name="seg" id="seg-{i}" bind:group={selected} value={termOpt.id} onchange={async () => { const tid = termOpt.id; if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !attemptedTerms.has(tid) && !loading) { const next = new Set(attemptedTerms); next.add(tid); attemptedTerms = next; await ensureProcessedForTerm(tid); } }} />
+                            <input type="radio" name="seg" id="seg-{i}" bind:group={selected} value={termOpt.id} onchange={async () => { const tid = termOpt.id; if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !attemptedTerms.has(tid) && !loading) { const next = new Set(attemptedTerms); next.add(tid); attemptedTerms = next; markTermAttempted(tid); await ensureProcessedForTerm(tid); } }} />
                             <Button for="seg-{i}" variant="filled">{termOpt.name}</Button>
                         {/each}
                         </ConnectedButtons>
