@@ -21,7 +21,8 @@ const config = {
 				permissions: {
 					add: ['cookies', 'contextualIdentities']
 				},
-				apiReplacements: [{ find: /\.innerHTML\s*=/g, replace: '["innerHTML"] =' }]
+				apiReplacements: [{ find: /\.innerHTML\s*=/g, replace: '["innerHTML"] =' }],
+				warnIdentityProfile: false
 			}
 		}),
 		output: {
