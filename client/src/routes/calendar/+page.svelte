@@ -1235,6 +1235,11 @@
                     <h2 class="m-0 text-sm font-bold text-on-surface">Calendar preferences</h2>
                     <p class="m-0 mt-0.5 text-xs text-on-surface-variant">Manage your settings, account information, event notifications, and more!</p>
                 </div>
+            {:else if tab === "help"}
+                <div class="border-t border-outline-variant bg-surface-container-high px-4 py-3">
+                    <h2 class="m-0 text-sm font-bold text-on-surface">Information</h2>
+                    <p class="m-0 mt-0.5 text-xs text-on-surface-variant">Subscribe in another calendar app or customize event titles with templates.</p>
+                </div>
             {/if}
         </section>
     {/if}
