@@ -5,7 +5,6 @@
     import { continueAfterSignIn } from '$lib/afterSignIn';
     import SignInWithGoogleButton from '$lib/components/SignInWithGoogleButton.svelte';
     import { passkeysSupported, signInWithPasskey } from '$lib/passkeys';
-    import { track } from '$lib/telemetry';
     import { goto } from '$app/navigation';
 
     let canUsePasskeys = $state(false);
@@ -33,15 +32,12 @@
         isUsingPasskey = true;
         try {
             if (await signInWithPasskey()) {
-                track('sign_in_passkey_succeeded');
                 await continueAfterSignIn();
                 return;
             }
-            track('sign_in_passkey_failed');
             snackbar('Could not sign in with a passkey', undefined, true);
         } catch (err) {
             console.error('Passkey sign-in error:', err);
-            track('sign_in_passkey_failed');
             const message = err instanceof Error ? err.message : String(err);
             snackbar('Could not sign in with a passkey: ' + message, undefined, true);
         } finally {

@@ -4,7 +4,6 @@
     import { onMount } from 'svelte';
     import { browser } from '$app/environment';
     import { API } from '$lib/api';
-    import { track } from '$lib/telemetry';
 
     async function checkGcalStatus() {
         const oauth_email = await chrome.storage.local.get('oauth_email');
@@ -52,12 +51,10 @@
     });
 
     async function selectGoogleCalendar() {
-        track('calendar_choice_google');
         goto('/gcalendar');
     }
 
     async function selectAllOtherCalendars() {
-        track('calendar_choice_other');
         if (browser) {
             localStorage.setItem('isOtherCalendar', 'true');
         }

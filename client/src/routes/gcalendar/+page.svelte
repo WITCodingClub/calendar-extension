@@ -4,7 +4,6 @@
     import { onMount } from 'svelte';
     import { API } from '$lib/api';
     import { snackbar } from 'm3-svelte';
-    import { track } from '$lib/telemetry';
 
     let jwt_token: string | undefined = $state(undefined);
     let emailToSignInWith: string | null = $state(null);
@@ -41,8 +40,6 @@
                     await chrome.storage.local.set({
                         oauth_email: emailToSignInWith || emailToSubmit,
                     });
-                    // Both ways to connect set oauth_status, so count it here only.
-                    track('google_calendar_connected');
                     goto('/calendar');
                 }
             });
