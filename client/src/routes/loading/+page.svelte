@@ -6,127 +6,21 @@
     import ErrorNotice from '$lib/components/ErrorNotice.svelte';
     import { onMount } from 'svelte';
     import { EnvironmentManager } from '$lib/environment';
-    import { createWitTab } from '$lib/witTab';
     import { getWitGoogleAuthCode } from '$lib/witGoogleAuth';
 
-    let schoolEmail = $state('');
     let error = $state<string | null>(null);
 
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
-        fetchSchoolEmail();
+        await signIn();
     });
 
-    function waitForComplete(tabId: number) {
-        return new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                chrome.tabs.onUpdated.removeListener(listener);
-                reject(new Error('Timed out waiting for WIT page to load. Are you connected to the internet?'));
-            }, 15000);
-            const listener = (id: number, changeInfo: { status?: string }) => {
-                if (id === tabId && changeInfo.status === 'complete') {
-                    chrome.tabs.onUpdated.removeListener(listener);
-                    clearTimeout(timeout);
-                    resolve();
-                }
-            };
-            chrome.tabs.onUpdated.addListener(listener);
-        });
-    }
-
-    function isWitSession(url?: string) {
-        return !!url?.startsWith('https://selfservice.wit.edu/') && !url.includes('/login/cas');
-    }
-
-    async function pageFetch(tabId: number, url: string): Promise<any> {
-        const results = await chrome.scripting.executeScript({
-            target: { tabId },
-            world: 'MAIN',
-            func: (fetchUrl: string) =>
-                fetch(fetchUrl, { credentials: 'include' })
-                    .then(r => r.json())
-                    .catch(e => ({ error: e.message })),
-            args: [url]
-        });
-        return results[0]?.result ?? {};
-    }
-
-    async function fetchSchoolEmail() {
-        const emailsUrl = 'https://selfservice.wit.edu/BannerGeneralSsb/ssb/PersonalInformationDetails/getEmails';
-        const witHtmlUrl = 'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory';
-        const isFirefox = navigator.userAgent.includes('Firefox');
-
-        let tabToUse: chrome.tabs.Tab | undefined;
-        let createdNewTab = false;
-
-        try {
-            error = null;
-
-            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!isFirefox && currentTab?.url === emailsUrl) {
-                tabToUse = currentTab;
-            } else {
-                tabToUse = await createWitTab(emailsUrl);
-                createdNewTab = true;
-                await waitForComplete(tabToUse.id!);
-            }
-
-            if (!tabToUse?.id) {
-                throw new Error('Failed to get tab ID');
-            }
-
-            if (!isWitSession((await chrome.tabs.get(tabToUse.id)).url)) {
-                error = 'not_logged_in';
-                return;
-            }
-
-            if (isFirefox) {
-                const loaded = waitForComplete(tabToUse.id);
-                await chrome.tabs.update(tabToUse.id, { url: witHtmlUrl });
-                await loaded;
-                if (!isWitSession((await chrome.tabs.get(tabToUse.id)).url)) {
-                    error = 'not_logged_in';
-                    return;
-                }
-            }
-
-            const data = await pageFetch(tabToUse.id, emailsUrl);
-            if (data.error) throw new Error(data.error);
-
-            if (Array.isArray(data.emails)) {
-                const witEmail = data.emails.find((email: any) => email?.emailType?.code === 'W');
-                if (witEmail?.emailAddress) schoolEmail = witEmail.emailAddress;
-            }
-
-            if (!schoolEmail) {
-                throw new Error('Could not read your WIT email. Please make sure you are signed in to LeopardWeb and try again.');
-            }
-
-            await signIn();
-        } catch (err) {
-            const msg = String(err);
-            if (msg.includes('cas.wit.edu') || msg.includes('Cannot access contents of url') || msg.includes('NetworkError') || msg.includes('login/cas')) {
-                error = 'not_logged_in';
-            } else if (msg.includes('Frame with ID') || msg.includes('showing error page')) {
-                // Chrome surfaces this when the tab hit a network/error page
-                // (e.g. server unreachable) instead of a real document.
-                error = 'server_down';
-            } else if (!error) {
-                error = msg;
-            }
-        } finally {
-            if (createdNewTab && tabToUse?.id) {
-                try {
-                    await chrome.tabs.remove(tabToUse.id);
-                } catch {}
-            }
-        }
-    }
-
     async function signIn() {
+        error = null;
+
         let auth: Awaited<ReturnType<typeof getWitGoogleAuthCode>>;
         try {
-            auth = await getWitGoogleAuthCode(schoolEmail || undefined);
+            auth = await getWitGoogleAuthCode();
         } catch (err) {
             console.error('Google auth error:', err);
             error = 'google_signin_failed';
@@ -140,17 +34,10 @@
                 method: 'POST',
                 // The backend finishes the exchange: Google wants a client_secret
                 // for this client, and a published extension cannot keep one.
-                //
-                // `email` is here only so this release also works against the
-                // backend that is live today, which still requires it and knows
-                // nothing of the code. The new backend ignores it and reads the
-                // address from the verified token instead. Drop this field once
-                // calendar-backend#493 has shipped everywhere.
                 body: JSON.stringify({
                     google_auth_code: auth.code,
                     code_verifier: auth.codeVerifier,
-                    redirect_uri: auth.redirectUri,
-                    email: schoolEmail
+                    redirect_uri: auth.redirectUri
                 }),
                 headers: {
                     'Content-Type': 'application/json'
@@ -197,12 +84,7 @@
 
 <div class="flex flex-col items-center justify-center min-h-screen w-full px-4">
     <div class=" rounded-lg shadow-md p-8 flex flex-col items-center peak {error ? 'bg-error' : 'bg-surface-container-high'}">
-        {#if error == 'not_logged_in'}
-            <ErrorNotice title="Not logged into WIT Self Service!">
-                Please sign into <a href="https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory" target="_blank" class="text-on-error underline">WIT Self Service</a> first, then try again. If the issue persists, please submit a bug report on <a class="text-on-error underline" href="https://github.com/WITCodingClub/calendar-backend/issues" target="_blank">GitHub</a>.
-            </ErrorNotice>
-            <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
-        {:else if error == 'google_signin_failed'}
+        {#if error == 'google_signin_failed'}
             <ErrorNotice title="Google sign-in failed" error="We couldn't sign you in with Google. Please try again." />
             <Button variant="elevated" square onclick={() => signIn()}>Try Again</Button>
         {:else if error == 'wit_account_required'}
@@ -210,10 +92,10 @@
             <Button variant="elevated" square onclick={() => signIn()}>Pick a different account</Button>
         {:else if error == 'server_down'}
             <ErrorNotice title="Failed to sign in!" error="Server may be down." includeStatusLink={true} includeSelfServiceHint={false} />
-            <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
+            <Button variant="elevated" square onclick={() => signIn()}>Try Again</Button>
         {:else if error}
-            <ErrorNotice title="Failed to sign in!" {error} includeSelfServiceHint={true} />
-            <Button variant="elevated" square onclick={fetchSchoolEmail}>Try Again</Button>
+            <ErrorNotice title="Failed to sign in!" {error} includeSelfServiceHint={false} />
+            <Button variant="elevated" square onclick={() => signIn()}>Try Again</Button>
         {:else}
             <h1 class="text-3xl font-extrabold text-center text-primary mb-6">Signing in!</h1>
             <LoadingIndicator size={64} />
