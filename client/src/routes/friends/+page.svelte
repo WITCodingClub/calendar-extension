@@ -822,11 +822,11 @@
 
 <div class="@container flex h-full w-full min-w-0 flex-col gap-3 box-border p-3 @max-[20rem]:p-2">
     <section class="w-full flex-none overflow-hidden rounded-2xl bg-surface-container shadow-[0_0.2rem_0.75rem_rgb(var(--m3-scheme-shadow)/0.12)]">
-        <header class="flex min-w-0 items-center justify-between gap-4 bg-primary-container px-[1.125rem] pt-4 pb-3.5 text-on-primary-container @max-[30rem]:flex-col @max-[30rem]:items-start @max-[30rem]:gap-3 @max-[30rem]:p-3.5">
+        <header class="flex min-w-0 items-center justify-between gap-4 bg-primary-container px-[1.125rem] pt-4 pb-3.5 text-on-primary-container">
             <div class="min-w-0">
                 <h1 class="m-0 text-[clamp(1.35rem,5cqi,1.8rem)] leading-[1.15] font-[750] tracking-[-0.025em] text-on-primary-container">Friends</h1>
             </div>
-            <div class="shrink-0 @max-[30rem]:w-full @max-[30rem]:[&_.m3-container]:w-full">
+            <div class="shrink-0">
                 <Button variant="tonal" square onclick={() => goto(resolve('/calendar'))}>
                     Back to Calendar
                 </Button>
@@ -952,11 +952,19 @@
                 <p class="mt-1 mb-0 text-[0.78rem] leading-[1.35] text-on-secondary-container/80">Find common free time across the friends selected above</p>
             </div>
             <div class="bg-surface-container px-4 py-3.5 @max-[20rem]:px-2.5">
-                <div class="grid grid-cols-4 gap-2.5 @max-[38rem]:grid-cols-2 @max-[20rem]:grid-cols-1">
-                    <TextFieldOutlined type="number" label="Min (min)" bind:value={meetMinDurationMinutesInput} />
-                    <TextFieldOutlined type="number" label="Buffer (min)" bind:value={meetBufferMinutesInput} />
-                    <TextFieldOutlined type="time" label="Start" bind:value={meetRangeStartInput} />
-                    <TextFieldOutlined type="time" label="End" bind:value={meetRangeEndInput} />
+                <div class="flex flex-wrap gap-2.5 [&_.m3-container]:!min-w-0 [&_.m3-container]:w-full [&_.m3-container]:max-w-full">
+                    <div class="min-w-[min(100%,16rem)] max-w-full flex-[1_0_16rem]">
+                        <TextFieldOutlined type="number" label="Min (min)" bind:value={meetMinDurationMinutesInput} />
+                    </div>
+                    <div class="min-w-[min(100%,16rem)] max-w-full flex-[1_0_16rem]">
+                        <TextFieldOutlined type="number" label="Buffer (min)" bind:value={meetBufferMinutesInput} />
+                    </div>
+                    <div class="min-w-[min(100%,16rem)] max-w-full flex-[1_0_16rem]">
+                        <TextFieldOutlined type="time" label="Start" bind:value={meetRangeStartInput} />
+                    </div>
+                    <div class="min-w-[min(100%,16rem)] max-w-full flex-[1_0_16rem]">
+                        <TextFieldOutlined type="time" label="End" bind:value={meetRangeEndInput} />
+                    </div>
                 </div>
                 <div class="mt-3 flex items-center justify-between gap-4 border-t border-outline-variant pt-3 @max-[20rem]:items-start">
                     <div>
@@ -979,7 +987,7 @@
                     {#each dayOrder.slice(0, 5) as day (day.key)}
                         {@const windows = bestMeetTimesByDay?.[day.key] ?? []}
                         {#if windows.length > 0}
-                            <div class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-3 rounded-xl bg-surface-container p-3 transition-colors hover:bg-surface-container-high @max-[30rem]:grid-cols-1">
+                            <div class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-3 border-b border-outline-variant py-3 last:border-b-0 @max-[30rem]:grid-cols-1">
                                 <div class="text-[0.82rem] font-semibold text-on-surface">{day.label}</div>
                                 <div class="flex min-w-0 flex-wrap justify-end gap-2 @max-[30rem]:justify-start">
                                     {#each windows as w (`${day.key}-${w.start}-${w.end}`)}
