@@ -947,9 +947,9 @@
         {/if}
     {:else}
         <section class="w-full min-w-0 min-h-0 flex-1 overflow-y-auto rounded-2xl bg-surface-container-low shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
-            <div class="bg-tertiary-container px-[1.125rem] pt-4 pb-3.5 text-on-tertiary-container">
-                <h2 class="m-0 text-base leading-tight font-bold text-on-tertiary-container">Best times to meet</h2>
-                <p class="mt-1 mb-0 text-[0.78rem] leading-[1.35] text-on-tertiary-container/80">Find common free time across the friends selected above</p>
+            <div class="bg-secondary-container px-[1.125rem] pt-4 pb-3.5 text-on-secondary-container">
+                <h2 class="m-0 text-base leading-tight font-bold text-on-secondary-container">Best times to meet</h2>
+                <p class="mt-1 mb-0 text-[0.78rem] leading-[1.35] text-on-secondary-container/80">Find common free time across the friends selected above</p>
             </div>
             <div class="bg-surface-container px-4 py-3.5 @max-[20rem]:px-2.5">
                 <div class="grid grid-cols-4 gap-2.5 @max-[38rem]:grid-cols-2 @max-[20rem]:grid-cols-1">
