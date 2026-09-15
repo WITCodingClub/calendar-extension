@@ -3,6 +3,7 @@
     import { Button, TextFieldOutlined, snackbar } from 'm3-svelte';
     import { continueAfterSignIn, finishPasskeySetup, isPasskeySetupPending } from '$lib/afterSignIn';
     import { registerPasskey } from '$lib/passkeys';
+    import { track } from '$lib/telemetry';
 
     let nickname = $state('');
     let isCreating = $state(false);
@@ -26,6 +27,7 @@
             if (!added) {
                 return;
             }
+            track('passkey_created');
             await finishPasskeySetup();
         } catch (err) {
             console.error('Passkey setup error:', err);
@@ -36,6 +38,7 @@
     }
 
     async function skip() {
+        track('passkey_setup_skipped');
         await finishPasskeySetup();
     }
 </script>

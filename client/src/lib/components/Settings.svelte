@@ -7,6 +7,7 @@
     import { processedData as storedProcessedData, userSettings as storedUserSettings, icsUrl as storedIcsUrl } from "$lib/store";
     import type { UserSettings } from "$lib/types";
     import { listPasskeys, passkeysSupported, registerPasskey, removePasskey, type PasskeySummary } from "$lib/passkeys";
+    import { setUsageStatsEnabled, track, usageStatsEnabled } from "$lib/telemetry";
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
     import { onMount } from "svelte";
 
@@ -42,6 +43,7 @@
     let canUsePasskeys = $state(false);
     let isAddingPasskey = $state(false);
     let newPasskeyName = $state("");
+    let usageStats = $state(false);
     const UNI_CAL_COLOR_STORAGE_KEY = "uniCalColor";
     let uniCalColor = $state<string>(
         browser ? (localStorage.getItem(UNI_CAL_COLOR_STORAGE_KEY) ?? "") : "#616161"
@@ -102,6 +104,8 @@
 
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
+
+        usageStats = await usageStatsEnabled();
 
         // Load feature flags independently so flag-gated UI shows even if other API calls fail
         await featureFlags.loadFlags();
@@ -352,6 +356,18 @@
         }
     }
 
+    // Firefox shows its own consent prompt, which can refuse. Show what the
+    // browser settled on, not what the switch asked for.
+    const usageStatsGetterSetter = {
+        get value() { return usageStats; },
+        set value(value: boolean) {
+            usageStats = value;
+            setUsageStatsEnabled(value)
+                .then((enabled) => { usageStats = enabled; })
+                .catch(() => { usageStats = !value; });
+        }
+    }
+
     async function addGoogleAccount() {
         if (!addEmailInput.trim()) {
             snackbar('Please enter an email address', undefined, true);
@@ -467,6 +483,7 @@
 
         try {
             await navigator.clipboard.writeText(icsUrlToCopy);
+            track('calendar_link_copied');
             snackbar('ICS URL copied to clipboard!', undefined, true);
         } catch (error) {
             console.error('Failed to copy ICS URL to clipboard:', error);
@@ -599,6 +616,17 @@
         <div class="flex flex-row gap-2 items-center">
             <label>
                 <Switch bind:checked={notificationsDisabledGetterSetter.value} />
+            </label>
+        </div>
+    </div>
+    <div class="flex flex-row gap-3 items-center justify-between">
+        <div class="flex flex-col">
+            <h2 class="text-md font-bold">Share Anonymous Usage Counts</h2>
+            <p class="text-sm text-outline">Counts such as how many schedule imports succeed. No names, emails, or schedules.</p>
+        </div>
+        <div class="flex flex-row gap-2 items-center">
+            <label>
+                <Switch bind:checked={usageStatsGetterSetter.value} />
             </label>
         </div>
     </div>

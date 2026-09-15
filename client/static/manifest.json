@@ -45,7 +45,8 @@
       "id": "wit-calendar@witcc.dev",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
-        "required": ["personallyIdentifyingInfo", "authenticationInfo", "websiteContent"]
+        "required": ["personallyIdentifyingInfo", "authenticationInfo", "websiteContent"],
+        "optional": ["technicalAndInteraction"]
       }
     },
     "gecko_android": {
