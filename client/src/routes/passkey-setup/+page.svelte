@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { Button, TextFieldOutlined, snackbar } from 'm3-svelte';
     import { continueAfterSignIn, finishPasskeySetup, isPasskeySetupPending } from '$lib/afterSignIn';
+    import { AuthError } from '$lib/auth';
     import { registerPasskey } from '$lib/passkeys';
     import { track } from '$lib/telemetry';
 
@@ -10,8 +11,15 @@
     let canCreate = $derived(nickname.trim().length > 0 && !isCreating);
 
     onMount(async () => {
-        if (!(await isPasskeySetupPending())) {
-            await continueAfterSignIn();
+        try {
+            if (!(await isPasskeySetupPending())) {
+                await continueAfterSignIn();
+            }
+        } catch (err) {
+            if (err instanceof AuthError) {
+                return;
+            }
+            throw err;
         }
     });
 

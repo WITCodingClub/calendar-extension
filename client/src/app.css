@@ -27,61 +27,92 @@ html {
   box-sizing: inherit;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--m3-scheme-outline) / 0.55) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--m3-scheme-outline) / 0.45);
+  border: 0.125rem solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--m3-scheme-primary) / 0.7);
+  border: 0.125rem solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
   }
   :root, ::backdrop {
     --m3-util-density: -2;
-    --m3-scheme-primary: 227 195 108;
-    --m3-scheme-surface-tint: 227 195 108;
-    --m3-scheme-on-primary: 61 47 0;
-    --m3-scheme-primary-container: 88 68 0;
-    --m3-scheme-on-primary-container: 255 224 141;
-    --m3-scheme-secondary: 213 197 161;
-    --m3-scheme-on-secondary: 57 47 21;
-    --m3-scheme-secondary-container: 80 70 42;
-    --m3-scheme-on-secondary-container: 242 225 187;
-    --m3-scheme-tertiary: 191 194 255;
-    --m3-scheme-on-tertiary: 39 43 96;
-    --m3-scheme-tertiary-container: 62 66 120;
-    --m3-scheme-on-tertiary-container: 224 224 255;
-    --m3-scheme-error: 255 180 171;
-    --m3-scheme-on-error: 105 0 5;
-    --m3-scheme-error-container: 147 0 10;
-    --m3-scheme-on-error-container: 255 218 214;
-    --m3-scheme-background: 22 19 11;
-    --m3-scheme-on-background: 234 225 212;
-    --m3-scheme-surface: 22 19 11;
-    --m3-scheme-on-surface: 234 225 212;
-    --m3-scheme-surface-variant: 76 70 57;
-    --m3-scheme-on-surface-variant: 207 197 180;
-    --m3-scheme-outline: 152 144 128;
-    --m3-scheme-outline-variant: 76 70 57;
+    --m3-scheme-primary: 222 196 135;
+    --m3-scheme-surface-tint: 222 196 135;
+    --m3-scheme-on-primary: 79 62 14;
+    --m3-scheme-primary-container: 99 80 31;
+    --m3-scheme-on-primary-container: 252 224 161;
+    --m3-scheme-secondary: 214 197 160;
+    --m3-scheme-on-secondary: 74 63 36;
+    --m3-scheme-secondary-container: 69 58 31;
+    --m3-scheme-on-secondary-container: 207 190 154;
+    --m3-scheme-tertiary: 255 205 169;
+    --m3-scheme-on-tertiary: 107 65 30;
+    --m3-scheme-tertiary-container: 249 189 143;
+    --m3-scheme-on-tertiary-container: 96 56 22;
+    --m3-scheme-error: 249 119 88;
+    --m3-scheme-on-error: 69 9 0;
+    --m3-scheme-error-container: 133 35 10;
+    --m3-scheme-on-error-container: 255 155 130;
+    --m3-scheme-background: 17 14 8;
+    --m3-scheme-on-background: 239 228 209;
+    --m3-scheme-surface: 17 14 8;
+    --m3-scheme-on-surface: 239 228 209;
+    --m3-scheme-surface-variant: 78 71 57;
+    --m3-scheme-on-surface-variant: 180 170 152;
+    --m3-scheme-outline: 125 117 100;
+    --m3-scheme-outline-variant: 78 71 57;
     --m3-scheme-shadow: 0 0 0;
     --m3-scheme-scrim: 0 0 0;
-    --m3-scheme-inverse-surface: 234 225 212;
-    --m3-scheme-inverse-on-surface: 52 48 39;
-    --m3-scheme-inverse-primary: 115 91 12;
-    --m3-scheme-primary-fixed: 255 224 141;
-    --m3-scheme-on-primary-fixed: 36 26 0;
-    --m3-scheme-primary-fixed-dim: 227 195 108;
-    --m3-scheme-on-primary-fixed-variant: 88 68 0;
-    --m3-scheme-secondary-fixed: 242 225 187;
-    --m3-scheme-on-secondary-fixed: 35 27 4;
-    --m3-scheme-secondary-fixed-dim: 213 197 161;
-    --m3-scheme-on-secondary-fixed-variant: 80 70 42;
-    --m3-scheme-tertiary-fixed: 224 224 255;
-    --m3-scheme-on-tertiary-fixed: 17 20 75;
-    --m3-scheme-tertiary-fixed-dim: 191 194 255;
-    --m3-scheme-on-tertiary-fixed-variant: 62 66 120;
-    --m3-scheme-surface-dim: 22 19 11;
-    --m3-scheme-surface-bright: 61 57 47;
-    --m3-scheme-surface-container-lowest: 17 14 7;
-    --m3-scheme-surface-container-low: 31 27 19;
-    --m3-scheme-surface-container: 35 31 23;
-    --m3-scheme-surface-container-high: 45 42 33;
-    --m3-scheme-surface-container-highest: 57 52 43;
+    --m3-scheme-inverse-surface: 255 248 241;
+    --m3-scheme-inverse-on-surface: 89 84 76;
+    --m3-scheme-inverse-primary: 112 93 42;
+    --m3-scheme-primary-fixed: 251 224 160;
+    --m3-scheme-on-primary-fixed: 78 61 13;
+    --m3-scheme-primary-fixed-dim: 237 210 148;
+    --m3-scheme-on-primary-fixed-variant: 109 89 39;
+    --m3-scheme-secondary-fixed: 243 225 187;
+    --m3-scheme-on-secondary-fixed: 73 62 35;
+    --m3-scheme-secondary-fixed-dim: 228 211 174;
+    --m3-scheme-on-secondary-fixed-variant: 103 90 61;
+    --m3-scheme-tertiary-fixed: 249 189 143;
+    --m3-scheme-on-tertiary-fixed: 73 37 4;
+    --m3-scheme-tertiary-fixed-dim: 234 175 131;
+    --m3-scheme-on-tertiary-fixed-variant: 107 65 30;
+    --m3-scheme-surface-dim: 17 14 8;
+    --m3-scheme-surface-bright: 49 43 31;
+    --m3-scheme-surface-container-lowest: 0 0 0;
+    --m3-scheme-surface-container-low: 23 19 11;
+    --m3-scheme-surface-container: 29 25 16;
+    --m3-scheme-surface-container-high: 36 31 21;
+    --m3-scheme-surface-container-highest: 43 37 25;
     --m3-font: "Roboto Flex", sans-serif;
   }
 }
@@ -91,55 +122,55 @@ html {
   }
   :root, ::backdrop {
     --m3-util-density: -2;
-    --m3-scheme-primary: 115 91 12;
-    --m3-scheme-surface-tint: 115 91 12;
-    --m3-scheme-on-primary: 255 255 255;
-    --m3-scheme-primary-container: 255 224 141;
-    --m3-scheme-on-primary-container: 88 68 0;
-    --m3-scheme-secondary: 105 93 63;
-    --m3-scheme-on-secondary: 255 255 255;
-    --m3-scheme-secondary-container: 242 225 187;
-    --m3-scheme-on-secondary-container: 80 70 42;
-    --m3-scheme-tertiary: 86 89 146;
-    --m3-scheme-on-tertiary: 255 255 255;
-    --m3-scheme-tertiary-container: 224 224 255;
-    --m3-scheme-on-tertiary-container: 62 66 120;
-    --m3-scheme-error: 186 26 26;
-    --m3-scheme-on-error: 255 255 255;
-    --m3-scheme-error-container: 255 218 214;
-    --m3-scheme-on-error-container: 147 0 10;
+    --m3-scheme-primary: 116 92 27;
+    --m3-scheme-surface-tint: 116 92 27;
+    --m3-scheme-on-primary: 255 248 240;
+    --m3-scheme-primary-container: 244 212 134;
+    --m3-scheme-on-primary-container: 94 72 5;
+    --m3-scheme-secondary: 107 94 64;
+    --m3-scheme-on-secondary: 255 248 240;
+    --m3-scheme-secondary-container: 243 225 187;
+    --m3-scheme-on-secondary-container: 93 80 52;
+    --m3-scheme-tertiary: 130 85 48;
+    --m3-scheme-on-tertiary: 255 247 244;
+    --m3-scheme-tertiary-container: 249 189 143;
+    --m3-scheme-on-tertiary-container: 96 56 22;
+    --m3-scheme-error: 167 59 33;
+    --m3-scheme-on-error: 255 247 246;
+    --m3-scheme-error-container: 253 121 90;
+    --m3-scheme-on-error-container: 110 20 0;
     --m3-scheme-background: 255 248 241;
-    --m3-scheme-on-background: 31 27 19;
+    --m3-scheme-on-background: 56 50 37;
     --m3-scheme-surface: 255 248 241;
-    --m3-scheme-on-surface: 31 27 19;
-    --m3-scheme-surface-variant: 235 225 207;
-    --m3-scheme-on-surface-variant: 76 70 57;
-    --m3-scheme-outline: 126 118 103;
-    --m3-scheme-outline-variant: 207 197 180;
+    --m3-scheme-on-surface: 56 50 37;
+    --m3-scheme-surface-variant: 187 177 159;
+    --m3-scheme-on-surface-variant: 102 94 79;
+    --m3-scheme-outline: 130 122 106;
+    --m3-scheme-outline-variant: 187 177 159;
     --m3-scheme-shadow: 0 0 0;
     --m3-scheme-scrim: 0 0 0;
-    --m3-scheme-inverse-surface: 52 48 39;
-    --m3-scheme-inverse-on-surface: 248 240 226;
-    --m3-scheme-inverse-primary: 227 195 108;
-    --m3-scheme-primary-fixed: 255 224 141;
-    --m3-scheme-on-primary-fixed: 36 26 0;
-    --m3-scheme-primary-fixed-dim: 227 195 108;
-    --m3-scheme-on-primary-fixed-variant: 88 68 0;
-    --m3-scheme-secondary-fixed: 242 225 187;
-    --m3-scheme-on-secondary-fixed: 35 27 4;
-    --m3-scheme-secondary-fixed-dim: 213 197 161;
-    --m3-scheme-on-secondary-fixed-variant: 80 70 42;
-    --m3-scheme-tertiary-fixed: 224 224 255;
-    --m3-scheme-on-tertiary-fixed: 17 20 75;
-    --m3-scheme-tertiary-fixed-dim: 191 194 255;
-    --m3-scheme-on-tertiary-fixed-variant: 62 66 120;
-    --m3-scheme-surface-dim: 225 217 204;
+    --m3-scheme-inverse-surface: 17 14 8;
+    --m3-scheme-inverse-on-surface: 163 156 146;
+    --m3-scheme-inverse-primary: 244 212 134;
+    --m3-scheme-primary-fixed: 244 212 134;
+    --m3-scheme-on-primary-fixed: 71 54 0;
+    --m3-scheme-primary-fixed-dim: 230 198 122;
+    --m3-scheme-on-primary-fixed-variant: 104 81 16;
+    --m3-scheme-secondary-fixed: 243 225 187;
+    --m3-scheme-on-secondary-fixed: 73 62 35;
+    --m3-scheme-secondary-fixed-dim: 228 211 174;
+    --m3-scheme-on-secondary-fixed-variant: 103 90 61;
+    --m3-scheme-tertiary-fixed: 249 189 143;
+    --m3-scheme-on-tertiary-fixed: 73 37 4;
+    --m3-scheme-tertiary-fixed-dim: 234 175 131;
+    --m3-scheme-on-tertiary-fixed-variant: 107 65 30;
+    --m3-scheme-surface-dim: 228 217 198;
     --m3-scheme-surface-bright: 255 248 241;
     --m3-scheme-surface-container-lowest: 255 255 255;
-    --m3-scheme-surface-container-low: 251 243 229;
-    --m3-scheme-surface-container: 245 237 223;
-    --m3-scheme-surface-container-high: 240 231 217;
-    --m3-scheme-surface-container-highest: 234 225 212;
+    --m3-scheme-surface-container-low: 252 242 228;
+    --m3-scheme-surface-container: 247 237 221;
+    --m3-scheme-surface-container-high: 241 231 214;
+    --m3-scheme-surface-container-highest: 236 225 206;
     --m3-font: "Roboto Flex", sans-serif;
   }
 }

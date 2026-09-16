@@ -1,19 +1,25 @@
 <script lang="ts">
-    import { TextFieldOutlined, Button } from 'm3-svelte';
+    import { TextFieldOutlined, Button, snackbar } from 'm3-svelte';
     import { goto } from '$app/navigation';
     import { onMount } from 'svelte';
     import { API } from '$lib/api';
-    import { snackbar } from 'm3-svelte';
+    import { AuthError, getUsableJwt } from '$lib/auth';
+    import { hasUsableGoogleCalendar } from '$lib/afterSignIn';
     import { track } from '$lib/telemetry';
 
-    let jwt_token: string | undefined = $state(undefined);
     let emailToSignInWith: string | null = $state(null);
     let emailToSubmit = $state('');
 
     async function checkGcalStatus() {
-        const oauth_email = await chrome.storage.local.get('oauth_email');
-        if (oauth_email.oauth_email !== undefined && oauth_email.oauth_email !== '') {
-            goto('/calendar');
+        try {
+            if (await hasUsableGoogleCalendar()) {
+                goto('/calendar');
+            }
+        } catch (err) {
+            if (err instanceof AuthError) {
+                return;
+            }
+            throw err;
         }
     }
 
@@ -26,6 +32,11 @@
     }
 
     async function tryForEmail() {
+        const stored = await chrome.storage.local.get('oauth_email');
+        if (stored.oauth_email) {
+            emailToSignInWith = stored.oauth_email;
+            return;
+        }
         try {
             if (typeof chrome.identity?.getProfileUserInfo !== 'function') return;
             const info = await chrome.identity.getProfileUserInfo();
@@ -55,61 +66,56 @@
 
     async function submitEmail() {
         const emailToUse = emailToSignInWith || emailToSubmit;
-        const baseUrl = await API.baseUrl;
-
-        const response = await fetch(`${baseUrl}/user/gcal`, {
-            method: 'POST',
-            body: JSON.stringify({email: emailToUse}),
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${jwt_token}`
+        try {
+            const data = await API.requestOAuthForEmail(emailToUse);
+            if (data.error) {
+                snackbar('Failed to submit email: ' + data.error, undefined, true);
+                return;
             }
-        });
-        const data = await response.json();
-        if (response.ok && data.oauth_url) {
-            const screenWidth = window.screen.availWidth;
-            const screenHeight = window.screen.availHeight;
-            const createOptions: chrome.windows.CreateData = {
-                url: data.oauth_url,
-                width: 650,
-                height: 800,
-                left: Math.floor((screenWidth - 650) / 2),
-                top: Math.floor((screenHeight - 800) / 2),
-                type: 'popup'
-            };
-
-            try {
-                await chrome.windows.create(createOptions);
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                if (!message.includes('Invalid value for bounds')) {
-                    throw error;
-                }
-                await chrome.windows.create({
+            if (data.oauth_url) {
+                const screenWidth = window.screen.availWidth;
+                const screenHeight = window.screen.availHeight;
+                const createOptions: chrome.windows.CreateData = {
                     url: data.oauth_url,
-                    width: Math.min(650, screenWidth),
-                    height: Math.min(800, screenHeight),
+                    width: 650,
+                    height: 800,
+                    left: Math.floor((screenWidth - 650) / 2),
+                    top: Math.floor((screenHeight - 800) / 2),
                     type: 'popup'
-                });
-            }
-        } else if (response.ok && !data.oauth_url) {
-            await chrome.storage.local.set({
+                };
+
+                try {
+                    await chrome.windows.create(createOptions);
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    if (!message.includes('Invalid value for bounds')) {
+                        throw error;
+                    }
+                    await chrome.windows.create({
+                        url: data.oauth_url,
+                        width: Math.min(650, screenWidth),
+                        height: Math.min(800, screenHeight),
+                        type: 'popup'
+                    });
+                }
+            } else {
+                await chrome.storage.local.set({
                     oauth_status: 'success',
-            });
-            await chrome.storage.local.set({
-                oauth_email: emailToSignInWith || emailToSubmit,
-            });
-            goto('/calendar');
-        } else {
-            snackbar('Failed to submit email: ' + data.error, undefined, true);
+                    oauth_email: emailToUse,
+                });
+                goto('/calendar');
+            }
+        } catch (err) {
+            if (err instanceof AuthError) {
+                return;
+            }
+            snackbar('Failed to submit email: ' + err, undefined, true);
         }
     }
 
     onMount(async () => {
         checkBetaAccess();
-        jwt_token = await API.getJwtToken();
-        if (!jwt_token) {
-            // No JWT token for current environment, redirect to welcome page
+        if (!(await getUsableJwt())) {
             goto('/');
             return;
         }

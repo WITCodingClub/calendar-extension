@@ -1,7 +1,7 @@
 <script lang="ts">
     import { Button, snackbar } from 'm3-svelte';
     import { onMount } from 'svelte';
-    import { API } from '$lib/api';
+    import { AuthError, getUsableJwt } from '$lib/auth';
     import { continueAfterSignIn } from '$lib/afterSignIn';
     import SignInWithGoogleButton from '$lib/components/SignInWithGoogleButton.svelte';
     import { passkeysSupported, signInWithPasskey } from '$lib/passkeys';
@@ -19,9 +19,17 @@
     });
 
     async function checkIfLoggedIn() {
-        const jwt_token = await API.getJwtToken();
-        if (jwt_token) {
+        const jwt_token = await getUsableJwt();
+        if (!jwt_token) {
+            return;
+        }
+        try {
             await continueAfterSignIn();
+        } catch (err) {
+            if (err instanceof AuthError) {
+                return;
+            }
+            console.error(err);
         }
     }
 

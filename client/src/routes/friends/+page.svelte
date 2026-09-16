@@ -5,9 +5,9 @@
     import { goto } from '$app/navigation';
     import { resolve } from '$app/paths';
     import { onMount } from 'svelte';
+    import { on } from 'svelte/events';
     import { fade, scale } from 'svelte/transition';
-    import { Chip, Switch, TextFieldOutlined, VariableTabs } from 'm3-svelte';
-    import FriendsHeader from '$lib/components/FriendsHeader.svelte';
+    import { Button, Chip, Switch, TextFieldOutlined, VariableTabs } from 'm3-svelte';
     import FriendsToolbar from '$lib/components/FriendsToolbar.svelte';
     import FriendsManagePanel from '$lib/components/FriendsManagePanel.svelte';
 
@@ -635,6 +635,41 @@
         return { byDay, maxStacksByDay };
     });
 
+    let earliestClassOffsetRem = $derived.by(() => {
+        let min = Infinity;
+        for (const { key } of dayOrder.slice(0, 5)) {
+            for (const item of stackedMeetings.byDay?.[key] ?? []) {
+                if (item.startOffset < min) min = item.startOffset;
+            }
+        }
+        return Number.isFinite(min) ? min : 0;
+    });
+
+    function scrollToFirstClass(startOffsetRem: number) {
+        return (el: HTMLElement) => {
+            const frame = requestAnimationFrame(() => {
+                const rem = parseFloat(getComputedStyle(el).fontSize) || 16;
+                if (el.clientWidth < 20 * rem) return;
+                const bufferRem = 2;
+                if (startOffsetRem <= bufferRem) {
+                    el.scrollLeft = 0;
+                    return;
+                }
+                el.scrollLeft = (startOffsetRem - bufferRem) * rem;
+            });
+            return () => cancelAnimationFrame(frame);
+        };
+    }
+
+    function horizontalWheel(el: HTMLElement) {
+        return on(el, 'wheel', (e) => {
+            if (el.scrollWidth <= el.clientWidth) return;
+            if (e.deltaY === 0 || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+            e.preventDefault();
+            el.scrollLeft += e.deltaY;
+        }, { passive: false });
+    }
+
     function getLatestEndHourFromBlocks(): number {
         let latest = 8;
         for (const { key } of dayOrder) {
@@ -821,12 +856,29 @@
     });
 </script>
 
-<div class="flex flex-col gap-3 justify-center items-center h-full mt-2 w-full px-3">
-    <div class="flex flex-col gap-2.5 w-full max-w-3xl">
-        <FriendsHeader onBack={() => goto(resolve('/calendar'))} />
-        {#if pageError}
-            <div class="text-sm text-error">{pageError}</div>
-        {/if}
+<div class="@container flex h-full w-full min-w-0 flex-col gap-3 box-border p-3 @max-[20rem]:p-2">
+    <section class="w-full flex-none overflow-hidden rounded-2xl bg-surface-container shadow-[0_0.2rem_0.75rem_rgb(var(--m3-scheme-shadow)/0.12)]">
+        <header class="flex min-w-0 items-center justify-between gap-4 bg-secondary-container px-[1.125rem] pt-4 pb-3.5 text-on-secondary-container">
+            <div class="min-w-0">
+                <h1 class="m-0 text-[clamp(1.35rem,5cqi,1.8rem)] leading-[1.15] font-[750] tracking-[-0.025em] text-on-secondary-container">Friends</h1>
+            </div>
+            <div class="shrink-0">
+                <Button variant="elevated" square onclick={() => goto(resolve('/calendar'))}>
+                    Back to Calendar
+                </Button>
+            </div>
+        </header>
+        <div class="bg-surface-container-lowest">
+            <VariableTabs
+                secondary={true}
+                items={[
+                    { name: 'Meeting Times', value: 'meeting' },
+                    { name: 'Calendar', value: 'calendar' }
+                ]}
+                bind:tab
+            />
+        </div>
+        <div class="border-t border-outline-variant bg-surface-container-high px-4 py-3 @max-[20rem]:px-2.5">
         <FriendsToolbar
             {friendList}
             {selectedFriends}
@@ -840,7 +892,15 @@
             onsetPrimary={setPrimary}
             ontoggleManage={() => { manageOpen = !manageOpen; }}
         />
-        {#if manageOpen}
+        </div>
+    </section>
+
+    {#if pageError}
+        <div class="flex-none rounded-xl bg-error-container px-4 py-3 text-[0.82rem] text-on-error-container">{pageError}</div>
+    {/if}
+
+    {#if manageOpen}
+        <section class="max-h-[45%] w-full min-w-0 flex-[0_1_auto] overflow-y-auto rounded-2xl bg-surface-container p-4 shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
             <FriendsManagePanel
                 bind:sendFriendIdInput
                 {incomingRequests}
@@ -854,29 +914,19 @@
                 oncancelRequest={cancelRequest}
                 onunfriend={unfriend}
             />
-        {/if}
-    </div>
-    <div class="w-full max-w-3xl">
-        <VariableTabs
-            secondary={true}
-            items={[
-                { name: 'Meeting Times', value: 'meeting' },
-                { name: 'Calendar', value: 'calendar' }
-            ]}
-            bind:tab
-        />
-    </div>
+        </section>
+    {/if}
 
     {#if tab === 'calendar'}
         {#if Object.values(stackedMeetings.byDay ?? {}).some((arr) => arr.length > 0)}
             {@const latestHour = getLatestEndHourFromBlocks()}
             {@const numHours = latestHour - 8 + 1}
             {@const hourIndices = Array.from({ length: numHours }, (_, i) => i)}
-            <div class="flex flex-col w-full h-full overflow-hidden">
-                <div class="flex-1 overflow-x-auto overflow-y-hidden">
+            <div class="@container flex w-full min-w-0 min-h-48 flex-1 flex-col overflow-hidden rounded-2xl bg-surface-container-low shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
+                <div class="flex-1 overflow-x-auto overflow-y-hidden" {@attach scrollToFirstClass(earliestClassOffsetRem)} {@attach horizontalWheel}>
                     <div class="inline-flex flex-col min-w-full h-full">
-                        <div class="flex flex-row border-b border-outline-variant bg-surface-container-lowest sticky top-0 z-10">
-                            <div class="w-24 border-r border-outline-variant"></div>
+                        <div class="flex flex-row border-b border-outline-variant bg-surface-container-high sticky top-0 z-30">
+                            <div class="w-24 shrink-0 sticky left-0 z-20 border-r border-outline-variant bg-surface-container-high @max-[20rem]:static"></div>
                             {#each hourIndices as i (i)}
                                 {@const hour = i + 8}
                                 <div class="w-32 border-r border-outline-variant flex items-center justify-center py-2">
@@ -890,8 +940,8 @@
                             {@const dayStacks = Math.max(stackedMeetings.maxStacksByDay?.[day.key] ?? 1, 1)}
                             {@const dayHeight = Math.min(Math.max(120, dayStacks * 52), 190)}
                             <div class="flex flex-row flex-1 border-b border-outline-variant relative" style={`height:${dayHeight}px; min-height:${dayHeight}px;`}>
-                                <div class="w-24 border-r border-outline-variant flex items-center justify-center bg-surface-container-low left-0 z-5">
-                                    <span class="font-medium text-sm">{day.label}</span>
+                                <div class="w-24 shrink-0 sticky left-0 z-20 flex items-center justify-center border-r border-outline-variant bg-secondary-container text-on-secondary-container @max-[20rem]:static">
+                                    <span class="font-semibold text-sm">{day.label}</span>
                                 </div>
 
                                 <div class="relative flex-1 flex">
@@ -926,46 +976,56 @@
                 </div>
             </div>
         {:else}
-            <div class="text-sm text-secondary">No calendar data available.</div>
+            <div class="grid w-full min-w-0 min-h-48 flex-1 place-content-center rounded-2xl bg-secondary-container px-4 py-8 text-center text-on-secondary-container">
+                <h2 class="m-0 text-base font-bold">No calendar data available</h2>
+                <p class="m-[0.35rem_0_0] max-w-96 text-[0.8rem] leading-[1.4] text-on-secondary-container/80">Select a friend to compare calendars with!</p>
+            </div>
         {/if}
     {:else}
-        <div class="flex flex-col gap-3 w-full max-w-3xl mt-2">
-            <div class="flex flex-col gap-3">
-                <div class="flex flex-col">
-                    <div class="text-sm text-on-surface-variant">Best times to meet</div>
-                    <div class="text-xs text-on-surface-variant">Common free time for selected friends, between 8am–8pm.</div>
-                </div>
-                <div class="flex flex-row gap-2 items-center flex-wrap">
-                    <TextFieldOutlined type="number" label="Min (min)" bind:value={meetMinDurationMinutesInput} />
-                    <TextFieldOutlined type="number" label="Buffer (min)" bind:value={meetBufferMinutesInput} />
-                    <TextFieldOutlined type="time" label="Start" bind:value={meetRangeStartInput} />
-                    <TextFieldOutlined type="time" label="End" bind:value={meetRangeEndInput} />
-                </div>
-                <div class="flex flex-row gap-3 items-center justify-between">
-                    <div class="flex flex-col">
-                        <div class="text-sm font-medium">Between classes</div>
-                        <div class="text-xs text-on-surface-variant">Only suggest gaps that fall between scheduled classes.</div>
+        <section class="w-full min-w-0 min-h-0 flex-1 overflow-y-auto rounded-2xl bg-surface-container-low shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
+            <div class="bg-secondary-container px-[1.125rem] pt-4 pb-3.5 text-on-secondary-container">
+                <h2 class="m-0 text-base leading-tight font-bold text-on-secondary-container">Best times to meet</h2>
+                <p class="mt-1 mb-0 text-[0.78rem] leading-[1.35] text-on-secondary-container/80">Find common free time across the friends selected above</p>
+            </div>
+            <div class="bg-surface-container px-4 py-3.5 @max-[20rem]:px-2.5">
+                <div class="flex flex-wrap gap-2.5 [&_.m3-container]:!min-w-0 [&_.m3-container]:w-full [&_.m3-container]:max-w-full">
+                    <div class="min-w-[min(100%,16rem)] max-w-full flex-[1_0_16rem]">
+                        <TextFieldOutlined type="number" label="Min (min)" bind:value={meetMinDurationMinutesInput} />
                     </div>
-                    <label class="flex items-center">
+                    <div class="min-w-[min(100%,16rem)] max-w-full flex-[1_0_16rem]">
+                        <TextFieldOutlined type="number" label="Buffer (min)" bind:value={meetBufferMinutesInput} />
+                    </div>
+                    <div class="min-w-[min(100%,16rem)] max-w-full flex-[1_0_16rem]">
+                        <TextFieldOutlined type="time" label="Start" bind:value={meetRangeStartInput} />
+                    </div>
+                    <div class="min-w-[min(100%,16rem)] max-w-full flex-[1_0_16rem]">
+                        <TextFieldOutlined type="time" label="End" bind:value={meetRangeEndInput} />
+                    </div>
+                </div>
+                <div class="mt-3 flex items-center justify-between gap-4 border-t border-outline-variant pt-3 @max-[20rem]:items-start">
+                    <div>
+                        <div class="text-sm font-medium text-on-surface">Between classes</div>
+                        <div class="text-xs text-on-surface-variant">Only include gaps between scheduled classes</div>
+                    </div>
+                    <label class="flex shrink-0 items-center">
                         <Switch bind:checked={meetBetweenClassesOnly} />
                     </label>
                 </div>
             </div>
-        </div>
 
-        <div class="flex flex-col gap-3 w-full max-w-3xl mt-2">
+            <div class="border-t border-outline-variant bg-surface-container-lowest p-4 @max-[20rem]:px-2.5">
             {#if selectedFriends.length === 0}
-                <div class="text-sm text-secondary">Select at least one friend to see suggestions.</div>
+                <div class="px-4 py-6 text-center text-[0.82rem] text-on-surface-variant">Select at least one friend to see suggestions.</div>
             {:else if !meetRangeValid}
-                <div class="text-sm text-secondary">Invalid time range.</div>
+                <div class="px-4 py-6 text-center text-[0.82rem] text-on-surface-variant">Choose an end time later than the start time.</div>
             {:else if Object.values(bestMeetTimesByDay ?? {}).some((arr) => arr.length > 0)}
-                <div class="flex flex-col gap-2">
+                <div class="flex flex-col gap-2.5">
                     {#each dayOrder.slice(0, 5) as day (day.key)}
                         {@const windows = bestMeetTimesByDay?.[day.key] ?? []}
                         {#if windows.length > 0}
-                            <div class="flex flex-row gap-3 items-start justify-between bg-surface-container-low rounded-lg p-3 border border-outline-variant">
-                                <div class="font-medium text-sm w-24">{day.label}</div>
-                                <div class="flex-1 flex flex-row gap-2 flex-wrap justify-end">
+                            <div class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-3 border-b border-outline-variant py-3 last:border-b-0 @max-[30rem]:grid-cols-1">
+                                <div class="text-[0.82rem] font-semibold text-on-surface">{day.label}</div>
+                                <div class="flex min-w-0 flex-wrap justify-end gap-2 @max-[30rem]:justify-start">
                                     {#each windows as w (`${day.key}-${w.start}-${w.end}`)}
                                         <Chip variant="input" selected={false} onclick={() => {}}>
                                             {convertTo12Hour(minutesToHHMM(w.start))} – {convertTo12Hour(minutesToHHMM(w.end))} ({w.duration}m)
@@ -977,9 +1037,10 @@
                     {/each}
                 </div>
             {:else}
-                <div class="text-sm text-secondary">No meeting windows match your filters.</div>
+                <div class="px-4 py-6 text-center text-[0.82rem] text-on-surface-variant">No meeting windows match your filters.</div>
             {/if}
-        </div>
+            </div>
+        </section>
     {/if}
 
 </div>
@@ -1020,3 +1081,4 @@
         </div>
     </div>
 {/if}
+

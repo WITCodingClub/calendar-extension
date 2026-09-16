@@ -232,6 +232,7 @@ interface TemplateVariables {
     day_abbr: string;
     term: string;
     schedule_type: string;
+    schedule_type_short?: string;
 }
 
 interface ResolvedData {

@@ -2,6 +2,7 @@
     import { goto } from '$app/navigation';
     import { API } from '$lib/api';
     import { continueAfterSignIn } from '$lib/afterSignIn';
+    import { persistSession, AuthError } from '$lib/auth';
     import { Button, LoadingIndicator, snackbar } from 'm3-svelte';
     import ErrorNotice from '$lib/components/ErrorNotice.svelte';
     import { onMount } from 'svelte';
@@ -73,12 +74,15 @@
             }
 
             if (data.jwt) {
-                await EnvironmentManager.setJwtToken(data.jwt);
+                await persistSession(data.jwt);
             }
 
             track('sign_in_google_succeeded');
             await continueAfterSignIn({ offerPasskey: true });
         } catch (err) {
+            if (err instanceof AuthError) {
+                return;
+            }
             console.error('Sign in error:', err);
             track('sign_in_google_failed');
             error = 'server_down';
