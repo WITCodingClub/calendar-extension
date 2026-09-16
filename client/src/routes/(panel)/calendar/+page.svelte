@@ -15,9 +15,7 @@
     import { browser } from '$app/environment';
     import { snackbar } from 'm3-svelte';
     import { createWitTab } from '$lib/witTab';
-    import { cacheGeneration, clearSessionCache, getCalendarSession, markCalendarLoaded, markTermAttempted, markTermRefreshed, setCachedTerms, termsCache, useEnvironment } from '$lib/sessionCache';
-    import { EnvironmentManager } from '$lib/environment';
-    import { get } from 'svelte/store';
+    import { getPanelSession } from '$lib/panelSession';
 
     type RegistrationsLookupResult =
         | { error: string }
@@ -35,11 +33,12 @@
     let activeDay: DayItem | undefined = $state(undefined);
     let loading = $state(false);
     let terms = $state<TermResponse | undefined>(undefined);
-	// Seeded from the panel session, because the router destroys this page when
-	// the user opens another one. Without this, coming back would ask for every
-	// term again. markTermAttempted and markTermRefreshed keep the two in step.
-	let attemptedTerms = $state(new Set<string>(getCalendarSession().attemptedTerms));
-	let refreshedTerms = $state(new Set<string>(getCalendarSession().refreshedTerms));
+	// The router destroys this page when the user opens the friends page. The
+	// session keeps what this page already loaded, so coming back sends no requests.
+	const session = getPanelSession();
+	// Terms whose preference refresh already ran on this page. A failed refresh
+	// is not recorded in the session, and this set stops an endless retry.
+	const refreshTried = new Set<string>();
     let showHistoricTerms = $derived($storedUserSettings?.show_historic_terms ?? false);
     let displayTerms = $derived((() => {
         const currentTermId = terms?.current_term?.id;
@@ -680,11 +679,13 @@
         return map;
     }
 
-    async function refreshAllEventPrefsForCurrentTerm() {
-        if (!selected || !processedData) return;
+    // Returns false when no preferences loaded for a term that has meeting times.
+    async function refreshAllEventPrefsForCurrentTerm(): Promise<boolean> {
+        if (!selected || !processedData) return false;
         const ids = Array.from(new Set(processedData.flatMap(c => (c.meeting_times ?? []).filter(mt => mt?.id != null).map(mt => mt.id))));
         const map = await fetchPreferencesFor(ids);
-        if (map.size === 0) return;
+        if (!session.active) return false;
+        if (map.size === 0) return ids.length === 0;
         const dayKeys = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const;
         storedProcessedData.update((list) => {
             const tid = String(selected);
@@ -717,6 +718,7 @@
             };
             return next;
         });
+        return true;
     }
 
     async function runScrapeAndProcess(termId: string | undefined) {
@@ -1105,91 +1107,39 @@
         storedProcessedData.set([]);
         storedUserSettings.set(undefined);
         storedIcsUrl.set(undefined);
-        clearSessionCache();
-        attemptedTerms = new Set();
-        refreshedTerms = new Set();
     }
 
     // Loads the terms and the user settings. Neither depends on the other, so
-    // they go out together. Returns false when either one failed, so the caller
-    // does not record the load as done and the next visit tries again.
-    async function loadTermsAndSettings(startedAt: number): Promise<boolean> {
-        const termsRequest = API.getTerms();
-        const settingsRequest = API.userSettings();
-        // Keep a failed request from being reported as unhandled while the
-        // other one is still open. Both still throw at their await below.
-        termsRequest.catch(() => undefined);
-        settingsRequest.catch(() => undefined);
-
-        let complete = true;
-        let authFailed = false;
+    // they go out together. The settings load once per session. The terms come
+    // from the session, which shares one request with the friends page.
+    async function loadTermsAndSettings() {
+        const settingsRequest = session.calendarLoaded ? undefined : API.userSettings();
+        // Keep a failed settings request from being reported as unhandled while
+        // the terms request is still open. It still throws at its await below.
+        settingsRequest?.catch(() => undefined);
 
         try {
-            const fetchedTerms = await termsRequest;
-            terms = fetchedTerms;
-            // The Friends page reads the terms from this cache instead of asking again.
-            setCachedTerms(fetchedTerms, startedAt);
+            terms = await session.loadTerms();
         } catch (e) {
             console.error('Failed to load terms:', e);
-            complete = false;
         }
 
+        if (!settingsRequest) return;
         try {
             const settings = await settingsRequest;
+            // A reply for an ended session must not write into the new one.
+            if (!session.active) return;
             storedUserSettings.set(settings);
             if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
                 enrolledTerms.set(settings.enrolled_terms);
             }
+            session.calendarLoaded = true;
         } catch (e) {
-            if (e instanceof AuthError) {
-                authFailed = true;
-            } else {
+            // The auth code already sent the user to sign in.
+            if (!(e instanceof AuthError)) {
                 console.error('Failed to load user settings:', e);
             }
-            complete = false;
         }
-
-        // The auth code already sent the user to sign in. The caller stops here.
-        if (authFailed) {
-            throw new AuthError();
-        }
-        return complete;
-    }
-
-    async function listenForEnvironmentChanges() {
-        chrome.storage.onChanged.addListener((changes) => {
-            if ('environment_data' in changes) {
-                (async () => {
-                    // IMPORTANT: Clear data FIRST before fetching anything for environment switches.
-                    // This runs before the token check, so an environment without
-                    // a token still drops the data of the one the user left.
-                    clearEnvironmentData();
-
-                    checkBetaAccess();
-                    jwt_token = await getUsableJwt();
-                    if (!jwt_token) {
-                        // No JWT token for current environment, redirect to welcome page
-                        // eslint-disable-next-line svelte/no-navigation-without-resolve
-                        goto('/');
-                        return;
-                    }
-
-                    // Now fetch fresh data for the current environment
-                    useEnvironment(await EnvironmentManager.getCurrentEnvironment());
-                    const startedAt = cacheGeneration();
-                    try {
-                        if (await loadTermsAndSettings(startedAt)) {
-                            markCalendarLoaded(startedAt);
-                        }
-                    } catch (err) {
-                        if (err instanceof AuthError) {
-                            return;
-                        }
-                        throw err;
-                    }
-                })();
-            }
-        });
     }
 
     onMount(async () => {
@@ -1207,33 +1157,9 @@
             clearEnvironmentData();
         }
 
-        // Empties the cache when the environment changed while this page was closed.
-        useEnvironment(await EnvironmentManager.getCurrentEnvironment());
-
-        // The line above, or the Settings component below this page, can empty
-        // the session after the two sets above were seeded. Take them again.
-        attemptedTerms = new Set(getCalendarSession().attemptedTerms);
-        refreshedTerms = new Set(getCalendarSession().refreshedTerms);
-
-        if (getCalendarSession().loaded) {
-            // This page already loaded since the panel opened. Opening the
-            // Friends page and coming back destroys and rebuilds it, but the
-            // data is still good, so it sends no requests.
-            terms = get(termsCache);
-        } else {
-            const startedAt = cacheGeneration();
-            try {
-                if (await loadTermsAndSettings(startedAt)) {
-                    markCalendarLoaded(startedAt);
-                }
-            } catch (err) {
-                if (err instanceof AuthError) {
-                    return;
-                }
-                throw err;
-            }
-        }
-        listenForEnvironmentChanges();
+        // The (panel) layout handles environment changes. It starts a new
+        // session and mounts this page again.
+        await loadTermsAndSettings();
     });
 
     $effect(() => {
@@ -1256,11 +1182,8 @@
     });
 
     $effect(() => {
-        if (selected && !loading && !attemptedTerms.has(selected)) {
-            const next = new Set(attemptedTerms);
-            next.add(selected);
-            attemptedTerms = next;
-            markTermAttempted(selected);
+        if (selected && !loading && !session.attemptedTerms.has(selected)) {
+            session.attemptedTerms.add(selected);
             if ($storedProcessedData.some((d) => String(d.termId) === selected)) {
                 syncProcessedEventsForTerm(selected);
             } else {
@@ -1270,12 +1193,14 @@
     });
     
     $effect(() => {
-        if (processedData && selected && !refreshedTerms.has(selected)) {
-            const next = new Set(refreshedTerms);
-            next.add(selected);
-            refreshedTerms = next;
-            markTermRefreshed(selected);
-            refreshAllEventPrefsForCurrentTerm();
+        if (processedData && selected && !session.refreshedTerms.has(selected) && !refreshTried.has(selected)) {
+            const term = selected;
+            refreshTried.add(term);
+            // Record the term only after a refresh that worked, so the next
+            // visit tries a failed one again.
+            refreshAllEventPrefsForCurrentTerm().then((ok) => {
+                if (ok) session.refreshedTerms.add(term);
+            });
         }
     });
     
@@ -1374,7 +1299,7 @@
                     <div class="term-seg">
                         <ConnectedButtons>
                         {#each displayTerms as termOpt, i}
-                            <input type="radio" name="seg" id="seg-{i}" bind:group={selected} value={termOpt.id} onchange={async () => { const tid = termOpt.id; if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !attemptedTerms.has(tid) && !loading) { const next = new Set(attemptedTerms); next.add(tid); attemptedTerms = next; markTermAttempted(tid); await ensureProcessedForTerm(tid); } }} />
+                            <input type="radio" name="seg" id="seg-{i}" bind:group={selected} value={termOpt.id} onchange={async () => { const tid = termOpt.id; if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !session.attemptedTerms.has(tid) && !loading) { session.attemptedTerms.add(tid); await ensureProcessedForTerm(tid); } }} />
                             <Button for="seg-{i}" variant="filled">{termOpt.name}</Button>
                         {/each}
                         </ConnectedButtons>

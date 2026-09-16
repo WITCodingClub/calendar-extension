@@ -4,16 +4,17 @@
     import type { Course, DayItem, FriendIdentity, FriendProcessedEventsResponse, FriendRequestIncoming, FriendRequestOutgoing, MeetingTime } from '$lib/types';
     import { goto } from '$app/navigation';
     import { resolve } from '$app/paths';
-    import { EnvironmentManager } from '$lib/environment';
-    import { cacheGeneration, friendsCache, getCachedSchedule, setCachedFriends, setCachedSchedule, setCachedTerms, termsCache, useEnvironment } from '$lib/sessionCache';
+    import { getPanelSession } from '$lib/panelSession';
     import { onMount } from 'svelte';
     import { on } from 'svelte/events';
-    import { get } from 'svelte/store';
     import { fade, scale } from 'svelte/transition';
     import { Button, Chip, Switch, TextFieldOutlined, VariableTabs } from 'm3-svelte';
     import FriendsToolbar from '$lib/components/FriendsToolbar.svelte';
     import FriendsManagePanel from '$lib/components/FriendsManagePanel.svelte';
 
+    // The session keeps the friend list and schedules while the user moves
+    // between this page and the calendar page.
+    const session = getPanelSession();
     let currentTermId = $state<string | undefined>(undefined);
     let termsFetched = $state(false);
     let selected = $derived.by(() => {
@@ -691,8 +692,7 @@
     // useCachedFriends is true. Actions that change the list ask the server.
     async function loadFriendsAndRequests(useCachedFriends = false) {
         pageError = '';
-        const startedAt = cacheGeneration();
-        const cachedFriends = useCachedFriends ? get(friendsCache).friends : undefined;
+        const cachedFriends = useCachedFriends ? session.friends : undefined;
         if (cachedFriends) {
             friendIdentities = cachedFriends;
         }
@@ -706,7 +706,7 @@
             if (friendsResponse) {
                 const friends = friendsResponse.friends ?? [];
                 friendIdentities = friends;
-                setCachedFriends(friends, startedAt);
+                session.friends = friends;
             }
             incomingRequests = requestsResponse.incoming ?? [];
             outgoingRequests = requestsResponse.outgoing ?? [];
@@ -726,21 +726,21 @@
 
     async function loadFriendSchedules(termUid: string) {
         const loadVersion = ++schedulesLoadVersion;
-        const startedAt = cacheGeneration();
+        const cachedSchedules = (session.schedules[termUid] ??= {});
         // Only friends without a cached schedule for this term need a request.
-        if (friendIdentities.some((friend) => !getCachedSchedule(termUid, friend.id))) {
+        if (friendIdentities.some((friend) => !cachedSchedules[friend.id])) {
             schedulesLoading = true;
         }
         try {
             const coursesByFriend = await Promise.all(friendIdentities.map(async (friend) => {
-                const cachedCourses = getCachedSchedule(termUid, friend.id);
+                const cachedCourses = cachedSchedules[friend.id];
                 if (cachedCourses) {
                     return { id: friend.id, courses: cachedCourses };
                 }
                 try {
                     const response = await API.getFriendProcessedEvents(friend.id, termUid);
                     const courses = mapFriendCourses(response, friend.id);
-                    setCachedSchedule(termUid, friend.id, courses, startedAt);
+                    cachedSchedules[friend.id] = courses;
                     return { id: friend.id, courses };
                 } catch (error) {
                     // Failed and unprocessed schedules are not cached. The friend
@@ -861,13 +861,9 @@
     }
 
     onMount(async () => {
-        // Empties the cache when the environment changed, so the next lines
-        // never show the data of the environment that the user left.
-        useEnvironment(await EnvironmentManager.getCurrentEnvironment());
         try {
-            const startedAt = cacheGeneration();
-            const terms = get(termsCache) ?? await API.getTerms();
-            setCachedTerms(terms, startedAt);
+            // The calendar page may already have loaded the terms in this session.
+            const terms = await session.loadTerms();
             if (terms?.current_term?.id != null) {
                 currentTermId = String(terms.current_term.id);
             }

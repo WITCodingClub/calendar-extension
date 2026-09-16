@@ -13,6 +13,9 @@ export const featureFlagsError = writable<Error | null>(null);
 class FeatureFlagsService {
     private cache: FeatureFlagsState | null = null;
     private loadPromise: Promise<void> | null = null;
+    // clearCache() moves this on. A load that started before then must not
+    // write its flags, because they can belong to another environment.
+    private epoch = 0;
 
     async loadFlags(force: boolean = false): Promise<void> {
         if (this.loadPromise && !force) {
@@ -29,11 +32,13 @@ class FeatureFlagsService {
     }
 
     private async _fetchFlags(): Promise<void> {
+        const epoch = this.epoch;
         isLoadingFeatureFlags.set(true);
         featureFlagsError.set(null);
 
         try {
             const response = await API.getAllFeatureFlags();
+            if (epoch !== this.epoch) return;
             const flags: FeatureFlagsState = {} as FeatureFlagsState;
 
             // Map the response to our FeatureFlagsState type
@@ -44,6 +49,7 @@ class FeatureFlagsService {
             this.cache = flags;
             featureFlagsStore.set(flags);
         } catch (error) {
+            if (epoch !== this.epoch) return;
             const err = error instanceof Error ? error : new Error('Failed to load feature flags');
             featureFlagsError.set(err);
             console.error('Error loading feature flags:', error);
@@ -56,8 +62,10 @@ class FeatureFlagsService {
             this.cache = flags;
             featureFlagsStore.set(flags);
         } finally {
-            isLoadingFeatureFlags.set(false);
-            this.loadPromise = null;
+            if (epoch === this.epoch) {
+                isLoadingFeatureFlags.set(false);
+                this.loadPromise = null;
+            }
         }
     }
 
@@ -92,6 +100,9 @@ class FeatureFlagsService {
     }
 
     clearCache(): void {
+        this.epoch++;
+        this.loadPromise = null;
+        isLoadingFeatureFlags.set(false);
         this.cache = null;
         featureFlagsStore.set(null);
     }

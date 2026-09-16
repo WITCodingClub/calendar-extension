@@ -10,9 +10,8 @@
     import type { UserSettings } from "$lib/types";
     import { listPasskeys, passkeysSupported, registerPasskey, removePasskey, type PasskeySummary } from "$lib/passkeys";
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
-    import { cacheGeneration, setSettingsCache, settingsCache, updateSettingsCache, useEnvironment, type ConnectedAccount } from "$lib/sessionCache";
+    import { getPanelSession, type ConnectedAccount } from "$lib/panelSession";
     import { onMount } from "svelte";
-    import { get } from "svelte/store";
 
     // Google Calendar color ID to hex mapping
     const COLOR_ID_TO_HEX: Record<string, string> = {
@@ -34,6 +33,9 @@
     );
 
     let userSettings = $state<UserSettings | undefined>(undefined);
+    // The calendar page mounts this component again after an environment change,
+    // so this is always the session of the current environment.
+    const session = getPanelSession();
     let email = $state<string | undefined>(undefined);
     let currentEnvironment = $state<Environment>('prod');
     let authenticatedEnvironments = $state<Environment[]>([]);
@@ -75,12 +77,9 @@
         previousSettingsWasUndefined = $storedUserSettings === undefined;
     });
 
-    // startedAt is the cache generation of the load that asked for the
-    // passkeys. A user action on the loaded page passes nothing, because it
-    // always belongs to the current generation.
-    async function loadPasskeys(startedAt?: number) {
+    async function loadPasskeys() {
         passkeys = await listPasskeys();
-        updateSettingsCache({ passkeys: $state.snapshot(passkeys) }, startedAt);
+        session.updateSettings({ passkeys: $state.snapshot(passkeys) });
     }
 
     async function addPasskey() {
@@ -113,11 +112,7 @@
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
 
-        // Empties the cache when the environment changed, so the next lines
-        // never show the data of the environment that the user left.
-        useEnvironment(await EnvironmentManager.getCurrentEnvironment());
-
-        const cached = get(settingsCache);
+        const cached = session.settings;
         if (cached) {
             // This page already loaded since the panel opened. Show that data
             // without new requests. The panel loads it again when it opens next.
@@ -140,7 +135,6 @@
     });
 
     async function loadSettingsData() {
-        const startedAt = cacheGeneration();
         // Only a load where the main requests succeed goes into the cache.
         // After a failure, the next visit to this page tries again.
         let complete = true;
@@ -156,7 +150,7 @@
             (async () => {
                 if (await passkeysSupported()) {
                     try {
-                        await loadPasskeys(startedAt);
+                        await loadPasskeys();
                         canUsePasskeys = true;
                     } catch {
                         canUsePasskeys = false;
@@ -173,7 +167,10 @@
                     ]);
 
                     userSettings = userSettingsData;
-                    storedUserSettings.set(userSettings);
+                    // A reply for an ended session must not write into the new one.
+                    if (session.active) {
+                        storedUserSettings.set(userSettings);
+                    }
                     email = emailData.email;
                 } catch (error) {
                     console.error('Failed to load settings:', error);
@@ -230,14 +227,14 @@
         ]);
 
         if (complete) {
-            setSettingsCache({
+            session.settings = {
                 email,
                 notificationsDisabled,
                 connectedAccounts: $state.snapshot(connectedAccounts),
                 canUsePasskeys,
                 passkeys: $state.snapshot(passkeys),
                 uniCalColor,
-            }, startedAt);
+            };
         }
     }
 
@@ -334,7 +331,7 @@
             if (browser) {
                 localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, newColor);
             }
-            updateSettingsCache({ uniCalColor: newColor });
+            session.updateSettings({ uniCalColor: newColor });
             snackbar('University events color updated', undefined, true);
         } catch (error) {
             console.error('Failed to update university events color:', error);
@@ -391,12 +388,15 @@
         if (newEnv === currentEnvironment) return;
 
         currentEnvironment = newEnv;
-        const hasJwt = await EnvironmentManager.switchEnvironment(newEnv);
 
+        // Set these before the switch. The (panel) layout mounts the calendar
+        // page again as soon as the environment changes, and the page reads them.
         if (browser) {
             sessionStorage.setItem('returnToSettings', 'true');
             sessionStorage.setItem('clearCalendarData', 'true');
         }
+
+        const hasJwt = await EnvironmentManager.switchEnvironment(newEnv);
 
         const envDisplayName = ENVIRONMENTS[newEnv].displayName;
 
@@ -424,7 +424,7 @@
                 await API.enableNotifications();
                 snackbar('Notifications re-enabled', undefined, true);
             }
-            updateSettingsCache({ notificationsDisabled: disabled });
+            session.updateSettings({ notificationsDisabled: disabled });
         } catch (e) {
             console.error('Failed to update notification settings:', e);
             snackbar('Failed to update notification settings', undefined, true);
@@ -464,7 +464,7 @@
                         try {
                             const accounts = await API.getConnectedAccounts();
                             connectedAccounts = accounts.oauth_credentials || [];
-                            updateSettingsCache({ connectedAccounts: $state.snapshot(connectedAccounts) });
+                            session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
                             snackbar('Account connected successfully!', undefined, true);
                         } catch (e) {
                             console.error('Failed to refresh accounts:', e);
@@ -487,7 +487,7 @@
         try {
             await API.disconnectAccount(credentialId);
             connectedAccounts = connectedAccounts.filter(a => a.id !== credentialId);
-            updateSettingsCache({ connectedAccounts: $state.snapshot(connectedAccounts) });
+            session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
             snackbar('Account disconnected', undefined, true);
         } catch (e) {
             console.error('Failed to disconnect account:', e);
@@ -512,7 +512,7 @@
                         try {
                             const accounts = await API.getConnectedAccounts();
                             connectedAccounts = accounts.oauth_credentials || [];
-                            updateSettingsCache({ connectedAccounts: $state.snapshot(connectedAccounts) });
+                            session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
                             snackbar('Account re-authenticated successfully!', undefined, true);
                         } catch (e) {
                             console.error('Failed to refresh accounts:', e);
