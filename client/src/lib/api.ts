@@ -25,9 +25,13 @@ export class API {
             throw new AuthError();
         }
 
+        const sentAuth = new Headers(init?.headers).get('Authorization');
         const response = await fetch(url, init);
         if (response.status === 401) {
-            await handleUnauthorized();
+            const currentToken = await this.getJwtToken();
+            if (currentToken && sentAuth === `Bearer ${currentToken}`) {
+                await handleUnauthorized();
+            }
             throw new AuthError();
         }
         return response;

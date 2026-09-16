@@ -101,8 +101,14 @@ export async function handleUnauthorized(): Promise<void> {
             }
         }
 
-        if (browser && !isPublicAuthPath(window.location.pathname)) {
-            await goto('/', { replaceState: true });
+        if (browser) {
+            userSettings.set(undefined);
+            processedData.set([]);
+            enrolledTerms.set([]);
+            icsUrl.set(undefined);
+            if (!isPublicAuthPath(window.location.pathname)) {
+                await goto('/', { replaceState: true });
+            }
         }
     })();
 
