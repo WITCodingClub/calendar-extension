@@ -70,6 +70,7 @@ export function isPublicAuthPath(pathname: string): boolean {
 
 export async function persistSession(token: string): Promise<void> {
     sessionInvalidated = false;
+    await EnvironmentManager.migrateOldJwtToken();
     await EnvironmentManager.setJwtToken(token);
 }
 
