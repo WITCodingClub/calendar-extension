@@ -666,9 +666,24 @@
     }
 
     function horizontalWheel(el: HTMLElement) {
+        let lastWheelAt = 0;
+        let lockVertical = false;
         return on(el, 'wheel', (e) => {
             if (el.scrollWidth <= el.clientWidth) return;
             if (e.deltaY === 0 || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+
+            const now = performance.now();
+            if (now - lastWheelAt > 40) lockVertical = false;
+            lastWheelAt = now;
+
+            const root = document.scrollingElement ?? document.documentElement;
+            const atBottom = root.scrollTop + root.clientHeight >= root.scrollHeight - 1;
+            if (!atBottom || (e.deltaY < 0 && el.scrollLeft <= 1)) {
+                lockVertical = true;
+                return;
+            }
+            if (lockVertical) return;
+
             e.preventDefault();
             el.scrollLeft += e.deltaY;
         }, { passive: false });
