@@ -4,8 +4,8 @@ import { EnvironmentManager } from './environment';
  * Anonymous usage counts for the WIT Calendar Grafana server.
  *
  * Each request sends one event name from the list below, the extension version,
- * and the browser name. It sends no token, no email, and no schedule data, and
- * the backend keeps only a count per event name.
+ * and the browser name. It sends no token, no email, and no schedule data. The
+ * backend keeps counters by event name, extension version, and browser.
  *
  * Keep this list in sync with ExtensionUsage::EVENTS in calendar-backend. The
  * backend ignores a name that is not on its list.
