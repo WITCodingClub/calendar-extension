@@ -1,6 +1,7 @@
 <script lang="ts">
     import { browser } from "$app/environment";
     import { goto } from "$app/navigation";
+    import { resolve } from "$app/paths";
     import { API } from "$lib/api";
     import { EnvironmentManager, ENVIRONMENTS, type Environment } from "$lib/environment";
     import { featureFlags } from "$lib/featureFlags";
@@ -43,9 +44,11 @@
     let isAddingPasskey = $state(false);
     let newPasskeyName = $state("");
     const UNI_CAL_COLOR_STORAGE_KEY = "uniCalColor";
+    const UNI_EVENTS_COLLAPSED_KEY = "uniEventsCollapsed";
     let uniCalColor = $state<string>(
         browser ? (localStorage.getItem(UNI_CAL_COLOR_STORAGE_KEY) ?? "") : "#616161"
     );
+    let uniEventsCollapsed = $state(browser ? localStorage.getItem(UNI_EVENTS_COLLAPSED_KEY) === "true" : false);
     let hasLoadedUniCalColor = $state(false);
     let isOtherCalendar = $state(browser ? localStorage.getItem('isOtherCalendar') === 'true' : false);
 
@@ -263,6 +266,13 @@
         }
     }
 
+    function toggleUniEventsCollapsed() {
+        uniEventsCollapsed = !uniEventsCollapsed;
+        if (browser) {
+            localStorage.setItem(UNI_EVENTS_COLLAPSED_KEY, String(uniEventsCollapsed));
+        }
+    }
+
     function toggleUniversityCategory(categoryId: string) {
         if (!userSettings) return;
         const currentCategories = userSettings.university_event_categories ?? [];
@@ -317,7 +327,7 @@
         if (!hasJwt) {
             storedProcessedData.set([]);
             snackbar(`Switched to ${envDisplayName}. Please sign in.`, undefined, true);
-            await goto('/');
+            await goto(resolve('/'));
         }
     }
 
@@ -443,7 +453,7 @@
         storedUserSettings.set(undefined);
         storedProcessedData.set([]);
         snackbar('Local data cleared successfully', undefined, true);
-        await goto('/');
+        await goto(resolve('/'));
     }
 
     async function manualRefreshFeatureFlags() {
@@ -475,17 +485,14 @@
     }
 </script>
 
-<div class="flex flex-row items-center justify-between mb-4">
-    <h1 class="text-lg font-bold">Currently signed in as: {email}</h1>
-</div>
-
-<div class="flex flex-col gap-3">
+<div class="@container flex min-h-0 w-full flex-1 flex-col gap-3 overflow-y-auto pb-2">
     {#if showEnvSwitcher}
-    <div class="flex flex-row gap-3 items-center justify-between">
-        <div class="flex flex-col">
-            <h2 class="text-md font-bold">Environment</h2>
-            <p class="text-sm text-outline">
-                {#each Object.values(ENVIRONMENTS) as env}
+    <section class="flex flex-row items-center justify-between gap-4 rounded-2xl bg-surface-container p-4 shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.08)] @max-[30rem]:flex-col @max-[30rem]:items-stretch">
+        <div class="flex min-w-0 flex-col gap-1">
+            <p class="m-0 text-xs font-bold uppercase tracking-wide text-primary">Developer</p>
+            <h2 class="m-0 text-base font-bold text-on-surface">Environment</h2>
+            <p class="m-0 text-sm text-on-surface-variant">
+                {#each Object.values(ENVIRONMENTS) as env (env.name)}
                     {#if authenticatedEnvironments.includes(env.name)}
                         <span class="text-primary">✓ {env.displayName}</span>
                     {:else}
@@ -495,7 +502,7 @@
                 {/each}
             </p>
         </div>
-        <div class="flex flex-row gap-2 items-center">
+        <div class="flex shrink-0 items-center gap-2">
             <SelectOutlined label=""
                 options={[
                     { text: ENVIRONMENTS.prod.displayName, value: "prod" },
@@ -505,20 +512,23 @@
                 bind:value={environmentGetterSetter.value}
             />
         </div>
-    </div>
+    </section>
     {/if}
+
+    <section class="overflow-hidden rounded-2xl bg-surface-container-low shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
+        <div class="divide-y divide-outline-variant bg-surface-container">
     {#if !isOtherCalendar}
-        <div class="flex flex-row gap-3 items-center justify-between">
-            <div class="flex flex-col">
-                <h2 class="text-md font-bold">Calendar Link</h2>
-                <p class="text-sm text-outline">Copy your calendar feed URL to subscribe in other apps</p>
+        <div class="flex flex-row items-center justify-between gap-4 p-4 @max-[30rem]:flex-col @max-[30rem]:items-stretch">
+            <div class="flex min-w-0 flex-col gap-1">
+                <h3 class="m-0 text-sm font-bold text-on-surface">Calendar link</h3>
+                <p class="m-0 text-sm text-on-surface-variant">Copy your calendar feed URL to subscribe in other apps.</p>
             </div>
             <Button variant="outlined" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
         </div>
     {/if}
-    <div class="flex flex-row gap-3 items-center justify-between">
-        <h2 class="text-md font-bold">Default Lecture Color</h2>
-        <div class="flex flex-row gap-2 items-center">
+    <div class="flex flex-row items-center justify-between gap-4 p-4 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
+        <h3 class="m-0 text-sm font-bold text-on-surface">Default lecture color</h3>
+        <div class="flex flex-row items-center gap-2">
             <div class="w-6 h-6 rounded-full border-2 border-outline other-stuff" style="background-color: {userSettings?.default_color_lecture};"></div>
             <SelectOutlined label=""
                 options={[
@@ -538,9 +548,9 @@
             />
         </div>
     </div>
-    <div class="flex flex-row gap-3 items-center justify-between">
-        <h2 class="text-md font-bold">Default Lab Color</h2>
-        <div class="flex flex-row gap-2 items-center">
+    <div class="flex flex-row items-center justify-between gap-4 p-4 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
+        <h3 class="m-0 text-sm font-bold text-on-surface">Default lab color</h3>
+        <div class="flex flex-row items-center gap-2">
             <div class="w-6 h-6 rounded-full border-2 border-outline other-stuff" style="background-color: {userSettings?.default_color_lab};"></div>
             <SelectOutlined label=""
                 options={[
@@ -560,9 +570,9 @@
             />
         </div>
     </div>
-    <div class="flex flex-row gap-3 items-center justify-between">
-        <h2 class="text-md font-bold">Time Format</h2>
-        <div class="flex flex-row gap-2 items-center">
+    <div class="flex flex-row items-center justify-between gap-4 p-4">
+        <h3 class="m-0 text-sm font-bold text-on-surface">Time format</h3>
+        <div class="flex flex-row items-center gap-2">
             <SelectOutlined label=""
                 options={[
                     { text: "12-hour", value: "false" },
@@ -572,62 +582,68 @@
             />
         </div>
     </div>
-    <div class="flex flex-row gap-3 items-center justify-between">
-        <h2 class="text-md font-bold">Advanced Editing</h2>
-        <div class="flex flex-row gap-2 items-center">
+    <div class="flex flex-row items-center justify-between gap-4 p-4">
+        <div class="flex min-w-0 flex-col gap-1">
+            <h3 class="m-0 text-sm font-bold text-on-surface">Advanced editing</h3>
+            <p class="m-0 text-sm text-on-surface-variant">Use custom templates when editing calendar events.</p>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
             <label>
                 <Switch bind:checked={advancedEditingGetterSetter.value} />
             </label>
         </div>
     </div>
-    <div class="flex flex-row gap-3 items-center justify-between">
-        <div class="flex flex-col">
-            <h2 class="text-md font-bold">Show Historic Terms</h2>
-            <p class="text-sm text-outline">Show past terms alongside your current schedule</p>
+    <div class="flex flex-row items-center justify-between gap-4 p-4">
+        <div class="flex min-w-0 flex-col gap-1">
+            <h3 class="m-0 text-sm font-bold text-on-surface">Show historic terms</h3>
+            <p class="m-0 text-sm text-on-surface-variant">Show past terms alongside your current schedule.</p>
         </div>
-        <div class="flex flex-row gap-2 items-center">
+        <div class="flex shrink-0 items-center gap-2">
             <label>
                 <Switch bind:checked={showHistoricTermsGetterSetter.value} />
             </label>
         </div>
     </div>
-    <div class="flex flex-row gap-3 items-center justify-between">
-        <div class="flex flex-col">
-            <h2 class="text-md font-bold">Disable All Notifications</h2>
-            <p class="text-sm text-outline">Turn off all calendar event reminders</p>
+    <div class="flex flex-row items-center justify-between gap-4 p-4">
+        <div class="flex min-w-0 flex-col gap-1">
+            <h3 class="m-0 text-sm font-bold text-on-surface">Disable all notifications</h3>
+            <p class="m-0 text-sm text-on-surface-variant">Turn off all calendar event reminders.</p>
         </div>
-        <div class="flex flex-row gap-2 items-center">
+        <div class="flex shrink-0 items-center gap-2">
             <label>
                 <Switch bind:checked={notificationsDisabledGetterSetter.value} />
             </label>
         </div>
     </div>
+        </div>
+    </section>
 
+    <section class="overflow-hidden rounded-2xl bg-surface-container shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.08)]">
     <!-- Connected Google Accounts Section -->
-    <div class="flex flex-col gap-3 mt-4 pt-4 border-t border-outline-variant">
+    <div class="flex flex-col gap-3 p-4">
         <div class="flex flex-col gap-1">
-            <h2 class="text-md font-bold">Connected Google Accounts</h2>
-            <p class="text-sm text-outline">Add multiple Google accounts to sync your calendar</p>
+            <h2 class="m-0 text-base font-bold text-on-surface">Connected Google accounts</h2>
+            <p class="m-0 text-sm text-on-surface-variant">Add multiple Google accounts to sync your calendar.</p>
         </div>
 
         {#if connectedAccounts.length > 0}
             <div class="flex flex-col gap-2">
-                {#each connectedAccounts as account}
-                    <div class="flex flex-row gap-3 items-center justify-between bg-surface-container-low rounded-lg p-3 {account.needs_reauth ? 'border border-error' : ''}">
-                        <div class="flex flex-col gap-1">
+                {#each connectedAccounts as account (account.id)}
+                    <div class={["flex flex-row items-center justify-between gap-3 rounded-xl bg-surface-container-lowest p-3 @max-[30rem]:flex-col @max-[30rem]:items-stretch", account.needs_reauth && "outline outline-1 outline-error"]}>
+                        <div class="flex min-w-0 flex-col gap-1">
                             <div class="flex flex-row gap-2 items-center">
                                 <svg class="w-5 h-5 {account.needs_reauth ? 'text-error' : 'text-primary'}" viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
                                 </svg>
-                                <span class="text-sm">{account.email}</span>
+                                <span class="truncate text-sm text-on-surface">{account.email}</span>
                             </div>
                             {#if account.needs_reauth}
-                                <span class="text-xs text-error ml-7">
+                                <span class="ml-7 text-xs text-error">
                                     {account.token_revoked ? 'Access revoked — please re-authenticate.' : 'Authentication expired — please re-authenticate.'}
                                 </span>
                             {/if}
                         </div>
-                        <div class="flex flex-row gap-2 items-center">
+                        <div class="flex shrink-0 flex-row items-center gap-2">
                             {#if account.needs_reauth}
                                 <Button variant="tonal" onclick={() => reauthAccount(account.email)}>
                                     Re-auth
@@ -645,15 +661,16 @@
                 {/each}
             </div>
         {:else}
-            <p class="text-sm text-outline-variant italic">No Google accounts connected</p>
+            <p class="m-0 rounded-xl bg-surface-container-lowest p-3 text-sm text-on-surface-variant">No Google accounts connected.</p>
         {/if}
 
-        <div class="flex flex-row gap-2 items-center">
+        <div class="flex flex-row items-center gap-2 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
             <input
                 type="email"
                 placeholder="Enter email address"
                 bind:value={addEmailInput}
-                class="flex-1 px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface focus:border-primary focus:outline-none"
+                aria-label="Google account email"
+                class="min-w-0 flex-1 rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                 onkeydown={(e) => e.key === 'Enter' && addGoogleAccount()}
             />
             <Button variant="tonal" onclick={addGoogleAccount}>Add Account</Button>
@@ -662,24 +679,24 @@
 
     <!-- Passkeys Section -->
     {#if canUsePasskeys}
-        <div class="flex flex-col gap-3 mt-4 pt-4 border-t border-outline-variant">
+        <div class="flex flex-col gap-3 border-t border-outline-variant p-4">
             <div class="flex flex-col gap-1">
-                <h2 class="text-md font-bold">Passkeys</h2>
-                <p class="text-sm text-outline">Sign in on a new device without going through Google again</p>
+                <h2 class="m-0 text-base font-bold text-on-surface">Passkeys</h2>
+                <p class="m-0 text-sm text-on-surface-variant">Sign in on a new device without going through Google again.</p>
             </div>
 
             {#if passkeys.length > 0}
                 <div class="flex flex-col gap-2">
                     {#each passkeys as passkey (passkey.id)}
-                        <div class="flex flex-row gap-3 items-center justify-between bg-surface-container-low rounded-lg p-3">
-                            <div class="flex flex-col gap-1">
+                        <div class="flex flex-row items-center justify-between gap-3 rounded-xl bg-surface-container-lowest p-3">
+                            <div class="flex min-w-0 flex-col gap-1">
                                 <div class="flex flex-row gap-2 items-center">
                                     <svg class="w-5 h-5 text-primary" viewBox="0 0 24 24" fill="currentColor">
                                         <path d="M12 1a5 5 0 0 0-5 5c0 2.2 1.4 4.1 3.4 4.7L10 12v2H8v2h2v2l2 2 2-2V10.7A5 5 0 0 0 12 1zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/>
                                     </svg>
-                                    <span class="text-sm">{passkey.nickname}</span>
+                                    <span class="truncate text-sm text-on-surface">{passkey.nickname}</span>
                                 </div>
-                                <span class="text-xs text-outline ml-7">
+                                <span class="ml-7 text-xs text-on-surface-variant">
                                     {passkey.last_used_at ? `Last used ${new Date(passkey.last_used_at).toLocaleDateString()}` : 'Never used'}
                                 </span>
                             </div>
@@ -692,15 +709,16 @@
                     {/each}
                 </div>
             {:else}
-                <p class="text-sm text-outline-variant italic">No passkeys yet</p>
+                <p class="m-0 rounded-xl bg-surface-container-lowest p-3 text-sm text-on-surface-variant">No passkeys yet.</p>
             {/if}
 
-            <div class="flex flex-row gap-2 items-center">
+            <div class="flex flex-row items-center gap-2 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
                 <input
                     type="text"
                     placeholder="Name this device (optional)"
                     bind:value={newPasskeyName}
-                    class="flex-1 px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface focus:border-primary focus:outline-none"
+                    aria-label="Passkey device name"
+                    class="min-w-0 flex-1 rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                     onkeydown={(e) => e.key === 'Enter' && addPasskey()}
                 />
                 <Button variant="tonal" onclick={addPasskey} disabled={isAddingPasskey}>
@@ -709,15 +727,30 @@
             </div>
         </div>
     {/if}
+    </section>
 
     <!-- University Calendar Events Section -->
-    <div class="flex flex-col gap-3 mt-4 pt-4 border-t border-outline-variant">
-        <div class="flex flex-row gap-3 items-center justify-between">
-            <div class="flex flex-col">
-                <h2 class="text-md font-bold">Sync University Events</h2>
-                <p class="text-sm text-outline">Add campus events to your calendar (holidays are always synced)</p>
+    <section class="flex flex-col gap-3 rounded-2xl bg-surface-container p-4 shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.08)]">
+        <div class="flex flex-row items-center justify-between gap-4">
+            <div class="flex min-w-0 flex-col gap-1">
+                <h2 class="m-0 text-base font-bold text-on-surface">Sync university events</h2>
+                <p class="m-0 text-sm text-on-surface-variant">Add campus events to your calendar. Holidays are always synced.</p>
             </div>
-            <div class="flex flex-row gap-2 items-center">
+            <div class="flex shrink-0 items-center gap-2">
+                {#if syncUniversityEventsValue && availableCategories.length > 0}
+                    <button
+                        type="button"
+                        class="flex h-8 w-8 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high"
+                        aria-expanded={!uniEventsCollapsed}
+                        aria-controls="uni-events-details"
+                        aria-label={uniEventsCollapsed ? "Expand university event options" : "Collapse university event options"}
+                        onclick={toggleUniEventsCollapsed}
+                    >
+                        <svg class={["h-5 w-5 transition-transform", !uniEventsCollapsed && "rotate-180"]} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>
+                        </svg>
+                    </button>
+                {/if}
                 <label>
                     <Switch bind:checked={syncUniversityEventsGetterSetter.value} />
                 </label>
@@ -725,60 +758,69 @@
         </div>
 
         {#if syncUniversityEventsValue && availableCategories.length > 0}
-            <div class="flex flex-row gap-3 items-center justify-between">
-                <h2 class="text-md font-bold">University Events Color</h2>
-                <div class="flex flex-row gap-2 items-center">
-                    <div class="w-6 h-6 rounded-full border-2 border-outline" style="background-color: {uniCalColor};"></div>
-                    <SelectOutlined label=""
-                        options={[
-                            { text: "Tomato", value: "#d50000" },
-                            { text: "Flamingo", value: "#e67c73" },
-                            { text: "Tangerine", value: "#f4511e" },
-                            { text: "Banana", value: "#f6bf26" },
-                            { text: "Sage", value: "#33b679" },
-                            { text: "Basil", value: "#0b8043" },
-                            { text: "Peacock", value: "#039be5" },
-                            { text: "Blueberry", value: "#3f51b5" },
-                            { text: "Lavender", value: "#7986cb" },
-                            { text: "Grape", value: "#8e24aa" },
-                            { text: "Graphite", value: "#616161" },
-                        ]}
-                        bind:value={uniCalColor}
-                        onchange={() => handleUniCalColorChange(uniCalColor)}
-                    />
+            <div id="uni-events-details" class={["flex flex-col gap-3", uniEventsCollapsed && "hidden"]}>
+                <div class="flex flex-row items-center justify-between gap-3 rounded-xl bg-surface-container-lowest p-3 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
+                    <h3 class="m-0 text-sm font-bold text-on-surface">University events color</h3>
+                    <div class="flex flex-row gap-2 items-center">
+                        <div class="w-6 h-6 rounded-full border-2 border-outline" style="background-color: {uniCalColor};"></div>
+                        <SelectOutlined label=""
+                            options={[
+                                { text: "Tomato", value: "#d50000" },
+                                { text: "Flamingo", value: "#e67c73" },
+                                { text: "Tangerine", value: "#f4511e" },
+                                { text: "Banana", value: "#f6bf26" },
+                                { text: "Sage", value: "#33b679" },
+                                { text: "Basil", value: "#0b8043" },
+                                { text: "Peacock", value: "#039be5" },
+                                { text: "Blueberry", value: "#3f51b5" },
+                                { text: "Lavender", value: "#7986cb" },
+                                { text: "Grape", value: "#8e24aa" },
+                                { text: "Graphite", value: "#616161" },
+                            ]}
+                            bind:value={uniCalColor}
+                            onchange={() => handleUniCalColorChange(uniCalColor)}
+                        />
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <p class="m-0 mb-1 text-sm font-medium text-on-surface-variant">Event types to sync</p>
+                    {#each availableCategories.filter(c => c.id !== 'holiday') as category (category.id)}
+                        <label class="flex cursor-pointer flex-row items-start gap-3 rounded-xl p-3 transition-colors hover:bg-surface-container-high">
+                            <input
+                                type="checkbox"
+                                checked={isCategorySelected(category.id)}
+                                onchange={() => toggleUniversityCategory(category.id)}
+                                class="mt-1 w-4 h-4 accent-primary"
+                            />
+                            <div class="flex flex-col">
+                                <span class="text-sm font-medium text-on-surface">{category.name}</span>
+                                <span class="text-xs text-on-surface-variant">{category.description}</span>
+                            </div>
+                        </label>
+                    {/each}
                 </div>
             </div>
-
-            <div class="flex flex-col gap-2 ml-2 pl-4 border-l-2 border-outline-variant">
-                <p class="text-sm text-outline font-medium">Select event types to sync:</p>
-                {#each availableCategories.filter(c => c.id !== 'holiday') as category}
-                    <label class="flex flex-row gap-3 items-start cursor-pointer hover:bg-surface-variant rounded-lg p-2 -m-2 transition-colors">
-                        <input
-                            type="checkbox"
-                            checked={isCategorySelected(category.id)}
-                            onchange={() => toggleUniversityCategory(category.id)}
-                            class="mt-1 w-4 h-4 accent-primary"
-                        />
-                        <div class="flex flex-col">
-                            <span class="text-sm font-medium">{category.name}</span>
-                            <span class="text-xs text-outline">{category.description}</span>
-                        </div>
-                    </label>
-                {/each}
-            </div>
         {/if}
-    </div>
+    </section>
 
-    <div class="flex flex-col gap-2 items-center justify-center mt-6 w-full">
-        <Button variant="tonal" onclick={manualRefreshFeatureFlags} disabled={isRefreshingFlags}>
-            {isRefreshingFlags ? 'Refreshing...' : 'Refresh Flags'}
-        </Button>
-    </div>
-    <div class="flex flex-col gap-2 items-center justify-center mt-6 w-full">
-        <Button variant="filled" onclick={clearLocalStorage}>Clear Local Data</Button>
-        <p class="text-sm text-error text-center max-w-md">
-            <span class="font-semibold">Warning:</span>
-            This will clear all your local data and you will need to sign in again. This does <b>not</b> affect your Calendar data.
-        </p>
-    </div>
+    <section class="flex flex-row items-center justify-between gap-4 rounded-2xl bg-surface-container p-4 @max-[30rem]:flex-col @max-[30rem]:items-stretch">
+        <div class="flex min-w-0 flex-col gap-1">
+            <h2 class="m-0 text-base font-bold text-on-surface">Dev Tools</h2>
+            <p class="m-0 text-sm text-on-surface-variant">Reload remote feature availability or reset local data</p>
+        </div>
+        <div class="flex shrink-0 flex-row items-center gap-2 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
+            <Button variant="tonal" onclick={manualRefreshFeatureFlags} disabled={isRefreshingFlags}>
+                {isRefreshingFlags ? 'Refreshing...' : 'Refresh Flags'}
+            </Button>
+            <Button variant="filled" onclick={clearLocalStorage}>Clear Local Data</Button>
+        </div>
+    </section>
+    <p class="m-0 rounded-xl bg-error-container px-4 py-3 text-center text-sm text-on-error-container">
+        <span class="font-semibold">Warning:</span>
+        Clearing local data signs you out, but does not affect your calendar data.
+    </p>
+    <p class="m-0 break-all px-2 pb-1 text-center text-xs text-on-surface-variant">
+        {email ? `Signed in as ${email}` : 'Loading your account…'}
+    </p>
 </div>

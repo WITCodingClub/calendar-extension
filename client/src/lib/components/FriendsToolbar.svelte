@@ -30,9 +30,9 @@
 	const youColors = $derived(ownerColorMap['you'] ?? { lecture: '#039be5', lab: '#81d4fa' });
 </script>
 
-<div class="flex flex-col gap-2 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+<div class="flex w-full flex-col gap-2">
 	<div class="flex flex-row items-center justify-between gap-2">
-		<div class="text-xs font-medium uppercase tracking-wide text-on-surface-variant">Overlay</div>
+		<div class="text-xs font-bold uppercase tracking-wide text-primary">Schedule overlay</div>
 		<Button variant={manageOpen ? 'tonal' : 'outlined'} square onclick={ontoggleManage}>
 			{pendingRequestCount > 0
 				? `Add friends (${pendingRequestCount})`
@@ -43,7 +43,7 @@
 	</div>
 
 	{#if friendsLoading || schedulesLoading}
-		<div class="text-xs text-on-surface-variant">Loading friends...</div>
+		<div class="w-fit rounded-full bg-surface-container-lowest px-3 py-1.5 text-xs text-on-surface-variant">Loading friends...</div>
 	{:else}
 		<div class="flex flex-wrap gap-1.5 items-center">
 			<div class="flex flex-row gap-1 items-center">
@@ -77,7 +77,7 @@
 			</div>
 
 			{#if friendList.length === 0}
-				<div class="text-xs text-on-surface-variant">No accepted friends yet.</div>
+				<div class="rounded-lg bg-surface-container-lowest px-3 py-2 text-xs text-on-surface-variant">No accepted friends yet.</div>
 			{:else}
 				{#each friendList as friend (friend.id)}
 					{@const friendColors = ownerColorMap[friend.id] ?? youColors}
