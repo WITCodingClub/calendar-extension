@@ -39,8 +39,10 @@
 
     async function tryPasskey() {
         isUsingPasskey = true;
+        let signedIn = false;
         try {
             if (await signInWithPasskey()) {
+                signedIn = true;
                 track('sign_in_passkey_succeeded');
                 await continueAfterSignIn();
                 return;
@@ -49,7 +51,8 @@
             snackbar('Could not sign in with a passkey', undefined, true);
         } catch (err) {
             console.error('Passkey sign-in error:', err);
-            track('sign_in_passkey_failed');
+            // After success, the error came from the next page, not from sign-in.
+            if (!signedIn) track('sign_in_passkey_failed');
             const message = err instanceof Error ? err.message : String(err);
             snackbar('Could not sign in with a passkey: ' + message, undefined, true);
         } finally {

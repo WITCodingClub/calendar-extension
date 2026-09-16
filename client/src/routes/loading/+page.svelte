@@ -31,6 +31,7 @@
             return;
         }
 
+        let signedIn = false;
         try {
             const baseUrl = await API.baseUrl;
             const response = await fetch(`${baseUrl}/user/onboard`, {
@@ -77,6 +78,7 @@
                 await persistSession(data.jwt);
             }
 
+            signedIn = true;
             track('sign_in_google_succeeded');
             await continueAfterSignIn({ offerPasskey: true });
         } catch (err) {
@@ -84,7 +86,8 @@
                 return;
             }
             console.error('Sign in error:', err);
-            track('sign_in_google_failed');
+            // After success, the error came from the next page, not from sign-in.
+            if (!signedIn) track('sign_in_google_failed');
             error = 'server_down';
             snackbar('Failed to sign in: ' + err, undefined, true);
         }
