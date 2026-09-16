@@ -3,6 +3,7 @@ import { browser } from '$app/environment';
 import { API } from './api';
 import { AuthError } from './auth';
 import { listPasskeys, passkeysSupported } from './passkeys';
+import { usageStatsAsked } from './telemetry';
 
 const OFFER_PASSKEY_SETUP_KEY = 'offer_passkey_setup';
 
@@ -66,6 +67,16 @@ export async function finishPasskeySetup(): Promise<void> {
 }
 
 export async function continueAfterSignIn(options?: { offerPasskey?: boolean }): Promise<void> {
+    // Ask about usage counts once, before any other step. The prompt page calls
+    // this function again, so keep the passkey offer in storage for that call.
+    if (!(await usageStatsAsked())) {
+        if (options?.offerPasskey) {
+            await chrome.storage.local.set({ [OFFER_PASSKEY_SETUP_KEY]: true });
+        }
+        await goto('/usage-stats');
+        return;
+    }
+
     if (browser && localStorage.getItem('isOtherCalendar') === 'true') {
         await goto('/calendar');
         return;

@@ -9,6 +9,7 @@
     import { processedData as storedProcessedData, userSettings as storedUserSettings, icsUrl as storedIcsUrl } from "$lib/store";
     import type { UserSettings } from "$lib/types";
     import { listPasskeys, passkeysSupported, registerPasskey, removePasskey, type PasskeySummary } from "$lib/passkeys";
+    import { setUsageStatsEnabled, track, usageStatsEnabled } from "$lib/telemetry";
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
     import { getPanelSession, type ConnectedAccount } from "$lib/panelSession";
     import { onMount } from "svelte";
@@ -48,6 +49,7 @@
     let canUsePasskeys = $state(false);
     let isAddingPasskey = $state(false);
     let newPasskeyName = $state("");
+    let usageStats = $state(false);
     const UNI_CAL_COLOR_STORAGE_KEY = "uniCalColor";
     const UNI_EVENTS_COLLAPSED_KEY = "uniEventsCollapsed";
     let uniCalColor = $state<string>(
@@ -89,6 +91,7 @@
             if (!added) {
                 return;
             }
+            track('passkey_created');
             newPasskeyName = "";
             await loadPasskeys();
             snackbar("Passkey added");
@@ -111,6 +114,8 @@
 
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
+
+        usageStats = await usageStatsEnabled();
 
         const cached = session.settings;
         if (cached) {
@@ -439,6 +444,18 @@
         }
     }
 
+    // Firefox shows its own consent prompt, which can refuse. Show what the
+    // browser settled on, not what the switch asked for.
+    const usageStatsGetterSetter = {
+        get value() { return usageStats; },
+        set value(value: boolean) {
+            usageStats = value;
+            setUsageStatsEnabled(value)
+                .then((enabled) => { usageStats = enabled; })
+                .catch(() => { usageStats = !value; });
+        }
+    }
+
     async function addGoogleAccount() {
         if (!addEmailInput.trim()) {
             snackbar('Please enter an email address', undefined, true);
@@ -454,6 +471,7 @@
 
             if (response.oauth_url) {
                 // Open OAuth popup
+                const accountCountBefore = connectedAccounts.length;
                 const popup = window.open(response.oauth_url, 'Google OAuth', 'width=500,height=600');
 
                 // Poll for popup close
@@ -464,6 +482,10 @@
                         try {
                             const accounts = await API.getConnectedAccounts();
                             connectedAccounts = accounts.oauth_credentials || [];
+                            // The student can close the popup without connecting.
+                            if (connectedAccounts.length > accountCountBefore) {
+                                track('google_calendar_connected');
+                            }
                             session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
                             snackbar('Account connected successfully!', undefined, true);
                         } catch (e) {
@@ -547,6 +569,7 @@
 
         try {
             await navigator.clipboard.writeText(icsUrlToCopy);
+            track('calendar_link_copied');
             snackbar('ICS URL copied to clipboard!', undefined, true);
         } catch (error) {
             console.error('Failed to copy ICS URL to clipboard:', error);
@@ -682,6 +705,17 @@
         <div class="flex shrink-0 items-center gap-2">
             <label>
                 <Switch bind:checked={notificationsDisabledGetterSetter.value} />
+            </label>
+        </div>
+    </div>
+    <div class="flex flex-row items-center justify-between gap-4 p-4">
+        <div class="flex min-w-0 flex-col gap-1">
+            <h3 class="m-0 text-sm font-bold text-on-surface">Share anonymous usage counts</h3>
+            <p class="m-0 text-sm text-on-surface-variant">Counts such as how many schedule imports succeed. No names, emails, or schedules.</p>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+            <label>
+                <Switch bind:checked={usageStatsGetterSetter.value} />
             </label>
         </div>
     </div>

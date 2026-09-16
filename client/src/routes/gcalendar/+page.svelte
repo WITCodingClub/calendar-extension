@@ -5,6 +5,7 @@
     import { API } from '$lib/api';
     import { AuthError, getUsableJwt } from '$lib/auth';
     import { hasUsableGoogleCalendar } from '$lib/afterSignIn';
+    import { track } from '$lib/telemetry';
 
     let emailToSignInWith: string | null = $state(null);
     let emailToSubmit = $state('');
@@ -43,18 +44,14 @@
         } catch {}
     }
 
-    async function setupListener() {
-        chrome.storage.onChanged.addListener((changes: any) => {
-            //@ts-expect-error
-            Object.entries(changes).forEach(async ([key, { newValue }]) => {
-                if (key === 'oauth_status' && newValue === 'success') {
-                    await chrome.storage.local.set({
-                        oauth_email: emailToSignInWith || emailToSubmit,
-                    });
-                    goto('/calendar');
-                }
-            });
+    async function onStorageChanged(changes: { [key: string]: chrome.storage.StorageChange }) {
+        if (changes.oauth_status?.newValue !== 'success') return;
+        await chrome.storage.local.set({
+            oauth_email: emailToSignInWith || emailToSubmit,
         });
+        // Both ways to connect set oauth_status, so count it here only.
+        track('google_calendar_connected');
+        goto('/calendar');
     }
 
     async function useDifferentEmail() {
@@ -64,6 +61,9 @@
     async function submitEmail() {
         const emailToUse = emailToSignInWith || emailToSubmit;
         try {
+            // storage.onChanged does not fire when a value stays the same, so
+            // clear the status from an earlier connection first.
+            await chrome.storage.local.remove('oauth_status');
             const data = await API.requestOAuthForEmail(emailToUse);
             if (data.error) {
                 snackbar('Failed to submit email: ' + data.error, undefined, true);
@@ -110,7 +110,14 @@
         }
     }
 
-    onMount(async () => {
+    onMount(() => {
+        // Listen first, so a quick connection is not missed.
+        chrome.storage.onChanged.addListener(onStorageChanged);
+        setup();
+        return () => chrome.storage.onChanged.removeListener(onStorageChanged);
+    });
+
+    async function setup() {
         checkBetaAccess();
         if (!(await getUsableJwt())) {
             goto('/');
@@ -118,8 +125,7 @@
         }
         checkGcalStatus();
         tryForEmail();
-        setupListener();
-    });
+    }
 </script>
 
 <div class="flex flex-col items-center justify-center h-screen">

@@ -15,6 +15,7 @@
     import { browser } from '$app/environment';
     import { snackbar } from 'm3-svelte';
     import { createWitTab } from '$lib/witTab';
+    import { track } from '$lib/telemetry';
     import { getPanelSession } from '$lib/panelSession';
 
     type RegistrationsLookupResult =
@@ -425,6 +426,7 @@
 
         try {
             await navigator.clipboard.writeText(icsUrlToCopy);
+            track('calendar_link_copied');
             snackbar('ICS URL copied to clipboard!', undefined, true);
         } catch (error) {
             console.error('Failed to copy ICS URL to clipboard:', error);
@@ -752,9 +754,11 @@
                 else next.push({ termId: tid, responseData: response });
                 return next;
             });
+            track('schedule_import_succeeded');
             snackbar('Calendar fetched successfully!', undefined, true);
         } catch (e) {
             console.error('Failed to scrape and process:', e);
+            track('schedule_import_failed');
             snackbar('Failed to fetch calendar: ' + e, undefined, true);
         } finally {
             loading = false;

@@ -5,6 +5,7 @@
     import { browser } from '$app/environment';
     import { AuthError } from '$lib/auth';
     import { getGoogleCalendarState } from '$lib/afterSignIn';
+    import { track } from '$lib/telemetry';
 
     async function checkGcalStatus() {
         try {
@@ -44,10 +45,12 @@
     });
 
     async function selectGoogleCalendar() {
+        track('calendar_choice_google');
         goto('/gcalendar');
     }
 
     async function selectAllOtherCalendars() {
+        track('calendar_choice_other');
         if (browser) {
             localStorage.setItem('isOtherCalendar', 'true');
         }

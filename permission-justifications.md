@@ -49,3 +49,9 @@ Host permissions are required for three specific domains:
 3. heron-selected-literally.ngrok-free.app - Development backend server used for testing new features before production deployment.
 
 These host permissions enable the core functionality of extracting WIT schedules and communicating with the backend to generate calendar integrations.
+
+## Data use: anonymous usage counts
+
+The extension sends anonymous usage counts to the currently selected WIT-Calendar backend (for example, `calendar.witcc.dev`). Each request holds one event name from a fixed list, for example `schedule_import_succeeded`, plus the extension version and the browser name. The request holds no token, no email address, and no schedule data. The backend keeps aggregate counters by event name, extension version, and browser.
+
+The counts are off until the student turns them on. After sign-in, the extension asks the student one time. The student can change the choice later in Settings ("Share anonymous usage counts"). In Firefox, the extension also needs the optional "technical and interaction data" permission.

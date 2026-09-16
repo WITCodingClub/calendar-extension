@@ -8,6 +8,7 @@
     import { onMount } from 'svelte';
     import { EnvironmentManager } from '$lib/environment';
     import { getWitGoogleAuthCode } from '$lib/witGoogleAuth';
+    import { track } from '$lib/telemetry';
 
     let error = $state<string | null>(null);
 
@@ -24,11 +25,13 @@
             auth = await getWitGoogleAuthCode();
         } catch (err) {
             console.error('Google auth error:', err);
+            track('sign_in_google_failed');
             error = 'google_signin_failed';
             snackbar('Could not sign in with Google: ' + err, undefined, true);
             return;
         }
 
+        let signedIn = false;
         try {
             const baseUrl = await API.baseUrl;
             const response = await fetch(`${baseUrl}/user/onboard`, {
@@ -51,6 +54,7 @@
             if (response.status === 403) {
                 const body = await response.json().catch(() => ({})) as { code?: string };
                 if (body.code === 'WIT_ACCOUNT_REQUIRED') {
+                    track('sign_in_wrong_account');
                     error = 'wit_account_required';
                     return;
                 }
@@ -74,12 +78,16 @@
                 await persistSession(data.jwt);
             }
 
+            signedIn = true;
+            track('sign_in_google_succeeded');
             await continueAfterSignIn({ offerPasskey: true });
         } catch (err) {
             if (err instanceof AuthError) {
                 return;
             }
             console.error('Sign in error:', err);
+            // After success, the error came from the next page, not from sign-in.
+            if (!signedIn) track('sign_in_google_failed');
             error = 'server_down';
             snackbar('Failed to sign in: ' + err, undefined, true);
         }
