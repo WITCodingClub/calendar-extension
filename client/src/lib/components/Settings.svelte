@@ -3,13 +3,14 @@
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { API } from "$lib/api";
-    import { clearLocalData } from "$lib/auth";
+    import { AuthError, clearLocalData } from "$lib/auth";
     import { EnvironmentManager, ENVIRONMENTS, type Environment } from "$lib/environment";
     import { featureFlags } from "$lib/featureFlags";
     import { processedData as storedProcessedData, userSettings as storedUserSettings, icsUrl as storedIcsUrl } from "$lib/store";
     import type { UserSettings } from "$lib/types";
     import { listPasskeys, passkeysSupported, registerPasskey, removePasskey, type PasskeySummary } from "$lib/passkeys";
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
+    import { getPanelSession, type ConnectedAccount } from "$lib/panelSession";
     import { onMount } from "svelte";
 
     // Google Calendar color ID to hex mapping
@@ -32,11 +33,14 @@
     );
 
     let userSettings = $state<UserSettings | undefined>(undefined);
+    // The calendar page mounts this component again after an environment change,
+    // so this is always the session of the current environment.
+    const session = getPanelSession();
     let email = $state<string | undefined>(undefined);
     let currentEnvironment = $state<Environment>('prod');
     let authenticatedEnvironments = $state<Environment[]>([]);
     let notificationsDisabled = $state(false);
-    let connectedAccounts = $state<Array<{id: string, email: string, provider: string, needs_reauth: boolean, token_revoked: boolean}>>([]);
+    let connectedAccounts = $state<ConnectedAccount[]>([]);
     let addEmailInput = $state("");
     let showEnvSwitcher = $state<boolean>(false);
     let isRefreshingFlags = $state<boolean>(false);
@@ -75,6 +79,7 @@
 
     async function loadPasskeys() {
         passkeys = await listPasskeys();
+        session.updateSettings({ passkeys: $state.snapshot(passkeys) });
     }
 
     async function addPasskey() {
@@ -107,76 +112,131 @@
     onMount(async () => {
         await EnvironmentManager.migrateOldJwtToken();
 
-        // Load feature flags independently so flag-gated UI shows even if other API calls fail
-        await featureFlags.loadFlags();
-        showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
-
-        if (await passkeysSupported()) {
-            try {
-                await loadPasskeys();
-                canUsePasskeys = true;
-            } catch {
-                canUsePasskeys = false;
-            }
-        }
-
-        try {
-            // Load settings in parallel
-            const [userSettingsData, emailData] = await Promise.all([
-                API.userSettings(),
-                API.getUserEmail()
-            ]);
-
-            userSettings = userSettingsData;
-            storedUserSettings.set(userSettings);
-            email = emailData.email;
-
-            // Fetch notification DND status
-            try {
-                const status = await API.getNotificationStatus();
-                notificationsDisabled = status.notifications_disabled;
-            } catch (e) {
-                // DND status might not be available, that's okay
-            }
-
-            // Fetch connected accounts
-            try {
-                const accounts = await API.getConnectedAccounts();
-                connectedAccounts = accounts.oauth_credentials || [];
-            } catch (e) {
-                console.error('Failed to fetch connected accounts:', e);
-            }
-
-            // Fetch uni cal color preference
-            try {
-                const calPrefs = await API.getCalendarPreferences();
-                // The uni_cal preference covers the whole university calendar. Fall
-                // back to a category color for users saved before issue #498, whose
-                // color still sits on the per-category preferences.
-                const firstCategory = Object.values(calPrefs.uni_cal_categories || {})[0];
-                const storedColorId = calPrefs.uni_cal_global?.color_id ?? firstCategory?.color_id;
-                if (storedColorId) {
-                    const colorId = String(storedColorId);
-                    const resolvedColor = COLOR_ID_TO_HEX[colorId];
-                    if (resolvedColor) {
-                        uniCalColor = resolvedColor;
-                        if (browser) {
-                            localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, resolvedColor);
-                        }
-                    }
-                }
-            } catch (e) {
-                // Calendar preferences might not exist yet, that's okay
-            } finally {
-                hasLoadedUniCalColor = true;
-            }
-        } catch (error) {
-            console.error('Failed to load settings:', error);
+        const cached = session.settings;
+        if (cached) {
+            // This page already loaded since the panel opened. Show that data
+            // without new requests. The panel loads it again when it opens next.
+            email = cached.email;
+            notificationsDisabled = cached.notificationsDisabled;
+            connectedAccounts = cached.connectedAccounts;
+            canUsePasskeys = cached.canUsePasskeys;
+            passkeys = cached.passkeys;
+            uniCalColor = cached.uniCalColor;
+            hasLoadedUniCalColor = true;
+            // Feature flags keep their own in-memory cache, so this sends no request.
+            await featureFlags.loadFlags();
+            showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
+        } else {
+            await loadSettingsData();
         }
 
         currentEnvironment = await EnvironmentManager.getCurrentEnvironment();
         authenticatedEnvironments = await EnvironmentManager.getAuthenticatedEnvironments();
     });
+
+    async function loadSettingsData() {
+        // Only a load where the main requests succeed goes into the cache.
+        // After a failure, the next visit to this page tries again.
+        let complete = true;
+
+        // None of these requests depend on each other, so send them together
+        // instead of one after another. Each one handles its own failure.
+        await Promise.all([
+            // Feature flags load on their own so flag-gated UI shows even if other API calls fail
+            featureFlags.loadFlags().then(() => {
+                showEnvSwitcher = featureFlags.isEnabledSync('envSwitcher');
+            }),
+
+            (async () => {
+                if (await passkeysSupported()) {
+                    try {
+                        await loadPasskeys();
+                        canUsePasskeys = true;
+                    } catch {
+                        canUsePasskeys = false;
+                        complete = false;
+                    }
+                }
+            })(),
+
+            (async () => {
+                try {
+                    const [userSettingsData, emailData] = await Promise.all([
+                        API.userSettings(),
+                        API.getUserEmail()
+                    ]);
+
+                    userSettings = userSettingsData;
+                    // A reply for an ended session must not write into the new one.
+                    if (session.active) {
+                        storedUserSettings.set(userSettings);
+                    }
+                    email = emailData.email;
+                } catch (error) {
+                    console.error('Failed to load settings:', error);
+                    complete = false;
+                }
+            })(),
+
+            // Fetch notification DND status
+            (async () => {
+                try {
+                    const status = await API.getNotificationStatus();
+                    notificationsDisabled = status.notifications_disabled;
+                } catch (e) {
+                    // DND status might not be available, that's okay
+                }
+            })(),
+
+            // Fetch connected accounts
+            (async () => {
+                try {
+                    const accounts = await API.getConnectedAccounts();
+                    connectedAccounts = accounts.oauth_credentials || [];
+                } catch (e) {
+                    console.error('Failed to fetch connected accounts:', e);
+                    complete = false;
+                }
+            })(),
+
+            // Fetch uni cal color preference
+            (async () => {
+                try {
+                    const calPrefs = await API.getCalendarPreferences();
+                    // The uni_cal preference covers the whole university calendar. Fall
+                    // back to a category color for users saved before issue #498, whose
+                    // color still sits on the per-category preferences.
+                    const firstCategory = Object.values(calPrefs.uni_cal_categories || {})[0];
+                    const storedColorId = calPrefs.uni_cal_global?.color_id ?? firstCategory?.color_id;
+                    if (storedColorId) {
+                        const colorId = String(storedColorId);
+                        const resolvedColor = COLOR_ID_TO_HEX[colorId];
+                        if (resolvedColor) {
+                            uniCalColor = resolvedColor;
+                            if (browser) {
+                                localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, resolvedColor);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Calendar preferences might not exist yet, that's okay
+                } finally {
+                    hasLoadedUniCalColor = true;
+                }
+            })()
+        ]);
+
+        if (complete) {
+            session.settings = {
+                email,
+                notificationsDisabled,
+                connectedAccounts: $state.snapshot(connectedAccounts),
+                canUsePasskeys,
+                passkeys: $state.snapshot(passkeys),
+                uniCalColor,
+            };
+        }
+    }
 
     let defaultColorLecture = $derived(userSettings?.default_color_lecture ?? "");
     let defaultColorLab = $derived(userSettings?.default_color_lab ?? "");
@@ -187,13 +247,24 @@
     let availableCategories = $derived(userSettings?.available_university_event_categories ?? []);
     let showHistoricTermsValue = $derived(userSettings?.show_historic_terms ?? false);
 
+    // Saves the settings in the background. The user already sees the new
+    // value, so a failure only needs a message, not a reload.
+    function saveUserSettings(settings: UserSettings) {
+        API.userSettings(settings).catch((error) => {
+            // The auth code already told the user that the session ended.
+            if (error instanceof AuthError) return;
+            console.error('Failed to save the user settings:', error);
+            snackbar('Failed to save the setting', undefined, true);
+        });
+    }
+
     const defaultColorLectureGetterSetter = {
         get value() { return defaultColorLecture; },
 		set value(value: string) {
 			if (!userSettings) return;
 			userSettings = { ...userSettings, default_color_lecture: value };
 			storedUserSettings.set(userSettings);
-			API.userSettings(userSettings);
+			saveUserSettings(userSettings);
 			clearStoredColors();
 		}
     }
@@ -204,7 +275,7 @@
 			if (!userSettings) return;
 			userSettings = { ...userSettings, military_time: value === "true" };
 			storedUserSettings.set(userSettings);
-			API.userSettings(userSettings);
+			saveUserSettings(userSettings);
 		}
     }
 
@@ -214,7 +285,7 @@
 			if (!userSettings) return;
 			userSettings = { ...userSettings, default_color_lab: value };
 			storedUserSettings.set(userSettings);
-			API.userSettings(userSettings);
+			saveUserSettings(userSettings);
 			clearStoredColors();
 		}
     }
@@ -225,7 +296,7 @@
 			if (!userSettings) return;
 			userSettings = { ...userSettings, advanced_editing: value };
 			storedUserSettings.set(userSettings);
-			API.userSettings(userSettings);
+			saveUserSettings(userSettings);
 		}
     }
 
@@ -235,7 +306,7 @@
 			if (!userSettings) return;
 			userSettings = { ...userSettings, sync_university_events: value };
 			storedUserSettings.set(userSettings);
-			API.userSettings(userSettings);
+			saveUserSettings(userSettings);
 		}
     }
 
@@ -245,7 +316,7 @@
             if (!userSettings) return;
             userSettings = { ...userSettings, show_historic_terms: value };
             storedUserSettings.set(userSettings);
-            API.userSettings(userSettings);
+            saveUserSettings(userSettings);
         }
     }
 
@@ -260,6 +331,7 @@
             if (browser) {
                 localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, newColor);
             }
+            session.updateSettings({ uniCalColor: newColor });
             snackbar('University events color updated', undefined, true);
         } catch (error) {
             console.error('Failed to update university events color:', error);
@@ -287,7 +359,7 @@
 
         userSettings = { ...userSettings, university_event_categories: newCategories };
         storedUserSettings.set(userSettings);
-        API.userSettings(userSettings);
+        saveUserSettings(userSettings);
     }
 
     function isCategorySelected(categoryId: string): boolean {
@@ -316,12 +388,15 @@
         if (newEnv === currentEnvironment) return;
 
         currentEnvironment = newEnv;
-        const hasJwt = await EnvironmentManager.switchEnvironment(newEnv);
 
+        // Set these before the switch. The (panel) layout mounts the calendar
+        // page again as soon as the environment changes, and the page reads them.
         if (browser) {
             sessionStorage.setItem('returnToSettings', 'true');
             sessionStorage.setItem('clearCalendarData', 'true');
         }
+
+        const hasJwt = await EnvironmentManager.switchEnvironment(newEnv);
 
         const envDisplayName = ENVIRONMENTS[newEnv].displayName;
 
@@ -349,6 +424,7 @@
                 await API.enableNotifications();
                 snackbar('Notifications re-enabled', undefined, true);
             }
+            session.updateSettings({ notificationsDisabled: disabled });
         } catch (e) {
             console.error('Failed to update notification settings:', e);
             snackbar('Failed to update notification settings', undefined, true);
@@ -388,6 +464,7 @@
                         try {
                             const accounts = await API.getConnectedAccounts();
                             connectedAccounts = accounts.oauth_credentials || [];
+                            session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
                             snackbar('Account connected successfully!', undefined, true);
                         } catch (e) {
                             console.error('Failed to refresh accounts:', e);
@@ -410,6 +487,7 @@
         try {
             await API.disconnectAccount(credentialId);
             connectedAccounts = connectedAccounts.filter(a => a.id !== credentialId);
+            session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
             snackbar('Account disconnected', undefined, true);
         } catch (e) {
             console.error('Failed to disconnect account:', e);
@@ -434,6 +512,7 @@
                         try {
                             const accounts = await API.getConnectedAccounts();
                             connectedAccounts = accounts.oauth_credentials || [];
+                            session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
                             snackbar('Account re-authenticated successfully!', undefined, true);
                         } catch (e) {
                             console.error('Failed to refresh accounts:', e);
