@@ -1,9 +1,15 @@
 <script lang="ts">
 	import '../main.css';
 	import '../app.css';
+	import { afterNavigate } from '$app/navigation';
+	import { NewSnackbar } from 'm3-svelte';
+	import { guardCurrentRoute } from '$lib/auth';
 
 	let { children } = $props();
-	import { NewSnackbar } from 'm3-svelte';
+
+	afterNavigate(() => {
+		void guardCurrentRoute();
+	});
 
 </script>
 

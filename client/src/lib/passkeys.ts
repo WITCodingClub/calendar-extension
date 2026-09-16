@@ -1,4 +1,5 @@
 import { API } from './api';
+import { persistSession } from './auth';
 import { openCenteredAuthWindow } from './authWindow';
 import { EnvironmentManager } from './environment';
 
@@ -129,7 +130,7 @@ export async function signInWithPasskey(): Promise<boolean> {
         throw new Error('Passkey sign-in did not return a session');
     }
 
-    await EnvironmentManager.setJwtToken(data.jwt);
+    await persistSession(data.jwt);
     return true;
 }
 

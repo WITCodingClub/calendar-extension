@@ -1,27 +1,42 @@
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { API } from './api';
+import { AuthError } from './auth';
 import { listPasskeys, passkeysSupported } from './passkeys';
 
 const OFFER_PASSKEY_SETUP_KEY = 'offer_passkey_setup';
 
-async function hasConnectedCalendar(): Promise<boolean> {
+export type GoogleCalendarState = 'connected' | 'needs_reauth' | 'missing';
+
+export async function getGoogleCalendarState(): Promise<GoogleCalendarState> {
     try {
         const accounts = await API.getConnectedAccounts();
-        const connected = accounts.oauth_credentials?.find(
+        const credentials = accounts.oauth_credentials ?? [];
+        const connected = credentials.find(
             (account) =>
                 account.email &&
                 !account.token_revoked &&
+                !account.needs_reauth &&
                 account.has_calendar !== false
         );
         if (connected) {
             await chrome.storage.local.set({ oauth_email: connected.email });
-            return true;
+            return 'connected';
         }
-    } catch {
+        if (credentials.some((account) => account.email && (account.token_revoked || account.needs_reauth))) {
+            return 'needs_reauth';
+        }
+    } catch (err) {
+        if (err instanceof AuthError) {
+            throw err;
+        }
     }
 
-    return false;
+    return 'missing';
+}
+
+export async function hasUsableGoogleCalendar(): Promise<boolean> {
+    return (await getGoogleCalendarState()) === 'connected';
 }
 
 async function shouldPromptPasskeySetup(): Promise<boolean> {
@@ -32,7 +47,10 @@ async function shouldPromptPasskeySetup(): Promise<boolean> {
     try {
         const passkeys = await listPasskeys();
         return passkeys.length === 0;
-    } catch {
+    } catch (err) {
+        if (err instanceof AuthError) {
+            throw err;
+        }
         return false;
     }
 }
@@ -53,9 +71,15 @@ export async function continueAfterSignIn(options?: { offerPasskey?: boolean }):
         return;
     }
 
-    if (await hasConnectedCalendar()) {
+    const googleCalendar = await getGoogleCalendarState();
+    if (googleCalendar === 'connected') {
         await chrome.storage.local.remove(OFFER_PASSKEY_SETUP_KEY);
         await goto('/calendar');
+        return;
+    }
+
+    if (googleCalendar === 'needs_reauth') {
+        await goto('/gcalendar');
         return;
     }
 

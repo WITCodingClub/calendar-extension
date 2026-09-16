@@ -1,4 +1,5 @@
 import { EnvironmentManager } from "./environment";
+import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
 import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, isProcessed, OkResponse, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
 import type { PasskeySummary } from "./passkeys";
 
@@ -17,10 +18,25 @@ export class API {
         return token;
     }
 
+    private static async authedFetch(url: string, init?: RequestInit): Promise<Response> {
+        const token = await this.getJwtToken();
+        if (!isUsableJwt(token)) {
+            await handleUnauthorized();
+            throw new AuthError();
+        }
+
+        const response = await fetch(url, init);
+        if (response.status === 401) {
+            await handleUnauthorized();
+            throw new AuthError();
+        }
+        return response;
+    }
+
     public static async checkFeatureFlag(flagName:string) {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/user/flag_enabled?flag_name=${flagName}`, {
+        const response = await this.authedFetch(`${baseUrl}/user/flag_enabled?flag_name=${flagName}`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -38,7 +54,7 @@ export class API {
     public static async getAllFeatureFlags(): Promise<FeatureFlagsResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/user/feature_flags`, {
+        const response = await this.authedFetch(`${baseUrl}/user/feature_flags`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -63,7 +79,7 @@ export class API {
 
     public static async getUserEmail() {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/user/email`, {
+        const response = await this.authedFetch(`${baseUrl}/user/email`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${await this.getJwtToken()}`
@@ -81,13 +97,13 @@ export class API {
         };
 
         if (settings === undefined) {
-            const response = await fetch(url, {
+            const response = await this.authedFetch(url, {
                 method: 'GET',
                 headers,
             });
             return response.json();
         } else {
-            const response = await fetch(url, {
+            const response = await this.authedFetch(url, {
                 method: 'PUT',
                 body: JSON.stringify(settings),
                 headers: {
@@ -102,7 +118,7 @@ export class API {
     public static async userIsProcessed(termUid: string): Promise<isProcessed> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/user/is_processed`, {
+        const response = await this.authedFetch(`${baseUrl}/user/is_processed`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -116,7 +132,7 @@ export class API {
     public static async getProcessedEvents(termUid: string): Promise<ProcessedEvents> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/user/processed_events`, {
+        const response = await this.authedFetch(`${baseUrl}/user/processed_events`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -130,7 +146,7 @@ export class API {
     public static async getFriends(): Promise<FriendListResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/friends`, {
+        const response = await this.authedFetch(`${baseUrl}/friends`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -154,7 +170,7 @@ export class API {
     public static async getFriendRequests(): Promise<FriendRequestsResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/friends/requests`, {
+        const response = await this.authedFetch(`${baseUrl}/friends/requests`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -168,7 +184,7 @@ export class API {
     ): Promise<FriendRequestCreateResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/friends/requests`, {
+        const response = await this.authedFetch(`${baseUrl}/friends/requests`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -194,7 +210,7 @@ export class API {
     public static async acceptFriendRequest(requestId: string): Promise<FriendRequestAcceptResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/friends/requests/${requestId}/accept`, {
+        const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}/accept`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -206,7 +222,7 @@ export class API {
     public static async declineFriendRequest(requestId: string): Promise<OkResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/friends/requests/${requestId}/decline`, {
+        const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}/decline`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -218,7 +234,7 @@ export class API {
     public static async cancelFriendRequest(requestId: string): Promise<OkResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/friends/requests/${requestId}`, {
+        const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -230,7 +246,7 @@ export class API {
     public static async removeFriend(friendId: string): Promise<OkResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/friends/${friendId}`, {
+        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -242,7 +258,7 @@ export class API {
     public static async friendIsProcessed(friendId: string, termUid: string): Promise<isProcessed> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/friends/${friendId}/is_processed`, {
+        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/is_processed`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -256,7 +272,7 @@ export class API {
     public static async getFriendProcessedEvents(friendId: string, termUid: string): Promise<FriendProcessedEventsResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/friends/${friendId}/processed_events`, {
+        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/processed_events`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -270,7 +286,7 @@ export class API {
     public static async getIcsUrl(): Promise<{ ics_url: string }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/user/ics_url`, {
+        const response = await this.authedFetch(`${baseUrl}/user/ics_url`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -282,7 +298,7 @@ export class API {
     public static async getUniversityEventCategories(): Promise<{ categories: UniversityEventCategoryWithCount[] }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/university_calendar_events/categories`, {
+        const response = await this.authedFetch(`${baseUrl}/university_calendar_events/categories`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -304,7 +320,7 @@ export class API {
         if (params?.per_page) searchParams.append('per_page', params.per_page.toString());
 
         const url = `${baseUrl}/university_calendar_events${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
-        const response = await fetch(url, {
+        const response = await this.authedFetch(url, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -322,7 +338,7 @@ export class API {
         if (params?.end_date) searchParams.append('end_date', params.end_date);
 
         const url = `${baseUrl}/university_calendar_events/holidays${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
-        const response = await fetch(url, {
+        const response = await this.authedFetch(url, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -335,7 +351,7 @@ export class API {
     public static async processCourses(courses: any[]): Promise<{ user_pub: string; ics_url: string }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/process_courses`, {
+        const response = await this.authedFetch(`${baseUrl}/process_courses`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -358,7 +374,7 @@ export class API {
     }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/courses/reprocess`, {
+        const response = await this.authedFetch(`${baseUrl}/courses/reprocess`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -377,7 +393,7 @@ export class API {
     public static async getMeetingTimePreference(meetingTimeId: number | string): Promise<any> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
+        const response = await this.authedFetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -392,7 +408,7 @@ export class API {
     public static async updateMeetingTimePreference(meetingTimeId: number | string, preferences: any): Promise<any> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
+        const response = await this.authedFetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
             method: 'PUT',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -410,7 +426,7 @@ export class API {
     public static async deleteMeetingTimePreference(meetingTimeId: number | string): Promise<any> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
+        const response = await this.authedFetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -423,7 +439,7 @@ export class API {
     public static async getNotificationStatus(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string | null }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/user/notifications_status`, {
+        const response = await this.authedFetch(`${baseUrl}/user/notifications_status`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -436,7 +452,7 @@ export class API {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const body = duration ? JSON.stringify({ duration }) : undefined;
-        const response = await fetch(`${baseUrl}/user/notifications/disable`, {
+        const response = await this.authedFetch(`${baseUrl}/user/notifications/disable`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -450,7 +466,7 @@ export class API {
     public static async enableNotifications(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: null }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/user/notifications/enable`, {
+        const response = await this.authedFetch(`${baseUrl}/user/notifications/enable`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -464,7 +480,7 @@ export class API {
     public static async getGlobalCalendarPreference(): Promise<any> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/calendar_preferences/global`, {
+        const response = await this.authedFetch(`${baseUrl}/calendar_preferences/global`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -481,7 +497,7 @@ export class API {
     }): Promise<any> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/calendar_preferences/global`, {
+        const response = await this.authedFetch(`${baseUrl}/calendar_preferences/global`, {
             method: 'PUT',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -496,7 +512,7 @@ export class API {
     public static async getConnectedAccounts(): Promise<{ oauth_credentials: Array<{id: string, email: string, provider: string, needs_reauth: boolean, token_revoked: boolean, has_calendar?: boolean}> }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/user/oauth_credentials`, {
+        const response = await this.authedFetch(`${baseUrl}/user/oauth_credentials`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -508,7 +524,7 @@ export class API {
     public static async requestOAuthForEmail(email: string): Promise<{ oauth_url?: string, calendar_id?: string, error?: string }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/user/gcal`, {
+        const response = await this.authedFetch(`${baseUrl}/user/gcal`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -522,7 +538,7 @@ export class API {
     public static async disconnectAccount(credentialId: string): Promise<void> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        await fetch(`${baseUrl}/user/oauth_credentials/${credentialId}`, {
+        await this.authedFetch(`${baseUrl}/user/oauth_credentials/${credentialId}`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -539,7 +555,7 @@ export class API {
     }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/calendar_preferences`, {
+        const response = await this.authedFetch(`${baseUrl}/calendar_preferences`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -555,7 +571,7 @@ export class API {
     }): Promise<any> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/calendar_preferences/uni_cal:${category}`, {
+        const response = await this.authedFetch(`${baseUrl}/calendar_preferences/uni_cal:${category}`, {
             method: 'PUT',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -577,7 +593,7 @@ export class API {
     public static async setAllUniCalCategoriesColor(colorId: string): Promise<void> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await fetch(`${baseUrl}/calendar_preferences/uni_cal`, {
+        const response = await this.authedFetch(`${baseUrl}/calendar_preferences/uni_cal`, {
             method: 'PUT',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -595,7 +611,7 @@ export class API {
     // grant it can spend to register a passkey, so the JWT never goes in a URL.
     public static async createPasskeyHandoff(): Promise<{ code: string }> {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/user/passkeys/handoff`, {
+        const response = await this.authedFetch(`${baseUrl}/user/passkeys/handoff`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -626,7 +642,7 @@ export class API {
 
     public static async listPasskeys(): Promise<{ passkeys: PasskeySummary[] }> {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/user/passkeys`, {
+        const response = await this.authedFetch(`${baseUrl}/user/passkeys`, {
             headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
         });
         if (!response.ok) {
@@ -637,7 +653,7 @@ export class API {
 
     public static async deletePasskey(passkeyId: string): Promise<void> {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/user/passkeys/${passkeyId}`, {
+        const response = await this.authedFetch(`${baseUrl}/user/passkeys/${passkeyId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
         });
