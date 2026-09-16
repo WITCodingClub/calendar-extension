@@ -5,6 +5,7 @@
     import type { Course, MeetingTime, ResponseData, TermResponse, DayItem, GetPreferencesResponse, TemplateVariables, ResolvedData, NotificationSetting, ReminderSettings, NotificationMethod } from '$lib/types';
     import { Button, LoadingIndicator, SelectOutlined, VariableTabs, TextFieldOutlined, ConnectedButtons, TextFieldOutlinedMultiline, Chip } from 'm3-svelte';
     import { onMount, onDestroy } from 'svelte';
+    import { on } from 'svelte/events';
     import { fade, scale } from 'svelte/transition';
     import { API } from '$lib/api';
     import Settings from '$lib/components/Settings.svelte';
@@ -354,6 +355,41 @@
         }
         return { byDay, maxStacksByDay };
     });
+
+    let earliestClassOffsetRem = $derived.by(() => {
+        let min = Infinity;
+        for (const { key } of dayOrder.slice(0, 5)) {
+            for (const item of stackedMeetings.byDay?.[key] ?? []) {
+                if (item.startOffset < min) min = item.startOffset;
+            }
+        }
+        return Number.isFinite(min) ? min : 0;
+    });
+
+    function scrollToFirstClass(startOffsetRem: number) {
+        return (el: HTMLElement) => {
+            const frame = requestAnimationFrame(() => {
+                const rem = parseFloat(getComputedStyle(el).fontSize) || 16;
+                if (el.clientWidth < 20 * rem) return;
+                const bufferRem = 2;
+                if (startOffsetRem <= bufferRem) {
+                    el.scrollLeft = 0;
+                    return;
+                }
+                el.scrollLeft = (startOffsetRem - bufferRem) * rem;
+            });
+            return () => cancelAnimationFrame(frame);
+        };
+    }
+
+    function horizontalWheel(el: HTMLElement) {
+        return on(el, 'wheel', (e) => {
+            if (el.scrollWidth <= el.clientWidth) return;
+            if (e.deltaY === 0 || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+            e.preventDefault();
+            el.scrollLeft += e.deltaY;
+        }, { passive: false });
+    }
 
     function getLatestEndHour(courses: Course[]): number {
         let latestHour = 8;
@@ -1268,11 +1304,11 @@
     {#if tab === "a" && processedData}
         {@const latestHour = getLatestEndHour(processedData)}
         {@const numHours = latestHour - 8 + 1}
-            <div class="flex w-full min-w-0 min-h-48 flex-1 flex-col overflow-hidden rounded-2xl bg-surface-container-low shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
-                <div class="flex-1 overflow-x-auto overflow-y-hidden">
+            <div class="@container flex w-full min-w-0 min-h-48 flex-1 flex-col overflow-hidden rounded-2xl bg-surface-container-low shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]">
+                <div class="flex-1 overflow-x-auto overflow-y-hidden" {@attach scrollToFirstClass(earliestClassOffsetRem)} {@attach horizontalWheel}>
                     <div class="inline-flex flex-col min-w-full h-full">
-                        <div class="flex flex-row border-b border-outline-variant bg-surface-container-high sticky top-0 z-10">
-                            <div class="w-24 border-r border-outline-variant"></div>
+                        <div class="flex flex-row border-b border-outline-variant bg-surface-container-high sticky top-0 z-30">
+                            <div class="w-24 shrink-0 sticky left-0 z-20 border-r border-outline-variant bg-surface-container-high @max-[20rem]:static"></div>
                             {#each Array(numHours) as _, i}
                                 {@const hour = i + 8}
                                 <div class="w-32 border-r border-outline-variant flex items-center justify-center py-2">
@@ -1284,7 +1320,7 @@
                         {#each dayOrder.slice(0, 5) as day}
                             {@const dayEvents = stackedMeetings.byDay?.[day.key] ?? []}
                             <div class="flex flex-row flex-1 min-h-[120px] border-b border-outline-variant relative">
-                                <div class="w-24 border-r border-outline-variant flex items-center justify-center bg-secondary-container text-on-secondary-container left-0 z-5">
+                                <div class="w-24 shrink-0 sticky left-0 z-20 flex items-center justify-center border-r border-outline-variant bg-secondary-container text-on-secondary-container @max-[20rem]:static">
                                     <span class="font-semibold text-sm">{day.label}</span>
                                 </div>
 
