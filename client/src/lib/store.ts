@@ -65,7 +65,10 @@ enrolledTerms.subscribe((value) => {
 
 userSettings.subscribe((value) => {
 	if (browser) {
-		if (value === undefined) return;
+		if (value === undefined) {
+			localStorage.removeItem('userSettings');
+			return;
+		}
 		localStorage.setItem('userSettings', JSON.stringify(value));
 	}
 });

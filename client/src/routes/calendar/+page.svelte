@@ -8,6 +8,7 @@
     import { on } from 'svelte/events';
     import { fade, scale } from 'svelte/transition';
     import { API } from '$lib/api';
+    import { AuthError, getUsableJwt } from '$lib/auth';
     import Settings from '$lib/components/Settings.svelte';
     import Help from '$lib/components/Help.svelte';
     import { userSettings as storedUserSettings } from '$lib/store';
@@ -1083,7 +1084,7 @@
             if ('environment_data' in changes) {
                 (async () => {
                     checkBetaAccess();
-                    jwt_token = await API.getJwtToken();
+                    jwt_token = await getUsableJwt();
                     if (!jwt_token) {
                         // No JWT token for current environment, redirect to welcome page
                         // eslint-disable-next-line svelte/no-navigation-without-resolve
@@ -1096,11 +1097,18 @@
                     clearEnvironmentData();
 
                     // Now fetch fresh data for the current environment
-                    terms = await API.getTerms();
-                    const envSettings = await API.userSettings();
-                    storedUserSettings.set(envSettings);
-                    if (envSettings.enrolled_terms?.length && $enrolledTerms.length === 0) {
-                        enrolledTerms.set(envSettings.enrolled_terms);
+                    try {
+                        terms = await API.getTerms();
+                        const envSettings = await API.userSettings();
+                        storedUserSettings.set(envSettings);
+                        if (envSettings.enrolled_terms?.length && $enrolledTerms.length === 0) {
+                            enrolledTerms.set(envSettings.enrolled_terms);
+                        }
+                    } catch (err) {
+                        if (err instanceof AuthError) {
+                            return;
+                        }
+                        throw err;
                     }
                 })();
             }
@@ -1109,7 +1117,7 @@
 
     onMount(async () => {
         checkBetaAccess();
-        jwt_token = await API.getJwtToken();
+        jwt_token = await getUsableJwt();
         if (!jwt_token) {
             // No JWT token for current environment, redirect to welcome page
             // eslint-disable-next-line svelte/no-navigation-without-resolve
@@ -1123,11 +1131,18 @@
         }
 
         // Now fetch fresh data for the current environment
-        terms = await API.getTerms();
-        const settings = await API.userSettings();
-        storedUserSettings.set(settings);
-        if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
-            enrolledTerms.set(settings.enrolled_terms);
+        try {
+            terms = await API.getTerms();
+            const settings = await API.userSettings();
+            storedUserSettings.set(settings);
+            if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
+                enrolledTerms.set(settings.enrolled_terms);
+            }
+        } catch (err) {
+            if (err instanceof AuthError) {
+                return;
+            }
+            throw err;
         }
         listenForEnvironmentChanges();
     });

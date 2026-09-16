@@ -3,6 +3,7 @@
     import { goto } from "$app/navigation";
     import { resolve } from "$app/paths";
     import { API } from "$lib/api";
+    import { clearLocalData } from "$lib/auth";
     import { EnvironmentManager, ENVIRONMENTS, type Environment } from "$lib/environment";
     import { featureFlags } from "$lib/featureFlags";
     import { processedData as storedProcessedData, userSettings as storedUserSettings, icsUrl as storedIcsUrl } from "$lib/store";
@@ -446,16 +447,6 @@
         }
     }
 
-    async function clearLocalStorage() {
-        await chrome.storage.local.clear();
-        localStorage.clear();
-        sessionStorage.clear();
-        storedUserSettings.set(undefined);
-        storedProcessedData.set([]);
-        snackbar('Local data cleared successfully', undefined, true);
-        await goto(resolve('/'));
-    }
-
     async function manualRefreshFeatureFlags() {
         isRefreshingFlags = true;
         try {
@@ -813,7 +804,7 @@
             <Button variant="tonal" onclick={manualRefreshFeatureFlags} disabled={isRefreshingFlags}>
                 {isRefreshingFlags ? 'Refreshing...' : 'Refresh Flags'}
             </Button>
-            <Button variant="filled" onclick={clearLocalStorage}>Clear Local Data</Button>
+            <Button variant="filled" onclick={clearLocalData}>Clear Local Data</Button>
         </div>
     </section>
     <p class="m-0 rounded-xl bg-error-container px-4 py-3 text-center text-sm text-on-error-container">
