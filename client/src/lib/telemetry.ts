@@ -73,7 +73,8 @@ export async function setUsageStatsEnabled(enabled: boolean): Promise<boolean> {
         if (enabled) {
             return chrome.permissions.request(permission);
         }
-        return !(await chrome.permissions.remove(permission));
+        await chrome.permissions.remove(permission);
+        return usageStatsEnabled();
     }
 
     await chrome.storage.local.set({ [PREFERENCE_KEY]: enabled });
