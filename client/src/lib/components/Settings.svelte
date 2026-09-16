@@ -456,6 +456,43 @@
         }
     }
 
+    async function openOAuthWindow(oauthUrl: string) {
+        const screenWidth = window.screen.availWidth;
+        const screenHeight = window.screen.availHeight;
+        const createOptions: chrome.windows.CreateData = {
+            url: oauthUrl,
+            width: 650,
+            height: 800,
+            left: Math.floor((screenWidth - 650) / 2),
+            top: Math.floor((screenHeight - 800) / 2),
+            type: 'popup'
+        };
+
+        try {
+            await chrome.windows.create(createOptions);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (!message.includes('Invalid value for bounds')) {
+                throw error;
+            }
+            await chrome.windows.create({
+                url: oauthUrl,
+                width: Math.min(650, screenWidth),
+                height: Math.min(800, screenHeight),
+                type: 'popup'
+            });
+        }
+    }
+
+    function whenOAuthSucceeds(onSuccess: () => void) {
+        const onChanged = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+            if (changes.oauth_status?.newValue !== 'success') return;
+            chrome.storage.onChanged.removeListener(onChanged);
+            onSuccess();
+        };
+        chrome.storage.onChanged.addListener(onChanged);
+    }
+
     async function addGoogleAccount() {
         if (!addEmailInput.trim()) {
             snackbar('Please enter an email address', undefined, true);
@@ -470,32 +507,24 @@
             }
 
             if (response.oauth_url) {
-                // Open OAuth popup
                 const accountCountBefore = connectedAccounts.length;
-                const popup = window.open(response.oauth_url, 'Google OAuth', 'width=500,height=600');
-
-                // Poll for popup close
-                const pollTimer = setInterval(async () => {
-                    if (popup?.closed) {
-                        clearInterval(pollTimer);
-                        // Refresh connected accounts
-                        try {
-                            const accounts = await API.getConnectedAccounts();
-                            connectedAccounts = accounts.oauth_credentials || [];
-                            // The student can close the popup without connecting.
-                            if (connectedAccounts.length > accountCountBefore) {
-                                track('google_calendar_connected');
-                            }
-                            session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
-                            snackbar('Account connected successfully!', undefined, true);
-                        } catch (e) {
-                            console.error('Failed to refresh accounts:', e);
+                await chrome.storage.local.remove('oauth_status');
+                whenOAuthSucceeds(async () => {
+                    try {
+                        const accounts = await API.getConnectedAccounts();
+                        connectedAccounts = accounts.oauth_credentials || [];
+                        if (connectedAccounts.length > accountCountBefore) {
+                            track('google_calendar_connected');
                         }
-                        addEmailInput = "";
+                        session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
+                        snackbar('Account connected successfully!', undefined, true);
+                    } catch (e) {
+                        console.error('Failed to refresh accounts:', e);
                     }
-                }, 500);
+                    addEmailInput = "";
+                });
+                await openOAuthWindow(response.oauth_url);
             } else if (response.calendar_id) {
-                // Already connected
                 snackbar('This email is already connected', undefined, true);
                 addEmailInput = "";
             }
@@ -526,21 +555,18 @@
             }
 
             if (response.oauth_url) {
-                const popup = window.open(response.oauth_url, 'Google OAuth', 'width=500,height=600');
-
-                const pollTimer = setInterval(async () => {
-                    if (popup?.closed) {
-                        clearInterval(pollTimer);
-                        try {
-                            const accounts = await API.getConnectedAccounts();
-                            connectedAccounts = accounts.oauth_credentials || [];
-                            session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
-                            snackbar('Account re-authenticated successfully!', undefined, true);
-                        } catch (e) {
-                            console.error('Failed to refresh accounts:', e);
-                        }
+                await chrome.storage.local.remove('oauth_status');
+                whenOAuthSucceeds(async () => {
+                    try {
+                        const accounts = await API.getConnectedAccounts();
+                        connectedAccounts = accounts.oauth_credentials || [];
+                        session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
+                        snackbar('Account re-authenticated successfully!', undefined, true);
+                    } catch (e) {
+                        console.error('Failed to refresh accounts:', e);
                     }
-                }, 500);
+                });
+                await openOAuthWindow(response.oauth_url);
             }
         } catch (e) {
             console.error('Failed to re-authenticate account:', e);
