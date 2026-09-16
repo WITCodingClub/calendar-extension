@@ -86,6 +86,7 @@
             if (!added) {
                 return;
             }
+            track('passkey_created');
             newPasskeyName = "";
             await loadPasskeys();
             snackbar("Passkey added");
@@ -394,6 +395,7 @@
 
             if (response.oauth_url) {
                 // Open OAuth popup
+                const accountCountBefore = connectedAccounts.length;
                 const popup = window.open(response.oauth_url, 'Google OAuth', 'width=500,height=600');
 
                 // Poll for popup close
@@ -404,6 +406,10 @@
                         try {
                             const accounts = await API.getConnectedAccounts();
                             connectedAccounts = accounts.oauth_credentials || [];
+                            // The student can close the popup without connecting.
+                            if (connectedAccounts.length > accountCountBefore) {
+                                track('google_calendar_connected');
+                            }
                             snackbar('Account connected successfully!', undefined, true);
                         } catch (e) {
                             console.error('Failed to refresh accounts:', e);
