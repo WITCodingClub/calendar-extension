@@ -1,7 +1,9 @@
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
 import { snackbar } from 'm3-svelte';
 import { EnvironmentManager } from './environment';
+import { enrolledTerms, icsUrl, processedData, userSettings } from './store';
 
 export class AuthError extends Error {
     readonly code: string;
@@ -28,6 +30,7 @@ const PUBLIC_ROUTES = new Set([
 
 let sessionInvalidated = false;
 let unauthorizedHandling: Promise<void> | undefined;
+let clearingLocalData = false;
 
 function decodeJwtPayload(token: string): JwtPayload | undefined {
     const parts = token.split('.');
@@ -106,6 +109,28 @@ export async function handleUnauthorized(): Promise<void> {
         await unauthorizedHandling;
     } finally {
         unauthorizedHandling = undefined;
+    }
+}
+
+export async function clearLocalData(): Promise<void> {
+    if (!browser || clearingLocalData) {
+        return;
+    }
+
+    clearingLocalData = true;
+    sessionInvalidated = false;
+    try {
+        await chrome.storage.local.clear();
+        localStorage.clear();
+        sessionStorage.clear();
+        userSettings.set(undefined);
+        processedData.set([]);
+        enrolledTerms.set([]);
+        icsUrl.set(undefined);
+        snackbar('Local data cleared successfully', undefined, true);
+        await goto(resolve('/'), { replaceState: true });
+    } finally {
+        clearingLocalData = false;
     }
 }
 
