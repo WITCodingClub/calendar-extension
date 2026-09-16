@@ -16,6 +16,7 @@
     import { snackbar } from 'm3-svelte';
     import { createWitTab } from '$lib/witTab';
     import { track } from '$lib/telemetry';
+    import { getPanelSession } from '$lib/panelSession';
 
     type RegistrationsLookupResult =
         | { error: string }
@@ -33,8 +34,12 @@
     let activeDay: DayItem | undefined = $state(undefined);
     let loading = $state(false);
     let terms = $state<TermResponse | undefined>(undefined);
-	let attemptedTerms = $state(new Set<string>());
-	let refreshedTerms = $state(new Set<string>());
+	// The router destroys this page when the user opens the friends page. The
+	// session keeps what this page already loaded, so coming back sends no requests.
+	const session = getPanelSession();
+	// Terms whose preference refresh already ran on this page. A failed refresh
+	// is not recorded in the session, and this set stops an endless retry.
+	const refreshTried = new Set<string>();
     let showHistoricTerms = $derived($storedUserSettings?.show_historic_terms ?? false);
     let displayTerms = $derived((() => {
         const currentTermId = terms?.current_term?.id;
@@ -641,22 +646,48 @@
         }
     }
 
-    async function refreshAllEventPrefsForCurrentTerm() {
-        if (!selected || !processedData) return;
-        const ids = Array.from(new Set(processedData.flatMap(c => (c.meeting_times ?? []).filter(mt => mt?.id != null).map(mt => mt.id))));
-        const responses = await Promise.all(ids.map(async (id) => {
-            try {
-                const data: GetPreferencesResponse = await API.getMeetingTimePreference(id);
-                return { id, data };
-            } catch {
-                return undefined;
-            }
-        }));
+    const PREFERENCES_BATCH_SIZE = 200;
+
+    // Asks for the preferences of every meeting time in one request per 200 ids,
+    // instead of one request per meeting time. If the backend has no batch
+    // endpoint yet, it asks for each id on its own, as before.
+    async function fetchPreferencesFor(ids: Array<number | string>): Promise<Map<number | string, GetPreferencesResponse>> {
         const map = new Map<number | string, GetPreferencesResponse>();
-        for (const r of responses) {
-            if (r?.id != null && r.data) map.set(r.id, r.data);
+        const chunks: Array<Array<number | string>> = [];
+        for (let i = 0; i < ids.length; i += PREFERENCES_BATCH_SIZE) {
+            chunks.push(ids.slice(i, i + PREFERENCES_BATCH_SIZE));
         }
-        if (map.size === 0) return;
+
+        await Promise.all(chunks.map(async (chunk) => {
+            const batch = await API.getMeetingTimePreferences(chunk).catch(() => undefined);
+            if (batch) {
+                for (const id of chunk) {
+                    const data = batch[String(id)];
+                    if (data) map.set(id, data);
+                }
+                return;
+            }
+
+            await Promise.all(chunk.map(async (id) => {
+                try {
+                    const data: GetPreferencesResponse = await API.getMeetingTimePreference(id);
+                    if (data) map.set(id, data);
+                } catch {
+                    // Skip this meeting time, as the page did before.
+                }
+            }));
+        }));
+
+        return map;
+    }
+
+    // Returns false when no preferences loaded for a term that has meeting times.
+    async function refreshAllEventPrefsForCurrentTerm(): Promise<boolean> {
+        if (!selected || !processedData) return false;
+        const ids = Array.from(new Set(processedData.flatMap(c => (c.meeting_times ?? []).filter(mt => mt?.id != null).map(mt => mt.id))));
+        const map = await fetchPreferencesFor(ids);
+        if (!session.active) return false;
+        if (map.size === 0) return ids.length === 0;
         const dayKeys = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const;
         storedProcessedData.update((list) => {
             const tid = String(selected);
@@ -689,6 +720,7 @@
             };
             return next;
         });
+        return true;
     }
 
     async function runScrapeAndProcess(termId: string | undefined) {
@@ -1079,44 +1111,39 @@
         storedProcessedData.set([]);
         storedUserSettings.set(undefined);
         storedIcsUrl.set(undefined);
-        attemptedTerms = new Set();
-        refreshedTerms = new Set();
     }
 
-    async function listenForEnvironmentChanges() {
-        chrome.storage.onChanged.addListener((changes) => {
-            if ('environment_data' in changes) {
-                (async () => {
-                    checkBetaAccess();
-                    jwt_token = await getUsableJwt();
-                    if (!jwt_token) {
-                        // No JWT token for current environment, redirect to welcome page
-                        // eslint-disable-next-line svelte/no-navigation-without-resolve
-                        goto('/');
-                        return;
-                    }
+    // Loads the terms and the user settings. Neither depends on the other, so
+    // they go out together. The settings load once per session. The terms come
+    // from the session, which shares one request with the friends page.
+    async function loadTermsAndSettings() {
+        const settingsRequest = session.calendarLoaded ? undefined : API.userSettings();
+        // Keep a failed settings request from being reported as unhandled while
+        // the terms request is still open. It still throws at its await below.
+        settingsRequest?.catch(() => undefined);
 
-                    // IMPORTANT: Clear data FIRST before fetching anything for environment switches
-                    // Always clear on environment change detected via listener
-                    clearEnvironmentData();
+        try {
+            terms = await session.loadTerms();
+        } catch (e) {
+            console.error('Failed to load terms:', e);
+        }
 
-                    // Now fetch fresh data for the current environment
-                    try {
-                        terms = await API.getTerms();
-                        const envSettings = await API.userSettings();
-                        storedUserSettings.set(envSettings);
-                        if (envSettings.enrolled_terms?.length && $enrolledTerms.length === 0) {
-                            enrolledTerms.set(envSettings.enrolled_terms);
-                        }
-                    } catch (err) {
-                        if (err instanceof AuthError) {
-                            return;
-                        }
-                        throw err;
-                    }
-                })();
+        if (!settingsRequest) return;
+        try {
+            const settings = await settingsRequest;
+            // A reply for an ended session must not write into the new one.
+            if (!session.active) return;
+            storedUserSettings.set(settings);
+            if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
+                enrolledTerms.set(settings.enrolled_terms);
             }
-        });
+            session.calendarLoaded = true;
+        } catch (e) {
+            // The auth code already sent the user to sign in.
+            if (!(e instanceof AuthError)) {
+                console.error('Failed to load user settings:', e);
+            }
+        }
     }
 
     onMount(async () => {
@@ -1134,21 +1161,9 @@
             clearEnvironmentData();
         }
 
-        // Now fetch fresh data for the current environment
-        try {
-            terms = await API.getTerms();
-            const settings = await API.userSettings();
-            storedUserSettings.set(settings);
-            if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
-                enrolledTerms.set(settings.enrolled_terms);
-            }
-        } catch (err) {
-            if (err instanceof AuthError) {
-                return;
-            }
-            throw err;
-        }
-        listenForEnvironmentChanges();
+        // The (panel) layout handles environment changes. It starts a new
+        // session and mounts this page again.
+        await loadTermsAndSettings();
     });
 
     $effect(() => {
@@ -1171,10 +1186,8 @@
     });
 
     $effect(() => {
-        if (selected && !loading && !attemptedTerms.has(selected)) {
-            const next = new Set(attemptedTerms);
-            next.add(selected);
-            attemptedTerms = next;
+        if (selected && !loading && !session.attemptedTerms.has(selected)) {
+            session.attemptedTerms.add(selected);
             if ($storedProcessedData.some((d) => String(d.termId) === selected)) {
                 syncProcessedEventsForTerm(selected);
             } else {
@@ -1184,11 +1197,14 @@
     });
     
     $effect(() => {
-        if (processedData && selected && !refreshedTerms.has(selected)) {
-            const next = new Set(refreshedTerms);
-            next.add(selected);
-            refreshedTerms = next;
-            refreshAllEventPrefsForCurrentTerm();
+        if (processedData && selected && !session.refreshedTerms.has(selected) && !refreshTried.has(selected)) {
+            const term = selected;
+            refreshTried.add(term);
+            // Record the term only after a refresh that worked, so the next
+            // visit tries a failed one again.
+            refreshAllEventPrefsForCurrentTerm().then((ok) => {
+                if (ok) session.refreshedTerms.add(term);
+            });
         }
     });
     
@@ -1287,7 +1303,7 @@
                     <div class="term-seg">
                         <ConnectedButtons>
                         {#each displayTerms as termOpt, i}
-                            <input type="radio" name="seg" id="seg-{i}" bind:group={selected} value={termOpt.id} onchange={async () => { const tid = termOpt.id; if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !attemptedTerms.has(tid) && !loading) { const next = new Set(attemptedTerms); next.add(tid); attemptedTerms = next; await ensureProcessedForTerm(tid); } }} />
+                            <input type="radio" name="seg" id="seg-{i}" bind:group={selected} value={termOpt.id} onchange={async () => { const tid = termOpt.id; if (tid && !$storedProcessedData.some((d) => String(d.termId) === tid) && !session.attemptedTerms.has(tid) && !loading) { session.attemptedTerms.add(tid); await ensureProcessedForTerm(tid); } }} />
                             <Button for="seg-{i}" variant="filled">{termOpt.name}</Button>
                         {/each}
                         </ConnectedButtons>

@@ -1,6 +1,6 @@
 import { EnvironmentManager } from "./environment";
 import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
-import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, isProcessed, OkResponse, ProcessedEvents, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
+import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
 import type { PasskeySummary } from "./passkeys";
 
 export class API {
@@ -35,6 +35,25 @@ export class API {
             throw new AuthError();
         }
         return response;
+    }
+
+    // Reads the body of a response that must succeed. A failed response becomes
+    // an error, so a caller never mistakes an error body for data and never
+    // writes one into a cache.
+    private static async readJson<T>(response: Response, failureMessage: string): Promise<T> {
+        if (response.ok) {
+            return response.json();
+        }
+        let message = `${failureMessage}: ${response.status}`;
+        try {
+            const body = await response.json();
+            if (body?.error) message = String(body.error);
+            else if (body?.message) message = String(body.message);
+            else if (body?.detail) message = String(body.detail);
+        } catch {
+            /* ignore parse errors */
+        }
+        throw new Error(message);
     }
 
     public static async checkFeatureFlag(flagName:string) {
@@ -73,15 +92,15 @@ export class API {
         return response.json();
     }
 
-    public static async getTerms() {
+    public static async getTerms(): Promise<TermResponse> {
         const baseUrl = await this.getBaseUrl();
         const response = await fetch(`${baseUrl}/terms/current_and_next`, {
             method: 'GET'
         });
-        return response.json();
+        return this.readJson(response, 'Failed to fetch terms');
     }
 
-    public static async getUserEmail() {
+    public static async getUserEmail(): Promise<{ email: string }> {
         const baseUrl = await this.getBaseUrl();
         const response = await this.authedFetch(`${baseUrl}/user/email`, {
             method: 'GET',
@@ -89,7 +108,7 @@ export class API {
                 'Authorization': `Bearer ${await this.getJwtToken()}`
             }
         });
-        return response.json();
+        return this.readJson(response, 'Failed to fetch the user email');
     }
 
     public static async userSettings(settings?: UserSettings): Promise<UserSettings> {
@@ -105,7 +124,7 @@ export class API {
                 method: 'GET',
                 headers,
             });
-            return response.json();
+            return this.readJson(response, 'Failed to fetch the user settings');
         } else {
             const response = await this.authedFetch(url, {
                 method: 'PUT',
@@ -115,7 +134,7 @@ export class API {
                     'Content-Type': 'application/json'
                 }
             });
-            return response.json();
+            return this.readJson(response, 'Failed to save the user settings');
         }
     }
 
@@ -156,19 +175,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        if (!response.ok) {
-            let message = `Failed to fetch friends: ${response.status}`;
-            try {
-                const body = await response.json();
-                if (body?.error) message = String(body.error);
-                else if (body?.message) message = String(body.message);
-                else if (body?.detail) message = String(body.detail);
-            } catch {
-                /* ignore parse errors */
-            }
-            throw new Error(message);
-        }
-        return response.json();
+        return this.readJson(response, 'Failed to fetch friends');
     }
 
     public static async getFriendRequests(): Promise<FriendRequestsResponse> {
@@ -196,19 +203,7 @@ export class API {
             },
             body: JSON.stringify(payload)
         });
-        if (!response.ok) {
-            let message = `Failed to send friend request: ${response.status}`;
-            try {
-                const body = await response.json();
-                if (body?.error) message = String(body.error);
-                else if (body?.message) message = String(body.message);
-                else if (body?.detail) message = String(body.detail);
-            } catch {
-                /* ignore parse errors */
-            }
-            throw new Error(message);
-        }
-        return response.json();
+        return this.readJson(response, 'Failed to send the friend request');
     }
 
     public static async acceptFriendRequest(requestId: string): Promise<FriendRequestAcceptResponse> {
@@ -284,7 +279,7 @@ export class API {
             },
             body: JSON.stringify({ term_uid: termUid })
         });
-        return response.json();
+        return this.readJson(response, `Failed to fetch the schedule of friend ${friendId}`);
     }
 
     public static async getIcsUrl(): Promise<{ ics_url: string }> {
@@ -409,6 +404,28 @@ export class API {
         return response.json();
     }
 
+    // The same data as getMeetingTimePreference, for many meeting times in one
+    // request, keyed by the id that was sent. The backend takes up to 200 ids.
+    // Returns undefined when the request fails, for example on a backend that
+    // does not have this endpoint yet, so the caller can ask for each id instead.
+    public static async getMeetingTimePreferences(meetingTimeIds: Array<number | string>): Promise<Record<string, GetPreferencesResponse> | undefined> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await this.authedFetch(`${baseUrl}/meeting_times/preferences`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ meeting_time_ids: meetingTimeIds.map(String) })
+        });
+        if (!response.ok) {
+            return undefined;
+        }
+        const data = await response.json();
+        return data.preferences;
+    }
+
     public static async updateMeetingTimePreference(meetingTimeId: number | string, preferences: any): Promise<any> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
@@ -449,7 +466,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return this.readJson(response, 'Failed to fetch the notification status');
     }
 
     public static async disableNotifications(duration?: number): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string }> {
@@ -464,7 +481,7 @@ export class API {
             },
             body
         });
-        return response.json();
+        return this.readJson(response, 'Failed to disable notifications');
     }
 
     public static async enableNotifications(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: null }> {
@@ -477,7 +494,7 @@ export class API {
                 'Content-Type': 'application/json'
             }
         });
-        return response.json();
+        return this.readJson(response, 'Failed to enable notifications');
     }
 
     // Global calendar preferences
@@ -522,7 +539,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return this.readJson(response, 'Failed to fetch the connected accounts');
     }
 
     public static async requestOAuthForEmail(email: string): Promise<{ oauth_url?: string, calendar_id?: string, error?: string }> {
@@ -565,7 +582,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return this.readJson(response, 'Failed to fetch the calendar preferences');
     }
 
     public static async setUniCalCategoryPreference(category: string, preferences: {
