@@ -54,4 +54,4 @@ These host permissions enable the core functionality of extracting WIT schedules
 
 The extension sends anonymous usage counts to the currently selected WIT-Calendar backend (for example, `calendar.witcc.dev`). Each request holds one event name from a fixed list, for example `schedule_import_succeeded`, plus the extension version and the browser name. The request holds no token, no email address, and no schedule data. The backend keeps aggregate counters by event name, extension version, and browser.
 
-Students can turn the counts off in Settings ("Share Anonymous Usage Counts"). In Firefox, the extension sends nothing unless the student allows the optional "technical and interaction data" permission.
+The counts are off until the student turns them on. After sign-in, the extension asks the student one time. The student can change the choice later in Settings ("Share anonymous usage counts"). In Firefox, the extension also needs the optional "technical and interaction data" permission.

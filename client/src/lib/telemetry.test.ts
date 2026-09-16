@@ -4,7 +4,7 @@ vi.mock('./environment', () => ({
     EnvironmentManager: { getBaseUrl: vi.fn(async () => 'https://calendar.example.test') }
 }));
 
-import { detectBrowser, setUsageStatsEnabled, track, usageStatsEnabled } from './telemetry';
+import { detectBrowser, setUsageStatsEnabled, track, usageStatsAsked, usageStatsEnabled } from './telemetry';
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36';
 const EDGE_UA = `${CHROME_UA} Edg/140.0`;
@@ -12,6 +12,7 @@ const FIREFOX_UA = 'Mozilla/5.0 (Macintosh; rv:142.0) Gecko/20100101 Firefox/142
 
 let storage: Record<string, unknown>;
 let dataCollection: string[];
+let firefoxAllows: boolean;
 const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(
     async () => new Response(null, { status: 204 })
 );
@@ -27,6 +28,7 @@ function sentBody() {
 beforeEach(() => {
     storage = {};
     dataCollection = [];
+    firefoxAllows = true;
     fetchMock.mockClear();
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('chrome', {
@@ -41,6 +43,7 @@ beforeEach(() => {
         permissions: {
             getAll: vi.fn(async () => ({ data_collection: dataCollection })),
             request: vi.fn(async () => {
+                if (!firefoxAllows) return false;
                 dataCollection = ['technicalAndInteraction'];
                 return true;
             }),
@@ -67,7 +70,15 @@ describe('detectBrowser', () => {
 });
 
 describe('track', () => {
+    it('sends nothing until the student turns the counts on', async () => {
+        await track('schedule_import_succeeded');
+
+        expect(await usageStatsEnabled()).toBe(false);
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('sends the event, the version, and the browser, and nothing else', async () => {
+        await setUsageStatsEnabled(true);
         await track('schedule_import_succeeded');
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -79,6 +90,7 @@ describe('track', () => {
     });
 
     it('sends nothing after the student turns the counts off', async () => {
+        await setUsageStatsEnabled(true);
         expect(await setUsageStatsEnabled(false)).toBe(false);
 
         await track('calendar_link_copied');
@@ -88,9 +100,20 @@ describe('track', () => {
     });
 
     it('does not throw when the request fails', async () => {
+        await setUsageStatsEnabled(true);
         fetchMock.mockRejectedValueOnce(new Error('offline'));
 
         await expect(track('calendar_link_copied')).resolves.toBeUndefined();
+    });
+});
+
+describe('usageStatsAsked', () => {
+    it('is false until the student chooses, for either answer', async () => {
+        expect(await usageStatsAsked()).toBe(false);
+
+        await setUsageStatsEnabled(false);
+
+        expect(await usageStatsAsked()).toBe(true);
     });
 });
 
@@ -118,5 +141,19 @@ describe('in Firefox', () => {
 
         expect(await setUsageStatsEnabled(false)).toBe(false);
         expect(await usageStatsEnabled()).toBe(false);
+    });
+
+    it('counts a refused prompt as asked and keeps the counts off', async () => {
+        firefoxAllows = false;
+
+        expect(await setUsageStatsEnabled(true)).toBe(false);
+        expect(await usageStatsAsked()).toBe(true);
+        expect(await usageStatsEnabled()).toBe(false);
+    });
+
+    it('does not ask again when the student allowed the data type at install', async () => {
+        dataCollection = ['technicalAndInteraction'];
+
+        expect(await usageStatsAsked()).toBe(true);
     });
 });

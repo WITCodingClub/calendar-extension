@@ -31,6 +31,7 @@ export type TelemetryEvent = (typeof TELEMETRY_EVENTS)[number];
 export type Browser = 'chrome' | 'firefox' | 'edge';
 
 const PREFERENCE_KEY = 'usage_stats_enabled';
+const ASKED_KEY = 'usage_stats_asked';
 
 /**
  * Firefox asks for this data type itself, at install time and in its add-on
@@ -47,7 +48,7 @@ export function detectBrowser(userAgent: string = navigator.userAgent): Browser 
     return 'chrome';
 }
 
-/** Chrome and Edge: on unless the student turns it off. Firefox: only with consent. */
+/** Off until the student turns it on, in every browser. */
 export async function usageStatsEnabled(): Promise<boolean> {
     try {
         if (detectBrowser() === 'firefox') {
@@ -56,7 +57,7 @@ export async function usageStatsEnabled(): Promise<boolean> {
         }
 
         const stored = await chrome.storage.local.get(PREFERENCE_KEY);
-        return stored[PREFERENCE_KEY] !== false;
+        return stored[PREFERENCE_KEY] === true;
     } catch {
         return false;
     }
@@ -71,14 +72,31 @@ export async function setUsageStatsEnabled(enabled: boolean): Promise<boolean> {
     if (detectBrowser() === 'firefox') {
         const permission = { data_collection: [FIREFOX_DATA_PERMISSION] } as chrome.permissions.Permissions;
         if (enabled) {
-            return chrome.permissions.request(permission);
+            const granted = await chrome.permissions.request(permission);
+            await chrome.storage.local.set({ [ASKED_KEY]: true });
+            return granted;
         }
         await chrome.permissions.remove(permission);
+        await chrome.storage.local.set({ [ASKED_KEY]: true });
         return usageStatsEnabled();
     }
 
-    await chrome.storage.local.set({ [PREFERENCE_KEY]: enabled });
+    await chrome.storage.local.set({ [PREFERENCE_KEY]: enabled, [ASKED_KEY]: true });
     return enabled;
+}
+
+/**
+ * True when the student already made a choice, so onboarding does not ask
+ * again. A Firefox student who allowed the data type at install time counts
+ * as asked.
+ */
+export async function usageStatsAsked(): Promise<boolean> {
+    try {
+        const stored = await chrome.storage.local.get(ASKED_KEY);
+        return stored[ASKED_KEY] === true || (await usageStatsEnabled());
+    } catch {
+        return true;
+    }
 }
 
 /**
