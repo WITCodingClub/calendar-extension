@@ -14,23 +14,7 @@
     import { getPanelSession, type ConnectedAccount } from "$lib/panelSession";
     import { onMount } from "svelte";
     import ColorPicker from "./ColorPicker.svelte";
-
-    // Legacy Google Calendar color ID to hex mapping. The backend returns hex
-    // colors, but a backend from before custom colors returns a numeric id.
-    // Keep this map only to read that id.
-    const COLOR_ID_TO_HEX: Record<string, string> = {
-        "1": "#7986cb",  // Lavender
-        "2": "#33b679",  // Sage
-        "3": "#8e24aa",  // Grape
-        "4": "#e67c73",  // Flamingo
-        "5": "#f6bf26",  // Banana
-        "6": "#f4511e",  // Tangerine
-        "7": "#039be5",  // Peacock
-        "8": "#616161",  // Graphite
-        "9": "#3f51b5",  // Blueberry
-        "10": "#0b8043", // Basil
-        "11": "#d50000", // Tomato
-    };
+    import { resolveUniCalColor, UNI_CAL_DEFAULT_COLOR } from "$lib/uniCalColor";
 
     let userSettings = $state<UserSettings | undefined>(undefined);
     // The calendar page mounts this component again after an environment change,
@@ -52,7 +36,7 @@
     const UNI_CAL_COLOR_STORAGE_KEY = "uniCalColor";
     const UNI_EVENTS_COLLAPSED_KEY = "uniEventsCollapsed";
     let uniCalColor = $state<string>(
-        browser ? (localStorage.getItem(UNI_CAL_COLOR_STORAGE_KEY) ?? "") : "#616161"
+        browser ? (localStorage.getItem(UNI_CAL_COLOR_STORAGE_KEY) ?? UNI_CAL_DEFAULT_COLOR) : UNI_CAL_DEFAULT_COLOR
     );
     let uniEventsCollapsed = $state(browser ? localStorage.getItem(UNI_EVENTS_COLLAPSED_KEY) === "true" : false);
     let hasLoadedUniCalColor = $state(false);
@@ -207,20 +191,9 @@
             (async () => {
                 try {
                     const calPrefs = await API.getCalendarPreferences();
-                    // The uni_cal preference covers the whole university calendar. Fall
-                    // back to a category color for users saved before issue #498, whose
-                    // color still sits on the per-category preferences.
-                    const firstCategory = Object.values(calPrefs.uni_cal_categories || {})[0];
-                    const storedColor = calPrefs.uni_cal_global?.color_id ?? firstCategory?.color_id;
-                    if (storedColor) {
-                        const colorValue = String(storedColor);
-                        const resolvedColor = colorValue.startsWith("#") ? colorValue : COLOR_ID_TO_HEX[colorValue];
-                        if (resolvedColor) {
-                            uniCalColor = resolvedColor;
-                            if (browser) {
-                                localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, resolvedColor);
-                            }
-                        }
+                    uniCalColor = resolveUniCalColor(calPrefs);
+                    if (browser) {
+                        localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, uniCalColor);
                     }
                 } catch (e) {
                     // Calendar preferences might not exist yet, that's okay
