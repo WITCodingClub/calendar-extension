@@ -2,8 +2,8 @@
 
 ## Setup
 1. Install [npm/node.js](https://nodejs.org/en/download)
-3. Run ``npm i`` in this directory (``/client``)
-4. Run ``npm run build-dev`` to build the extension. Built files will be in ``/client/extension/``
+3. Run ``npm i``
+4. Run ``npm run build-dev`` to build the extension. Built files will be in ``extension/``
 5. optional: if you're on firefox, run ``npm run build-firefox`` instead.
 
 ``npm run build`` is the release build and leaves out the manifest ``key``, so
