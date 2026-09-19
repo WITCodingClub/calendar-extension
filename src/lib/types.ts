@@ -15,8 +15,6 @@ interface Course {
 }
 
 const FEATURE_FLAGS = [
-    "v1",
-    "v2",
     "debugMode",
     "envSwitcher",
     "finalsRetroactive",
