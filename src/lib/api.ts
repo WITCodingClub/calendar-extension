@@ -570,7 +570,10 @@ export class API {
     // University calendar preferences
     public static async getCalendarPreferences(): Promise<{
         global: any;
-        uni_cal_global: { color_id?: number } | null;
+        uni_cal_global: {
+            color_id?: number;
+            reminder_settings?: { time: string | number; type: string; method: string }[] | null;
+        } | null;
         event_types: Record<string, any>;
         uni_cal_categories: Record<string, any>;
     }> {
@@ -603,6 +606,26 @@ export class API {
         return response.json();
     }
 
+    public static async setUniCalGlobalPreference(preferences: {
+        color_id?: string;
+        reminder_settings?: { time: string; type: string; method: string }[] | "default";
+    }): Promise<void> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await this.authedFetch(`${baseUrl}/calendar_preferences/uni_cal`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ calendar_preference: preferences })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to set university calendar preference (HTTP ${response.status})`);
+        }
+    }
+
     // Set the color for every university calendar event at once.
     // colorId should be a Google Calendar color ID (1-11).
     //
@@ -612,20 +635,7 @@ export class API {
     // leaves the missing category on the default Graphite color. That is what
     // happened to Study Day in issue #498.
     public static async setAllUniCalCategoriesColor(colorId: string): Promise<void> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/calendar_preferences/uni_cal`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ calendar_preference: { color_id: colorId } })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to set university calendar color (HTTP ${response.status})`);
-        }
+        await this.setUniCalGlobalPreference({ color_id: colorId });
     }
 
     // The /passkey page holds no session. This mints a single-use, short-lived

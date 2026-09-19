@@ -18,6 +18,8 @@ export type SettingsData = {
     canUsePasskeys: boolean;
     passkeys: PasskeySummary[];
     uniCalColor: string;
+    uniCalReminderMode: "default" | "off" | "custom";
+    uniCalReminderOffset: string;
 };
 
 // The data that the calendar and friends pages load once. The (panel) layout
