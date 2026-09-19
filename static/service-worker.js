@@ -25,6 +25,20 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
     const siteTabs = tabs.filter(isTutorialSiteTab);
     if (!siteTabs.length) return;
 
+    await Promise.all(
+      siteTabs.map(async (tab) => {
+        if (tab.id == null) return;
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['scripts/site.js']
+          });
+        } catch (error) {
+          console.error('Error injecting site script:', error);
+        }
+      })
+    );
+
     const storeTabs = tabs.filter(isWitCalendarStoreTab);
     await Promise.all(storeTabs.map((tab) => (tab.id != null ? chrome.tabs.remove(tab.id) : undefined)));
 
