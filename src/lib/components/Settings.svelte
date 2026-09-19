@@ -13,8 +13,11 @@
     import { Button, SelectOutlined, snackbar, Switch } from "m3-svelte";
     import { getPanelSession, type ConnectedAccount } from "$lib/panelSession";
     import { onMount } from "svelte";
+    import ColorPicker from "./ColorPicker.svelte";
 
-    // Google Calendar color ID to hex mapping
+    // Legacy Google Calendar color ID to hex mapping. The backend returns hex
+    // colors, but a backend from before custom colors returns a numeric id.
+    // Keep this map only to read that id.
     const COLOR_ID_TO_HEX: Record<string, string> = {
         "1": "#7986cb",  // Lavender
         "2": "#33b679",  // Sage
@@ -29,10 +32,6 @@
         "11": "#d50000", // Tomato
     };
 
-    const HEX_TO_COLOR_ID: Record<string, string> = Object.fromEntries(
-        Object.entries(COLOR_ID_TO_HEX).map(([id, hex]) => [hex, id])
-    );
-
     const UNI_CAL_REMINDER_DEFAULT_OFFSET = "15:hours";
     const UNI_CAL_REMINDER_CHOICES = [
         { text: "15 minutes before", value: "15:minutes" },
@@ -45,6 +44,7 @@
         { text: "2 days before", value: "2:days" },
         { text: "1 week before", value: "7:days" },
     ];
+
 
     let userSettings = $state<UserSettings | undefined>(undefined);
     // The calendar page mounts this component again after an environment change,
@@ -229,10 +229,10 @@
                     // back to a category color for users saved before issue #498, whose
                     // color still sits on the per-category preferences.
                     const firstCategory = Object.values(calPrefs.uni_cal_categories || {})[0];
-                    const storedColorId = calPrefs.uni_cal_global?.color_id ?? firstCategory?.color_id;
-                    if (storedColorId) {
-                        const colorId = String(storedColorId);
-                        const resolvedColor = COLOR_ID_TO_HEX[colorId];
+                    const storedColor = calPrefs.uni_cal_global?.color_id ?? firstCategory?.color_id;
+                    if (storedColor) {
+                        const colorValue = String(storedColor);
+                        const resolvedColor = colorValue.startsWith("#") ? colorValue : COLOR_ID_TO_HEX[colorValue];
                         if (resolvedColor) {
                             uniCalColor = resolvedColor;
                             if (browser) {
@@ -363,10 +363,9 @@
         if (!hasLoadedUniCalColor) return;
         if (!newColor) return;
         uniCalColor = newColor;
-        const colorId = HEX_TO_COLOR_ID[newColor] || "8"; // Default to Graphite
 
         try {
-            await API.setAllUniCalCategoriesColor(colorId);
+            await API.setAllUniCalCategoriesColor(newColor);
             if (browser) {
                 localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, newColor);
             }
@@ -729,44 +728,20 @@
     <div class="flex flex-row items-center justify-between gap-4 p-4 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
         <h3 class="m-0 text-sm font-bold text-on-surface">Default lecture color</h3>
         <div class="flex flex-row items-center gap-2">
-            <div class="w-6 h-6 rounded-full border-2 border-outline other-stuff" style="background-color: {userSettings?.default_color_lecture};"></div>
-            <SelectOutlined label=""
-                options={[
-                    { text: "Tomato", value: "#d50000" },
-                    { text: "Flamingo", value: "#e67c73" },
-                    { text: "Tangerine", value: "#f4511e" },
-                    { text: "Banana", value: "#f6bf26" },
-                    { text: "Sage", value: "#33b679" },
-                    { text: "Basil", value: "#0b8043" },
-                    { text: "Peacock", value: "#039be5" },
-                    { text: "Blueberry", value: "#3f51b5" },
-                    { text: "Lavender", value: "#7986cb" },
-                    { text: "Grape", value: "#8e24aa" },
-                    { text: "Graphite", value: "#616161" },
-                ]}
-                bind:value={defaultColorLectureGetterSetter.value}
+            <ColorPicker
+                value={defaultColorLecture}
+                label="Default lecture color"
+                onchange={(newColor) => { defaultColorLectureGetterSetter.value = newColor; }}
             />
         </div>
     </div>
     <div class="flex flex-row items-center justify-between gap-4 p-4 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
         <h3 class="m-0 text-sm font-bold text-on-surface">Default lab color</h3>
         <div class="flex flex-row items-center gap-2">
-            <div class="w-6 h-6 rounded-full border-2 border-outline other-stuff" style="background-color: {userSettings?.default_color_lab};"></div>
-            <SelectOutlined label=""
-                options={[
-                    { text: "Tomato", value: "#d50000" },
-                    { text: "Flamingo", value: "#e67c73" },
-                    { text: "Tangerine", value: "#f4511e" },
-                    { text: "Banana", value: "#f6bf26" },
-                    { text: "Sage", value: "#33b679" },
-                    { text: "Basil", value: "#0b8043" },
-                    { text: "Peacock", value: "#039be5" },
-                    { text: "Blueberry", value: "#3f51b5" },
-                    { text: "Lavender", value: "#7986cb" },
-                    { text: "Grape", value: "#8e24aa" },
-                    { text: "Graphite", value: "#616161" },
-                ]}
-                bind:value={defaultColorLabGetterSetter.value}
+            <ColorPicker
+                value={defaultColorLab}
+                label="Default lab color"
+                onchange={(newColor) => { defaultColorLabGetterSetter.value = newColor; }}
             />
         </div>
     </div>
@@ -973,23 +948,10 @@
                 <div class="flex flex-row items-center justify-between gap-3 rounded-xl bg-surface-container-lowest p-3 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
                     <h3 class="m-0 text-sm font-bold text-on-surface">University events color</h3>
                     <div class="flex flex-row gap-2 items-center">
-                        <div class="w-6 h-6 rounded-full border-2 border-outline" style="background-color: {uniCalColor};"></div>
-                        <SelectOutlined label=""
-                            options={[
-                                { text: "Tomato", value: "#d50000" },
-                                { text: "Flamingo", value: "#e67c73" },
-                                { text: "Tangerine", value: "#f4511e" },
-                                { text: "Banana", value: "#f6bf26" },
-                                { text: "Sage", value: "#33b679" },
-                                { text: "Basil", value: "#0b8043" },
-                                { text: "Peacock", value: "#039be5" },
-                                { text: "Blueberry", value: "#3f51b5" },
-                                { text: "Lavender", value: "#7986cb" },
-                                { text: "Grape", value: "#8e24aa" },
-                                { text: "Graphite", value: "#616161" },
-                            ]}
-                            bind:value={uniCalColor}
-                            onchange={() => handleUniCalColorChange(uniCalColor)}
+                        <ColorPicker
+                            value={uniCalColor}
+                            label="University events color"
+                            onchange={(newColor) => handleUniCalColorChange(newColor)}
                         />
                     </div>
                 </div>

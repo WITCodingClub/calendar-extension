@@ -11,6 +11,7 @@
     import { AuthError, getUsableJwt } from '$lib/auth';
     import Settings from '$lib/components/Settings.svelte';
     import Help from '$lib/components/Help.svelte';
+    import ColorPicker from '$lib/components/ColorPicker.svelte';
     import { userSettings as storedUserSettings } from '$lib/store';
     import { browser } from '$app/environment';
     import { snackbar } from 'm3-svelte';
@@ -1586,23 +1587,7 @@
                             <p class="m-0 mt-0.5 text-xs text-on-surface-variant">Used for this class on your calendar</p>
                         </div>
                         <div class="flex shrink-0 flex-row items-center gap-2">
-                            <div class="other-stuff h-7 w-7 shrink-0 rounded-full border-2 border-outline" style="background-color: {courseColor};"></div>
-                            <SelectOutlined label=""
-                                options={[
-                                    { text: "Tomato", value: "#d50000" },
-                                    { text: "Flamingo", value: "#e67c73" },
-                                    { text: "Tangerine", value: "#f4511e" },
-                                    { text: "Banana", value: "#f6bf26" },
-                                    { text: "Sage", value: "#33b679" },
-                                    { text: "Basil", value: "#0b8043" },
-                                    { text: "Peacock", value: "#039be5" },
-                                    { text: "Blueberry", value: "#3f51b5" },
-                                    { text: "Lavender", value: "#7986cb" },
-                                    { text: "Grape", value: "#8e24aa" },
-                                    { text: "Graphite", value: "#616161" },
-                                ]}
-                                bind:value={courseColor}
-                            />
+                            <ColorPicker bind:value={courseColor} label="Choose course color" />
                         </div>
                     </section>
                 </div>
