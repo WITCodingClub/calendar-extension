@@ -12,13 +12,17 @@ const { ApiRequestError, ...mocks } = vi.hoisted(() => ({
 		}
 	},
 	requestMicrosoftCalendarOAuth: vi.fn(async () => ({ oauth_url: 'https://login.example/start' })),
+	setMicrosoftCalendarPlacement: vi.fn(async (_placement: string) => ({ placement: _placement })),
 	openAuthWindowUntil: vi.fn(async (): Promise<URL | null> => null),
 	reload: vi.fn(async () => {})
 }));
 
 vi.mock('./api', () => ({
 	ApiRequestError,
-	API: { requestMicrosoftCalendarOAuth: mocks.requestMicrosoftCalendarOAuth }
+	API: {
+		requestMicrosoftCalendarOAuth: mocks.requestMicrosoftCalendarOAuth,
+		setMicrosoftCalendarPlacement: mocks.setMicrosoftCalendarPlacement
+	}
 }));
 vi.mock('./authWindow', () => ({ openAuthWindowUntil: mocks.openAuthWindowUntil }));
 vi.mock('./environment', () => ({
@@ -26,7 +30,12 @@ vi.mock('./environment', () => ({
 }));
 vi.mock('./featureFlags', () => ({ featureFlags: { reload: mocks.reload } }));
 
-import { connectOutlookCalendar, isWorkingOutlookAccount } from './outlookCalendar';
+import {
+	connectOutlookCalendar,
+	isWorkingOutlookAccount,
+	moveOutlookCalendar,
+	placementCopy
+} from './outlookCalendar';
 
 function credential(overrides: Partial<OAuthCredential> = {}): OAuthCredential {
 	return {
@@ -53,6 +62,9 @@ beforeEach(() => {
 		oauth_url: 'https://login.example/start'
 	});
 	mocks.openAuthWindowUntil.mockResolvedValue(null);
+	mocks.setMicrosoftCalendarPlacement.mockImplementation(async (placement: string) => ({
+		placement
+	}));
 });
 
 describe('isWorkingOutlookAccount', () => {
@@ -64,6 +76,48 @@ describe('isWorkingOutlookAccount', () => {
 		expect(isWorkingOutlookAccount(credential({ provider: 'google' }))).toBe(false);
 		expect(isWorkingOutlookAccount(credential({ needs_reauth: true }))).toBe(false);
 		expect(isWorkingOutlookAccount(credential({ has_calendar: false }))).toBe(false);
+	});
+
+	// The backend sets needs_reauth for a revoked token, but the client must
+	// not count a revoked credential as working on its own.
+	it('refuses a credential whose access Microsoft revoked', () => {
+		expect(isWorkingOutlookAccount(credential({ token_revoked: true }))).toBe(false);
+	});
+});
+
+describe('placementCopy', () => {
+	it('offers the main calendar for a separate one, and warns about the move', () => {
+		const copy = placementCopy('separate');
+
+		expect(copy.switchTo).toBe('primary');
+		expect(copy.text).toContain('WIT Courses');
+		expect(copy.warning).toContain('lost');
+	});
+
+	it('offers a separate calendar for the main one', () => {
+		const copy = placementCopy('primary');
+
+		expect(copy.switchTo).toBe('separate');
+		expect(copy.text).toContain('busy');
+	});
+});
+
+describe('moveOutlookCalendar', () => {
+	it('asks the backend for the new placement', async () => {
+		const result = await moveOutlookCalendar('primary');
+
+		expect(mocks.setMicrosoftCalendarPlacement).toHaveBeenCalledWith('primary');
+		expect(result).toEqual({ status: 'started' });
+	});
+
+	it('reports the backend error', async () => {
+		mocks.setMicrosoftCalendarPlacement.mockRejectedValue(
+			new ApiRequestError('No Microsoft calendar is connected', 404)
+		);
+
+		const result = await moveOutlookCalendar('separate');
+
+		expect(result).toEqual({ status: 'failed', error: 'No Microsoft calendar is connected' });
 	});
 });
 

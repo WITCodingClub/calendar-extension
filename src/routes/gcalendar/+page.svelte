@@ -5,7 +5,7 @@
     import { onMount } from 'svelte';
     import { API } from '$lib/api';
     import { AuthError, getUsableJwt } from '$lib/auth';
-    import { hasUsableGoogleCalendar } from '$lib/afterSignIn';
+    import { hasUsableCalendar } from '$lib/afterSignIn';
     import { createFeatureFlagStore, featureFlags } from '$lib/featureFlags';
     import { connectOutlookCalendar } from '$lib/outlookCalendar';
     import { track } from '$lib/telemetry';
@@ -21,7 +21,7 @@
 
     async function checkGcalStatus() {
         try {
-            if (await hasUsableGoogleCalendar()) {
+            if (await hasUsableCalendar()) {
                 goto('/calendar');
             }
         } catch (err) {

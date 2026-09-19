@@ -2,7 +2,7 @@ import { API, ApiRequestError } from './api';
 import { openAuthWindowUntil } from './authWindow';
 import { EnvironmentManager } from './environment';
 import { featureFlags } from './featureFlags';
-import type { OAuthCredential } from './types';
+import type { CalendarPlacement, OAuthCredential } from './types';
 
 // The backend ends the Microsoft sign-in on /oauth/success or /oauth/failure.
 const RESULT_PATH = '/oauth';
@@ -14,7 +14,59 @@ export type OutlookConnectResult =
 	| { status: 'unavailable' };
 
 export function isWorkingOutlookAccount(account: OAuthCredential): boolean {
-	return account.provider === 'microsoft' && !account.needs_reauth && account.has_calendar === true;
+	// The backend sets needs_reauth for a revoked token too. The client checks
+	// both, so it does not depend on that rule.
+	return (
+		account.provider === 'microsoft' &&
+		!account.token_revoked &&
+		!account.needs_reauth &&
+		account.has_calendar === true
+	);
+}
+
+// What the Settings row says about where the classes go, and what the button
+// asks for. The wording follows the dashboard, so both places warn the same.
+export function placementCopy(placement: CalendarPlacement): {
+	text: string;
+	button: string;
+	switchTo: CalendarPlacement;
+	warning: string;
+} {
+	if (placement === 'primary') {
+		return {
+			text: 'Classes are in your main calendar and show as busy.',
+			button: 'Use a separate calendar',
+			switchTo: 'separate',
+			warning:
+				'Your classes move to a separate "WIT Courses" calendar. They no longer show as busy to other people. Changes you made to class events in Outlook are lost.'
+		};
+	}
+
+	return {
+		text: 'Classes are in a separate "WIT Courses" calendar. They do not show as busy.',
+		button: 'Show classes as busy',
+		switchTo: 'primary',
+		warning:
+			'Your classes move to your main calendar. People who can see your calendar see the class events. The "WIT Courses" calendar is removed, and changes you made to class events in Outlook are lost.'
+	};
+}
+
+/**
+ * Starts a move of the course events to the other placement.
+ *
+ * The backend answers before the move is complete, so the credentials keep
+ * the old placement until the job finishes.
+ */
+export async function moveOutlookCalendar(
+	placement: CalendarPlacement
+): Promise<{ status: 'started' } | { status: 'failed'; error: string }> {
+	try {
+		await API.setMicrosoftCalendarPlacement(placement);
+		return { status: 'started' };
+	} catch (e) {
+		console.error('Failed to move the Outlook classes:', e);
+		return { status: 'failed', error: errorText(e, 'Could not move your classes') };
+	}
 }
 
 function errorText(error: unknown, fallback: string): string {

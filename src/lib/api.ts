@@ -1,6 +1,6 @@
 import { EnvironmentManager } from "./environment";
 import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
-import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, GetPreferencesResponse, isProcessed, MicrosoftCalendarOAuthResponse, OAuthCredentialsResponse, OkResponse, ProcessedEvents, TermResponse, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
+import type { CalendarPlacement, FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, GetPreferencesResponse, isProcessed, MicrosoftCalendarOAuthResponse, MicrosoftCalendarPlacementResponse, OAuthCredentialsResponse, OkResponse, ProcessedEvents, TermResponse, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
 import type { PasskeySummary } from "./passkeys";
 
 // A failed API request. The status lets callers tell a 404 from other errors.
@@ -580,6 +580,23 @@ export class API {
             }
         });
         return this.readJson(response, 'Could not start the Outlook calendar connection');
+    }
+
+    // Moves the course events of the connected Outlook calendar. The backend
+    // runs the move in a job and answers 202, so the new placement shows in
+    // the credentials only after the job finishes.
+    public static async setMicrosoftCalendarPlacement(placement: CalendarPlacement): Promise<MicrosoftCalendarPlacementResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await this.authedFetch(`${baseUrl}/user/microsoft_calendar`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ placement })
+        });
+        return this.readJson(response, 'Could not move your classes');
     }
 
     // Disconnects a Google or Microsoft credential. Throws with the backend

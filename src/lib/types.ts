@@ -33,6 +33,10 @@ interface FeatureFlagsResponse {
 
 type OAuthProvider = "google" | "microsoft";
 
+// Where an Outlook connection puts the course events. "primary" is the
+// person's main calendar, where the classes show as busy.
+type CalendarPlacement = "separate" | "primary";
+
 // One entry from GET /api/user/oauth_credentials.
 interface OAuthCredential {
     id: string;
@@ -42,6 +46,11 @@ interface OAuthCredential {
     token_revoked: boolean;
     has_calendar?: boolean;
     calendar_id?: string | null;
+    // Microsoft only, and null while the connection has no calendar. The field
+    // is missing on a backend that predates it.
+    placement?: CalendarPlacement | null;
+    // False for the last Google credential, which the backend keeps.
+    removable?: boolean;
     created_at?: string;
 }
 
@@ -54,6 +63,13 @@ interface OAuthCredentialsResponse {
 interface MicrosoftCalendarOAuthResponse {
     oauth_url: string;
     message?: string;
+}
+
+// PATCH /api/user/microsoft_calendar. The move runs in a job, so the backend
+// answers 202 before the events have moved.
+interface MicrosoftCalendarPlacementResponse {
+    message?: string;
+    placement?: CalendarPlacement;
 }
 
 interface Location {
@@ -301,6 +317,6 @@ export {
     FEATURE_FLAGS,
     type Building,
     type CalendarConfig, type Course, type CurrentTerm, type DayItem,
-    type EventPreferences, type FeatureFlagsResponse, type MicrosoftCalendarOAuthResponse, type OAuthCredential, type OAuthCredentialsResponse, type OAuthProvider, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location,
+    type CalendarPlacement, type EventPreferences, type FeatureFlagsResponse, type MicrosoftCalendarOAuthResponse, type MicrosoftCalendarPlacementResponse, type OAuthCredential, type OAuthCredentialsResponse, type OAuthProvider, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location,
     type MeetingTime, type NextTerm, type NotificationMethod, type NotificationSetting, type NotificationType, type OkResponse, type Preview, type ProcessedEvents, type Professor, type ReminderSettings, type ResolvedData, type ResponseData, type TemplateVariables, type Term, type TermResponse, type UniversityCalendarEvent, type UniversityEventCategory, type UniversityEventCategoryWithCount, type UserSettings
 };

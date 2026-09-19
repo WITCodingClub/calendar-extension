@@ -1,9 +1,14 @@
 <script lang="ts">
-	import { API } from '$lib/api';
 	import outlook from '$lib/images/outlook.svg';
-	import { connectOutlookCalendar, isWorkingOutlookAccount } from '$lib/outlookCalendar';
+	import { API } from '$lib/api';
+	import {
+		connectOutlookCalendar,
+		isWorkingOutlookAccount,
+		moveOutlookCalendar,
+		placementCopy
+	} from '$lib/outlookCalendar';
 	import { track } from '$lib/telemetry';
-	import type { OAuthCredential } from '$lib/types';
+	import type { CalendarPlacement, OAuthCredential } from '$lib/types';
 	import { Button, snackbar } from 'm3-svelte';
 
 	interface Props {
@@ -17,6 +22,10 @@
 
 	let isConnecting = $state(false);
 	let disconnectingId = $state<string | null>(null);
+	// The placement that the student asked for, while the move runs. The
+	// credentials keep the old one until the job finishes.
+	let movingTo = $state<CalendarPlacement | null>(null);
+	let confirmingMove = $state(false);
 
 	function needsAttention(account: OAuthCredential): boolean {
 		return !isWorkingOutlookAccount(account);
@@ -29,12 +38,24 @@
 		return 'Syncing your classes to Outlook.';
 	}
 
+	// The placement control needs a backend that sends the field. Without it,
+	// the row shows the status alone.
+	function placementOf(account: OAuthCredential): CalendarPlacement | null {
+		return account.placement ?? null;
+	}
+
+	// The backend keeps the last Google credential, never a Microsoft one. An
+	// older backend sends no field, and it accepted this disconnect already.
+	function canDisconnect(account: OAuthCredential): boolean {
+		return account.removable !== false;
+	}
+
 	async function connect() {
 		if (isConnecting) return;
 		isConnecting = true;
 		try {
-			// Success needs the /oauth/success page and a confirmed credential.
-			// A popup that closes early is a cancel, not a success.
+			// Success needs a working credential that this sign-in produced.
+			// A popup that closes with no new credential is a cancel.
 			const result = await connectOutlookCalendar(refreshAccounts);
 			if (result.status === 'connected') {
 				track('outlook_calendar_connected');
@@ -48,6 +69,29 @@
 			}
 		} finally {
 			isConnecting = false;
+		}
+	}
+
+	async function move(placement: CalendarPlacement) {
+		confirmingMove = false;
+		movingTo = placement;
+		const result = await moveOutlookCalendar(placement);
+		if (result.status === 'failed') {
+			movingTo = null;
+			snackbar(result.error, undefined, true);
+			return;
+		}
+
+		snackbar('Your classes are moving. This can take a minute.', undefined, true);
+		try {
+			const updated = await refreshAccounts();
+			// The job can finish before this request. Then the row is right and
+			// the "moving" line goes away.
+			if (updated.some((a) => a.provider === 'microsoft' && a.placement === placement)) {
+				movingTo = null;
+			}
+		} catch (e) {
+			console.error('Failed to refresh accounts:', e);
 		}
 	}
 
@@ -89,40 +133,74 @@
 			{#each accounts as account (account.id)}
 				<div
 					class={[
-						'gap-3 rounded-xl bg-surface-container-lowest p-3 flex flex-row items-center justify-between @max-[30rem]:flex-col @max-[30rem]:items-stretch',
+						'gap-2 rounded-xl bg-surface-container-lowest p-3 flex flex-col',
 						needsAttention(account) && 'outline-error outline outline-1'
 					]}
 				>
-					<div class="min-w-0 gap-1 flex flex-col">
-						<div class="gap-2 flex flex-row items-center">
-							<img src={outlook} alt="" class="h-5 w-5 shrink-0" />
-							<span class="text-sm text-on-surface truncate">{account.email}</span>
+					<div
+						class="gap-3 flex flex-row items-center justify-between @max-[30rem]:flex-col @max-[30rem]:items-stretch"
+					>
+						<div class="min-w-0 gap-1 flex flex-col">
+							<div class="gap-2 flex flex-row items-center">
+								<img src={outlook} alt="" class="h-5 w-5 shrink-0" />
+								<span class="text-sm text-on-surface truncate">{account.email}</span>
+							</div>
+							<span
+								class="ml-7 text-xs {needsAttention(account)
+									? 'text-error'
+									: 'text-on-surface-variant'}"
+							>
+								{statusText(account)}
+							</span>
 						</div>
-						<span
-							class="ml-7 text-xs {needsAttention(account)
-								? 'text-error'
-								: 'text-on-surface-variant'}"
-						>
-							{statusText(account)}
-						</span>
+						<div class="gap-2 flex shrink-0 flex-row items-center">
+							{#if needsAttention(account)}
+								<Button variant="tonal" onclick={connect} disabled={isConnecting}>Reconnect</Button>
+							{/if}
+							{#if canDisconnect(account)}
+								<Button
+									variant="text"
+									onclick={() => disconnect(account)}
+									disabled={disconnectingId === account.id}
+									title="Disconnect Outlook calendar"
+								>
+									<svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+										<path
+											d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+										/>
+									</svg>
+								</Button>
+							{/if}
+						</div>
 					</div>
-					<div class="gap-2 flex shrink-0 flex-row items-center">
-						{#if needsAttention(account)}
-							<Button variant="tonal" onclick={connect} disabled={isConnecting}>Reconnect</Button>
-						{/if}
-						<Button
-							variant="text"
-							onclick={() => disconnect(account)}
-							disabled={disconnectingId === account.id}
-							title="Disconnect Outlook calendar"
-						>
-							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-								<path
-									d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-								/>
-							</svg>
-						</Button>
-					</div>
+
+					{#if !needsAttention(account) && placementOf(account)}
+						{@const copy = placementCopy(placementOf(account)!)}
+						<div class="ml-7 gap-2 border-outline-variant pt-2 flex flex-col border-t">
+							{#if movingTo}
+								<p class="m-0 text-xs text-on-surface-variant">
+									Your classes are moving. This can take a minute.
+								</p>
+							{:else if confirmingMove}
+								<p class="m-0 text-xs text-on-surface-variant">{copy.warning}</p>
+								<div class="gap-2 flex flex-row items-center">
+									<Button variant="tonal" onclick={() => move(copy.switchTo)}
+										>Move my classes</Button
+									>
+									<Button variant="text" onclick={() => (confirmingMove = false)}>Cancel</Button>
+								</div>
+							{:else}
+								<div
+									class="gap-3 flex flex-row items-center justify-between @max-[30rem]:flex-col @max-[30rem]:items-stretch"
+								>
+									<p class="m-0 text-xs text-on-surface-variant">{copy.text}</p>
+									<Button variant="text" onclick={() => (confirmingMove = true)}>
+										{copy.button}
+									</Button>
+								</div>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			{/each}
 		</div>
