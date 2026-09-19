@@ -570,7 +570,7 @@ export class API {
     // University calendar preferences
     public static async getCalendarPreferences(): Promise<{
         global: any;
-        uni_cal_global: { color_id?: number } | null;
+        uni_cal_global: { color_id?: string } | null;
         event_types: Record<string, any>;
         uni_cal_categories: Record<string, any>;
     }> {
@@ -604,14 +604,14 @@ export class API {
     }
 
     // Set the color for every university calendar event at once.
-    // colorId should be a Google Calendar color ID (1-11).
+    // hexColor should be a lowercase #rrggbb hex string.
     //
     // This writes the one uni_cal preference that covers the whole university
     // calendar. Do not go back to writing one preference per category: that
     // needs a copy of the backend category list here, and an out of date copy
     // leaves the missing category on the default Graphite color. That is what
     // happened to Study Day in issue #498.
-    public static async setAllUniCalCategoriesColor(colorId: string): Promise<void> {
+    public static async setAllUniCalCategoriesColor(hexColor: string): Promise<void> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/calendar_preferences/uni_cal`, {
@@ -620,7 +620,7 @@ export class API {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ calendar_preference: { color_id: colorId } })
+            body: JSON.stringify({ calendar_preference: { color_id: hexColor } })
         });
 
         if (!response.ok) {
