@@ -1,4 +1,6 @@
 * @Cattn @jaspermayone
 
-/client/** @Cattn
+/src/** @Cattn
+/static/** @Cattn
+/scripts/** @Cattn
 /resources/** @Cattn

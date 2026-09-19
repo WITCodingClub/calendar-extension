@@ -23,9 +23,9 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: client
+        working-directory: .
         run: npm ci
 
       - name: Run svelte-check
-        working-directory: client
+        working-directory: .
         run: npm run check

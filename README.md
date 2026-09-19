@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="https://raw.githubusercontent.com/WITCodingClub/calendar/refs/heads/main/resources/W-Calendar-outlined-back-only.png" width="128" alt="WIT-calendar Icon"/>
+    <img src="resources/W-Calendar-outlined-back-only.png" width="128" alt="WIT-calendar Icon"/>
 </p>
 
 <h3 align="center">
@@ -23,9 +23,31 @@ The Chrome extension gets your schedule, processes it, and then provides you wit
 You can also manage event alerts, colors, and titles from within the extension.
 
 ## Development
-- See instructions for developing the extension [here](https://github.com/WITCodingClub/calendar/blob/main/client/README.md).
+1. Install [npm/node.js](https://nodejs.org/en/download)
+2. Run ``npm i``
+3. Run ``npm run build-dev`` to build the extension. Built files will be in ``extension/``
+4. optional: if you're on firefox, run ``npm run build-firefox`` instead.
+
+``npm run build`` is the release build and leaves out the manifest ``key``, so
+Chrome gives the unpacked copy a random extension ID. Google sign-in is tied to
+one ID — the published one — so a plain build fails at sign-in with
+``redirect_uri_mismatch``. ``build-dev`` puts the key back and gives you the same
+ID as the Web Store copy.
+
+### Testing the Extension (for chrome)
+
+1. Head to ``chrome://extensions``
+2. Enable Developer Mode
+3. Click ``Load Unpacked``
+4. Select the folder (extension)
+5. Ensure the added Extension is enabled
+6. Simply click on the extension icon to use it.
+
+### Testing the Extension (for firefox)
+
+1. Head to ``about:debugging#/runtime/this-firefox``
+2. Hit Load Temporary Add-on
+3. Select the manifest.json from the built extension
+4. Simply click on the extension icon to use it.
 
 - See instructions for developing the backend [here](https://github.com/WITCodingClub/calendar-backend/blob/main/README.md).
-
-
-
