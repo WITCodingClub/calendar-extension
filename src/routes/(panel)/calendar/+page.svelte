@@ -11,7 +11,7 @@
     import { AuthError, getUsableJwt } from '$lib/auth';
     import Settings from '$lib/components/Settings.svelte';
     import Help from '$lib/components/Help.svelte';
-    import RgbColorPicker from '$lib/components/RgbColorPicker.svelte';
+    import ColorPicker from '$lib/components/ColorPicker.svelte';
     import { userSettings as storedUserSettings } from '$lib/store';
     import { browser } from '$app/environment';
     import { snackbar } from 'm3-svelte';
@@ -1587,7 +1587,7 @@
                             <p class="m-0 mt-0.5 text-xs text-on-surface-variant">Used for this class on your calendar</p>
                         </div>
                         <div class="flex shrink-0 flex-row items-center gap-2">
-                            <RgbColorPicker bind:value={courseColor} label="Choose course color" />
+                            <ColorPicker bind:value={courseColor} label="Choose course color" />
                         </div>
                     </section>
                 </div>
