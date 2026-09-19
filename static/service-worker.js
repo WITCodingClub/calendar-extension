@@ -12,9 +12,16 @@ function isTutorialSiteTab(tab) {
 
 function isWitCalendarStoreTab(tab) {
   const url = tab.url ?? '';
-  const onChromeStore =
-    url.includes('chromewebstore.google.com/') || url.includes('chrome.google.com/webstore/');
-  return onChromeStore && (url.includes('aceelinogfcceklkpacakdeddnaakicj') || url.includes('wit-calendar'));
+  try {
+    const { hostname, pathname } = new URL(url);
+    if (hostname === 'addons.mozilla.org' || hostname.endsWith('.addons.mozilla.org')) {
+      return pathname.includes('/addon/wit-calendar');
+    }
+    const onChromeStore = hostname === 'chromewebstore.google.com' || hostname === 'chrome.google.com';
+    return onChromeStore && (pathname.includes('aceelinogfcceklkpacakdeddnaakicj') || pathname.includes('wit-calendar'));
+  } catch {
+    return false;
+  }
 }
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
