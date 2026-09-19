@@ -18,6 +18,16 @@
       "js": [
         "scripts/init.js"
       ]
+    },
+    {
+      "matches": [
+        "https://*.witcc.dev/*",
+        "http://localhost/*"
+      ],
+      "js": [
+        "scripts/site.js"
+      ],
+      "run_at": "document_start"
     }
   ],
   "background": {
@@ -38,7 +48,8 @@
   "host_permissions": [
     "https://selfservice.wit.edu/*",
     "https://*.witcc.dev/*",
-    "https://heron-selected-literally.ngrok-free.app/*"
+    "https://heron-selected-literally.ngrok-free.app/*",
+    "http://localhost/*"
   ],
   "browser_specific_settings": {
     "gecko": {
