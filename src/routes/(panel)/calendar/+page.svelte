@@ -54,6 +54,15 @@
         }
         return base;
     })());
+    let preferredDisplayTerm = $derived.by(() => {
+        if (displayTerms.length === 0) return undefined;
+        const currentId = terms?.current_term?.id != null ? String(terms.current_term.id) : undefined;
+        const current = currentId ? displayTerms.find(t => t.id === currentId) : undefined;
+        if (current) return current;
+        return displayTerms.reduce((a, b) =>
+            parseInt(a.id, 10) >= parseInt(b.id, 10) ? a : b
+        );
+    });
     let militaryTime = $derived($storedUserSettings?.military_time ?? true);
     let lectureColor = $derived($storedUserSettings?.default_color_lecture ?? "#039be5");
     let labColor = $derived($storedUserSettings?.default_color_lab ?? "#f6bf26");
@@ -1183,20 +1192,14 @@
 
     $effect(() => {
         if (!selected) {
-            if (displayTerms.length > 0) {
-                const processedTermIds = new Set($storedProcessedData.map(d => String(d.termId)));
-                const preferred = displayTerms.find(t => processedTermIds.has(t.id)) ?? displayTerms[0];
-                if (preferred?.id) selected = preferred.id;
+            if (preferredDisplayTerm?.id) {
+                selected = preferredDisplayTerm.id;
             } else if (terms) {
                 const initial = terms?.current_term?.id ?? terms?.next_term?.id;
                 selected = initial != null ? String(initial) : undefined;
             }
         } else if (displayTerms.length > 0 && !displayTerms.some(t => t?.id === selected)) {
-            const currentId = terms?.current_term?.id != null ? String(terms.current_term.id) : undefined;
-            const preferred =
-                (currentId ? displayTerms.find(t => t.id === currentId) : undefined) ??
-                displayTerms[0];
-            if (preferred?.id) selected = preferred.id;
+            if (preferredDisplayTerm?.id) selected = preferredDisplayTerm.id;
         }
     });
 
