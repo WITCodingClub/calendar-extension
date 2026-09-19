@@ -2,9 +2,14 @@
     let { onclick, disabled = false }: { onclick: () => void; disabled?: boolean } = $props();
 </script>
 
-<button class="google-sign-in" type="button" {onclick} {disabled}>
-    <span class="google-sign-in-logo" aria-hidden="true">
-        <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+<button
+    class="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-outline bg-surface-container-lowest px-5 text-[0.95rem] font-semibold tracking-[0.01em] text-on-surface transition-[background-color,box-shadow] duration-150 hover:enabled:bg-surface-container-high hover:enabled:shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.24)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-50"
+    type="button"
+    {onclick}
+    {disabled}
+>
+    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.4rem] bg-white" aria-hidden="true">
+        <svg class="block h-[1.15rem] w-[1.15rem]" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
             <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
             <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
@@ -14,57 +19,3 @@
     </span>
     <span>Sign in with Google</span>
 </button>
-
-<style>
-    .google-sign-in {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.75rem;
-        height: 3rem;
-        min-width: 280px;
-        padding: 0 1.25rem;
-        border: none;
-        border-radius: 0.75rem;
-        background: rgb(var(--m3-scheme-primary-container));
-        color: rgb(var(--m3-scheme-on-primary-container));
-        font-family: "Roboto Flex", sans-serif;
-        font-size: 0.95rem;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-        cursor: pointer;
-        transition: background-color 0.15s ease, box-shadow 0.15s ease;
-    }
-
-    .google-sign-in-logo {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 1.75rem;
-        height: 1.75rem;
-        border-radius: 0.4rem;
-        background: #ffffff;
-        flex-shrink: 0;
-    }
-
-    .google-sign-in-logo svg {
-        display: block;
-        width: 1.15rem;
-        height: 1.15rem;
-    }
-
-    .google-sign-in:hover:not(:disabled) {
-        background: rgb(var(--m3-scheme-secondary-container));
-        box-shadow: 0 1px 3px rgb(var(--m3-scheme-shadow) / 0.24);
-    }
-
-    .google-sign-in:focus-visible {
-        outline: 2px solid rgb(var(--m3-scheme-primary));
-        outline-offset: 2px;
-    }
-
-    .google-sign-in:disabled {
-        cursor: default;
-        opacity: 0.5;
-    }
-</style>

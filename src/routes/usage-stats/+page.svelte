@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { Button } from 'm3-svelte';
     import { continueAfterSignIn } from '$lib/afterSignIn';
     import { AuthError } from '$lib/auth';
     import { setUsageStatsEnabled } from '$lib/telemetry';
@@ -31,24 +30,64 @@
     }
 </script>
 
-<div class="flex flex-col items-center justify-center h-screen px-6">
-    <h1 class="text-2xl font-bold text-center text-primary mb-3">Share anonymous usage counts?</h1>
-    <p class="text-base text-center text-on-surface-variant mb-3 max-w-md">
-        Counts such as how many schedule imports succeed show us which parts of WIT-Calendar students use, so we know what to improve.
-    </p>
-    <p class="text-sm text-center text-on-surface-variant mb-6 max-w-md">
-        We never collect names, emails, or schedules. You can change this later in Settings.
-    </p>
+<div class="flex min-h-screen w-full flex-col items-center justify-center px-6 py-8">
+    <h1 class="roboto-flex-wit-main mb-6">WIT-Calendar</h1>
 
-    <div class="flex flex-col items-center gap-2 peak w-full max-w-sm">
-        <Button variant="tonal" square onclick={() => choose(true)} disabled={isSaving}>Share counts</Button>
-        <Button variant="text" square onclick={() => choose(false)} disabled={isSaving}>No thanks</Button>
+    <div class="mb-8 w-full max-w-md rounded-2xl bg-surface-container p-4 shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.08)]">
+        <p class="mb-2 text-lg font-semibold text-on-surface">Share anonymous usage counts?</p>
+        <p class="mb-2 text-sm text-on-surface-variant">
+            Counts such as how many schedule imports succeed show us which parts of WIT-Calendar students use, so we know what to improve.
+        </p>
+        <p class="m-0 text-sm text-on-surface-variant">
+            We never collect names, emails, or schedules. You can change this later in Settings.
+        </p>
+    </div>
+
+    <div class="flex w-full max-w-md flex-col gap-2">
+        <button
+            class="inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-xl border border-outline bg-primary-container px-5 text-[0.95rem] font-semibold tracking-[0.01em] text-on-primary-container transition-[filter,box-shadow] duration-150 hover:enabled:brightness-110 hover:enabled:shadow-[0_1px_2px_rgb(var(--m3-scheme-shadow)/0.16)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-50"
+            type="button"
+            onclick={() => choose(true)}
+            disabled={isSaving}
+        >
+            Share counts
+        </button>
+        <div class="flex items-center gap-3 py-1">
+            <span class="h-px flex-1 bg-outline-variant"></span>
+            <span class="text-xs text-on-surface-variant">or</span>
+            <span class="h-px flex-1 bg-outline-variant"></span>
+        </div>
+        <button
+            class="inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-xl border border-outline bg-transparent px-5 text-[0.95rem] font-semibold tracking-[0.01em] text-on-surface transition-[background-color,box-shadow] duration-150 hover:enabled:bg-surface-container-high hover:enabled:shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.24)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-50"
+            type="button"
+            onclick={() => choose(false)}
+            disabled={isSaving}
+        >
+            No thanks
+        </button>
     </div>
 </div>
 
 <style>
-    :global(.peak button) {
-        height: 3rem !important;
-        min-width: 280px;
+    .roboto-flex-wit-main {
+        font-size: 28px;
+        font-family: "Roboto Flex", sans-serif;
+        color: var(--color-primary);
+        font-optical-sizing: 144;
+        font-weight: 900;
+        line-height: 1;
+        font-style: normal;
+        font-variation-settings:
+            "slnt" 0,
+            "wdth" 129,
+            "GRAD" 0,
+            "XOPQ" 140,
+            "XTRA" 468,
+            "YOPQ" 51,
+            "YTAS" 750,
+            "YTDE" -203,
+            "YTFI" 738,
+            "YTLC" 514,
+            "YTUC" 712;
     }
 </style>

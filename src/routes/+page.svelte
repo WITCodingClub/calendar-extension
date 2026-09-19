@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Button, snackbar } from 'm3-svelte';
+    import { snackbar } from 'm3-svelte';
     import { onMount } from 'svelte';
     import { AuthError, getUsableJwt } from '$lib/auth';
     import { continueAfterSignIn } from '$lib/afterSignIn';
@@ -61,22 +61,21 @@
     }
 </script>
 
-<div class="flex flex-col gap-4 justify-center items-center h-full mt-10 w-full">
-    <div class="flex flex-row gap-2 mb-2">
-        <h1 class="text-2xl font-bold roboto-flex-wit-main">WIT-Calendar</h1>
-    </div>
-    <div class="bg-surface-container-low p-4 rounded-lg shadow flex flex-col items-start w-full max-w-xl mb-2 mt-4">
-        <p class="text-lg font-semibold text-on-surface mb-2">Welcome! A few things to note:</p>
-        <ul class="list-disc pl-5 space-y-1 text-base text-on-surface-variant">
+<div class="flex min-h-screen w-full flex-col items-center justify-center px-6 py-8">
+    <h1 class="roboto-flex-wit-main mb-6">WIT-Calendar</h1>
+
+    <div class="mb-8 w-full max-w-md rounded-2xl bg-surface-container p-4 shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.08)]">
+        <p class="mb-2 text-lg font-semibold text-on-surface">Welcome! A few things to note:</p>
+        <ul class="list-disc space-y-2 pl-5 text-sm text-on-surface-variant">
             <li>
                 Tabs may open and close automatically when using the extension; this is normal and expected.
             </li>
             <li>
-                Please make sure you're signed in here: 
-                <a 
-                    href="https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory" 
+                Please make sure you're signed in here:
+                <a
+                    href="https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory"
                     target="_blank"
-                    class="text-primary underline break-all"
+                    class="break-all text-primary underline"
                 >
                     https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory
                 </a>
@@ -85,30 +84,43 @@
                 You can expand the extension sidebar by dragging the left edge to see more of your calendar.
             </li>
             <li>
-                Check out our website for more info and support: <a href="https://calendar.witcc.dev" target="_blank" class="text-primary underline">https://calendar.witcc.dev</a>
+                Check out our website for more info and support:
+                <a href="https://calendar.witcc.dev" target="_blank" class="text-primary underline">https://calendar.witcc.dev</a>
             </li>
         </ul>
     </div>
-    <div class="flex flex-col justify-center items-center gap-3">
+
+    <div class="flex w-full max-w-md flex-col gap-2">
         <SignInWithGoogleButton onclick={signInWithGoogle} disabled={isUsingPasskey} />
         {#if canUsePasskeys}
-            <div class="peak">
-                <Button variant="text" square onclick={tryPasskey} disabled={isUsingPasskey}>
-                    {isUsingPasskey ? 'Waiting…' : 'Sign in with a passkey'}
-                </Button>
+            <div class="flex items-center gap-3 py-1">
+                <span class="h-px flex-1 bg-outline-variant"></span>
+                <span class="text-xs text-on-surface-variant">or</span>
+                <span class="h-px flex-1 bg-outline-variant"></span>
             </div>
+            <button
+                class="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-outline bg-transparent px-5 text-[0.95rem] font-semibold tracking-[0.01em] text-on-surface transition-[background-color,box-shadow] duration-150 hover:enabled:bg-surface-container-high hover:enabled:shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.24)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-50"
+                type="button"
+                onclick={tryPasskey}
+                disabled={isUsingPasskey}
+            >
+                <svg class="h-5 w-5 shrink-0 text-primary" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 1a5 5 0 0 0-5 5c0 2.2 1.4 4.1 3.4 4.7L10 12v2H8v2h2v2l2 2 2-2V10.7A5 5 0 0 0 12 1zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/>
+                </svg>
+                <span>{isUsingPasskey ? 'Waiting…' : 'Sign in with a passkey'}</span>
+            </button>
         {/if}
     </div>
 </div>
 
 <style>
-   .roboto-flex-wit-main {
-        font-size: 32px;
+    .roboto-flex-wit-main {
+        font-size: 28px;
         font-family: "Roboto Flex", sans-serif;
         color: var(--color-primary);
         font-optical-sizing: 144;
         font-weight: 900;
-        line-height: 0;
+        line-height: 1;
         font-style: normal;
         font-variation-settings:
             "slnt" 0,
@@ -122,10 +134,5 @@
             "YTFI" 738,
             "YTLC" 514,
             "YTUC" 712;
-    }
-
-    :global(.peak button) {
-        height: 3rem !important;
-        min-width: 280px;
     }
 </style>
