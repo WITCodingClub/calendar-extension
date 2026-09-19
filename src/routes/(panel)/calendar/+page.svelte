@@ -1632,7 +1632,7 @@
         min-height: 2.5rem;
         padding-top: 0.5rem !important;
         padding-bottom: 0.5rem !important;
-        align-items: flex-start !important;
+        align-items: center !important;
         white-space: pre-line;
         overflow: visible;
     }
