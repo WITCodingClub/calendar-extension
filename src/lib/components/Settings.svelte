@@ -16,6 +16,20 @@
     import ColorPicker from "./ColorPicker.svelte";
     import { resolveUniCalColor, UNI_CAL_DEFAULT_COLOR } from "$lib/uniCalColor";
 
+    const UNI_CAL_REMINDER_DEFAULT_OFFSET = "15:hours";
+    const UNI_CAL_REMINDER_CHOICES = [
+        { text: "15 minutes before", value: "15:minutes" },
+        { text: "30 minutes before", value: "30:minutes" },
+        { text: "1 hour before", value: "1:hours" },
+        { text: "3 hours before", value: "3:hours" },
+        { text: "6 hours before", value: "6:hours" },
+        { text: "15 hours before", value: "15:hours" },
+        { text: "1 day before", value: "1:days" },
+        { text: "2 days before", value: "2:days" },
+        { text: "1 week before", value: "7:days" },
+    ];
+
+
     let userSettings = $state<UserSettings | undefined>(undefined);
     // The calendar page mounts this component again after an environment change,
     // so this is always the session of the current environment.
@@ -40,6 +54,8 @@
     );
     let uniEventsCollapsed = $state(browser ? localStorage.getItem(UNI_EVENTS_COLLAPSED_KEY) === "true" : false);
     let hasLoadedUniCalColor = $state(false);
+    let uniCalReminderMode = $state<"default" | "off" | "custom">("default");
+    let uniCalReminderOffset = $state(UNI_CAL_REMINDER_DEFAULT_OFFSET);
     let isOtherCalendar = $state(browser ? localStorage.getItem('isOtherCalendar') === 'true' : false);
 
     $effect(() => {
@@ -110,6 +126,8 @@
             canUsePasskeys = cached.canUsePasskeys;
             passkeys = cached.passkeys;
             uniCalColor = cached.uniCalColor;
+            uniCalReminderMode = cached.uniCalReminderMode ?? "default";
+            uniCalReminderOffset = cached.uniCalReminderOffset ?? UNI_CAL_REMINDER_DEFAULT_OFFSET;
             hasLoadedUniCalColor = true;
             // Feature flags keep their own in-memory cache, so this sends no request.
             await featureFlags.loadFlags();
@@ -195,6 +213,21 @@
                     if (browser) {
                         localStorage.setItem(UNI_CAL_COLOR_STORAGE_KEY, uniCalColor);
                     }
+                    const storedReminders = calPrefs.uni_cal_global?.reminder_settings;
+                    if (storedReminders == null) {
+                        uniCalReminderMode = "default";
+                        uniCalReminderOffset = UNI_CAL_REMINDER_DEFAULT_OFFSET;
+                    } else if (storedReminders.length === 0) {
+                        uniCalReminderMode = "off";
+                        uniCalReminderOffset = UNI_CAL_REMINDER_DEFAULT_OFFSET;
+                    } else {
+                        const first = storedReminders[0];
+                        const offset = `${first.time}:${first.type}`;
+                        uniCalReminderMode = "custom";
+                        uniCalReminderOffset = UNI_CAL_REMINDER_CHOICES.some((choice) => choice.value === offset)
+                            ? offset
+                            : UNI_CAL_REMINDER_DEFAULT_OFFSET;
+                    }
                 } catch (e) {
                     // Calendar preferences might not exist yet, that's okay
                 } finally {
@@ -211,6 +244,8 @@
                 canUsePasskeys,
                 passkeys: $state.snapshot(passkeys),
                 uniCalColor,
+                uniCalReminderMode,
+                uniCalReminderOffset,
             };
         }
     }
@@ -314,6 +349,53 @@
             snackbar('Failed to update color. Please try again.', undefined, true);
         }
     }
+
+    async function saveUniCalReminder() {
+        if (!hasLoadedUniCalColor) return;
+
+        let reminder_settings: { time: string; type: string; method: string }[] | "default";
+        if (uniCalReminderMode === "default") {
+            reminder_settings = "default";
+        } else if (uniCalReminderMode === "off") {
+            reminder_settings = [];
+        } else {
+            const [time, type] = uniCalReminderOffset.split(":");
+            reminder_settings = [{ time: time || "15", type: type || "hours", method: "notification" }];
+        }
+
+        try {
+            await API.setUniCalGlobalPreference({ reminder_settings });
+            session.updateSettings({
+                uniCalReminderMode,
+                uniCalReminderOffset,
+            });
+            snackbar('University event reminders updated', undefined, true);
+        } catch (error) {
+            console.error('Failed to update university event reminders:', error);
+            snackbar('Failed to update reminders. Please try again.', undefined, true);
+        }
+    }
+
+    const uniCalReminderModeGetterSetter = {
+        get value() { return uniCalReminderMode; },
+        set value(value: string) {
+            if (value !== "default" && value !== "off" && value !== "custom") return;
+            if (value === uniCalReminderMode) return;
+            uniCalReminderMode = value;
+            saveUniCalReminder();
+        }
+    };
+
+    const uniCalReminderOffsetGetterSetter = {
+        get value() { return uniCalReminderOffset; },
+        set value(value: string) {
+            if (value === uniCalReminderOffset) return;
+            uniCalReminderOffset = value;
+            if (uniCalReminderMode === "custom") {
+                saveUniCalReminder();
+            }
+        }
+    };
 
     function toggleUniEventsCollapsed() {
         uniEventsCollapsed = !uniEventsCollapsed;
@@ -844,6 +926,29 @@
                             label="University events color"
                             onchange={(newColor) => handleUniCalColorChange(newColor)}
                         />
+                    </div>
+                </div>
+
+                <div class="flex flex-row items-center justify-between gap-3 rounded-xl bg-surface-container-lowest p-3 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
+                    <div class="flex min-w-0 flex-col gap-1">
+                        <h3 class="m-0 text-sm font-bold text-on-surface">University event reminders</h3>
+                        <p class="m-0 text-xs text-on-surface-variant">Holidays, deadlines, and other campus events. Class reminders stay as they are.</p>
+                    </div>
+                    <div class="flex flex-row flex-wrap items-center justify-end gap-2">
+                        <SelectOutlined label=""
+                            options={[
+                                { text: "Default", value: "default" },
+                                { text: "Off", value: "off" },
+                                { text: "Custom", value: "custom" },
+                            ]}
+                            bind:value={uniCalReminderModeGetterSetter.value}
+                        />
+                        {#if uniCalReminderMode === "custom"}
+                            <SelectOutlined label=""
+                                options={UNI_CAL_REMINDER_CHOICES}
+                                bind:value={uniCalReminderOffsetGetterSetter.value}
+                            />
+                        {/if}
                     </div>
                 </div>
 
