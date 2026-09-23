@@ -5,7 +5,7 @@
     import { API } from "$lib/api";
     import { AuthError, clearLocalData } from "$lib/auth";
     import { EnvironmentManager, ENVIRONMENTS, type Environment } from "$lib/environment";
-    import { featureFlags } from "$lib/featureFlags";
+    import { createFeatureFlagStore, featureFlags } from "$lib/featureFlags";
     import { processedData as storedProcessedData, userSettings as storedUserSettings, icsUrl as storedIcsUrl } from "$lib/store";
     import type { UserSettings } from "$lib/types";
     import { listPasskeys, passkeysSupported, registerPasskey, removePasskey, type PasskeySummary } from "$lib/passkeys";
@@ -14,6 +14,7 @@
     import { getPanelSession, type ConnectedAccount } from "$lib/panelSession";
     import { onMount } from "svelte";
     import ColorPicker from "./ColorPicker.svelte";
+    import OutlookCalendarSection from "./OutlookCalendarSection.svelte";
     import { resolveUniCalColor, UNI_CAL_DEFAULT_COLOR } from "$lib/uniCalColor";
 
     const UNI_CAL_REMINDER_DEFAULT_OFFSET = "15:hours";
@@ -39,6 +40,10 @@
     let authenticatedEnvironments = $state<Environment[]>([]);
     let notificationsDisabled = $state(false);
     let connectedAccounts = $state<ConnectedAccount[]>([]);
+    // Microsoft credentials get their own section, shown only while the flag is on.
+    let googleAccounts = $derived(connectedAccounts.filter(a => a.provider !== 'microsoft'));
+    let microsoftAccounts = $derived(connectedAccounts.filter(a => a.provider === 'microsoft'));
+    const microsoftCalendarEnabled = createFeatureFlagStore('microsoftGraphCalendar');
     let addEmailInput = $state("");
     let showEnvSwitcher = $state<boolean>(false);
     let isRefreshingFlags = $state<boolean>(false);
@@ -587,6 +592,13 @@
         }
     }
 
+    async function refreshConnectedAccounts(): Promise<ConnectedAccount[]> {
+        const accounts = await API.getConnectedAccounts();
+        connectedAccounts = accounts.oauth_credentials || [];
+        session.updateSettings({ connectedAccounts: $state.snapshot(connectedAccounts) });
+        return connectedAccounts;
+    }
+
     async function disconnectAccount(credentialId: string) {
         try {
             await API.disconnectAccount(credentialId);
@@ -595,7 +607,8 @@
             snackbar('Account disconnected', undefined, true);
         } catch (e) {
             console.error('Failed to disconnect account:', e);
-            snackbar('Failed to disconnect account', undefined, true);
+            // disconnectAccount throws with the backend reason, for example the last credential.
+            snackbar(e instanceof Error && e.message ? e.message : 'Failed to disconnect account', undefined, true);
         }
     }
 
@@ -785,9 +798,9 @@
             <p class="m-0 text-sm text-on-surface-variant">Add multiple Google accounts to sync your calendar.</p>
         </div>
 
-        {#if connectedAccounts.length > 0}
+        {#if googleAccounts.length > 0}
             <div class="flex flex-col gap-2">
-                {#each connectedAccounts as account (account.id)}
+                {#each googleAccounts as account (account.id)}
                     <div class={["flex flex-row items-center justify-between gap-3 rounded-xl bg-surface-container-lowest p-3 @max-[30rem]:flex-col @max-[30rem]:items-stretch", account.needs_reauth && "outline outline-1 outline-error"]}>
                         <div class="flex min-w-0 flex-col gap-1">
                             <div class="flex flex-row gap-2 items-center">
@@ -808,7 +821,8 @@
                                     Re-auth
                                 </Button>
                             {/if}
-                            {#if connectedAccounts.length > 1}
+                            <!-- The backend keeps the last Google account. An older backend sends no field. -->
+                            {#if account.removable !== false && googleAccounts.length > 1}
                                 <Button variant="text" onclick={() => disconnectAccount(account.id)}>
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                         <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -835,6 +849,11 @@
             <Button variant="tonal" onclick={addGoogleAccount}>Add Account</Button>
         </div>
     </div>
+
+    <!-- Outlook Calendar Section (microsoftGraphCalendar flag) -->
+    {#if $microsoftCalendarEnabled}
+        <OutlookCalendarSection accounts={microsoftAccounts} refreshAccounts={refreshConnectedAccounts} />
+    {/if}
 
     <!-- Passkeys Section -->
     {#if canUsePasskeys}

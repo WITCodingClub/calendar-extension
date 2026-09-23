@@ -4,12 +4,12 @@
     import { onMount } from 'svelte';
     import { browser } from '$app/environment';
     import { AuthError } from '$lib/auth';
-    import { getGoogleCalendarState } from '$lib/afterSignIn';
+    import { getCalendarState } from '$lib/afterSignIn';
     import { track } from '$lib/telemetry';
 
     async function checkGcalStatus() {
         try {
-            const state = await getGoogleCalendarState();
+            const state = await getCalendarState();
             if (state === 'connected') {
                 goto('/calendar');
             } else if (state === 'needs_reauth') {

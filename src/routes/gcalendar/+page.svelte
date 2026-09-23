@@ -1,18 +1,27 @@
 <script lang="ts">
     import { TextFieldOutlined, Button, snackbar } from 'm3-svelte';
     import { goto } from '$app/navigation';
+    import { resolve } from '$app/paths';
     import { onMount } from 'svelte';
     import { API } from '$lib/api';
     import { AuthError, getUsableJwt } from '$lib/auth';
-    import { hasUsableGoogleCalendar } from '$lib/afterSignIn';
+    import { hasUsableCalendar } from '$lib/afterSignIn';
+    import { createFeatureFlagStore, featureFlags } from '$lib/featureFlags';
+    import { connectOutlookCalendar } from '$lib/outlookCalendar';
     import { track } from '$lib/telemetry';
 
     let emailToSignInWith: string | null = $state(null);
     let emailToSubmit = $state('');
 
+    // The Outlook choice shows only while the microsoftGraphCalendar flag is on.
+    const microsoftCalendarEnabled = createFeatureFlagStore('microsoftGraphCalendar');
+    let provider = $state<'google' | 'microsoft'>('google');
+    let isConnectingOutlook = $state(false);
+    let useOutlook = $derived($microsoftCalendarEnabled && provider === 'microsoft');
+
     async function checkGcalStatus() {
         try {
-            if (await hasUsableGoogleCalendar()) {
+            if (await hasUsableCalendar()) {
                 goto('/calendar');
             }
         } catch (err) {
@@ -46,12 +55,40 @@
 
     async function onStorageChanged(changes: { [key: string]: chrome.storage.StorageChange }) {
         if (changes.oauth_status?.newValue !== 'success') return;
+        // Both flows end on /oauth/success, and the service worker sets the
+        // status for either one. The Outlook flow stores its own email.
+        if (provider === 'microsoft') return;
         await chrome.storage.local.set({
             oauth_email: emailToSignInWith || emailToSubmit,
         });
         // Both ways to connect set oauth_status, so count it here only.
         track('google_calendar_connected');
         goto('/calendar');
+    }
+
+    // Uses the same connect flow as the Outlook section in Settings.
+    async function connectOutlook() {
+        if (isConnectingOutlook) return;
+        isConnectingOutlook = true;
+        try {
+            const result = await connectOutlookCalendar(
+                async () => (await API.getConnectedAccounts()).oauth_credentials ?? []
+            );
+            if (result.status === 'connected') {
+                await chrome.storage.local.set({ oauth_email: result.email });
+                track('outlook_calendar_connected');
+                goto(resolve('/calendar'));
+            } else if (result.status === 'cancelled') {
+                snackbar('Outlook connection cancelled', undefined, true);
+            } else if (result.status === 'unavailable') {
+                provider = 'google';
+                snackbar('Outlook calendar sync is not available for your account', undefined, true);
+            } else {
+                snackbar(result.error, undefined, true);
+            }
+        } finally {
+            isConnectingOutlook = false;
+        }
     }
 
     async function useDifferentEmail() {
@@ -125,24 +162,43 @@
         }
         checkGcalStatus();
         tryForEmail();
+        // A failed load leaves every flag off, so the page stays Google only.
+        featureFlags.loadFlags();
     }
 </script>
 
 <div class="flex flex-col items-center justify-center h-screen">
 
-    <h1 class="text-2xl font-bold text-center text-primary mb-5">Enter your Google email</h1>
-    {#if !emailToSignInWith}
-        <TextFieldOutlined label="" placeholder="example@gmail.com" bind:value={emailToSubmit} />
+    {#if $microsoftCalendarEnabled}
+        <div class="flex flex-row gap-2 mb-5 peak">
+            <Button variant={provider === 'google' ? 'filled' : 'outlined'} square onclick={() => (provider = 'google')}>Google Calendar</Button>
+            <Button variant={provider === 'microsoft' ? 'filled' : 'outlined'} square onclick={() => (provider = 'microsoft')}>Outlook</Button>
+        </div>
     {/if}
 
-    <div class="flex justify-center mt-3 peak flex-col gap-2">
-        {#if emailToSignInWith}
-            <Button variant="filled" square onclick={submitEmail}>Continue with {emailToSignInWith}</Button>
-            <Button variant="outlined" square onclick={useDifferentEmail}>Use a different email</Button>
-        {:else}
-            <Button variant="filled" square onclick={submitEmail}>Continue</Button>
+    {#if useOutlook}
+        <h1 class="text-2xl font-bold text-center text-primary mb-2">Connect your Outlook calendar</h1>
+        <p class="text-sm text-on-surface-variant text-center max-w-xs">Sign in with your WIT Microsoft account. We add a WIT Courses calendar to Outlook.</p>
+        <div class="flex justify-center mt-3 peak flex-col gap-2">
+            <Button variant="filled" square onclick={connectOutlook} disabled={isConnectingOutlook}>
+                {isConnectingOutlook ? 'Waiting…' : 'Continue with Outlook'}
+            </Button>
+        </div>
+    {:else}
+        <h1 class="text-2xl font-bold text-center text-primary mb-5">Enter your Google email</h1>
+        {#if !emailToSignInWith}
+            <TextFieldOutlined label="" placeholder="example@gmail.com" bind:value={emailToSubmit} />
         {/if}
-    </div>
+
+        <div class="flex justify-center mt-3 peak flex-col gap-2">
+            {#if emailToSignInWith}
+                <Button variant="filled" square onclick={submitEmail}>Continue with {emailToSignInWith}</Button>
+                <Button variant="outlined" square onclick={useDifferentEmail}>Use a different email</Button>
+            {:else}
+                <Button variant="filled" square onclick={submitEmail}>Continue</Button>
+            {/if}
+        </div>
+    {/if}
 </div>
 
 <style>
