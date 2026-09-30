@@ -13,7 +13,6 @@
     import { Button, Chip, Switch, TextFieldOutlined, VariableTabs } from 'm3-svelte';
     import FriendsToolbar from '$lib/components/FriendsToolbar.svelte';
     import FriendsManagePanel from '$lib/components/FriendsManagePanel.svelte';
-    import OpenInTabButton from '$lib/components/OpenInTabButton.svelte';
 
     // The session keeps the friend list and schedules while the user moves
     // between this page and the calendar page.
@@ -917,7 +916,6 @@
                     </Button>
                 </div>
             </div>
-            <OpenInTabButton view={tab} />
         </header>
         <div class="bg-surface-container-lowest">
             <VariableTabs
