@@ -2,6 +2,26 @@
 @import url("m3-svelte/misc/recommended-styles.css");
 /*  */
 
+@supports not (appearance: base-select) {
+  .m3-container > select.m3-font-body-large {
+    appearance: none;
+    padding-inline-end: 2.5rem;
+  }
+
+  .m3-container:has(> select.m3-font-body-large)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    inset-inline-end: 1rem;
+    width: 0.625rem;
+    height: 0.375rem;
+    transform: translateY(-50%);
+    background-color: var(--secondary-color);
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    pointer-events: none;
+  }
+}
+
 iconify-icon {
     display: inline-block;
     width: 1em;
