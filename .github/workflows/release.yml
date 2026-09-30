@@ -50,7 +50,7 @@ jobs:
         env:
           VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: |
-          cd extension
+          cd extension-firefox
           zip -r "../wit-calendar-${VERSION}-firefox.zip" .
 
       - name: Create GitHub Release
