@@ -18,7 +18,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@cattn/adapter-extension": "^2.1.1",
+    "@cattn/adapter-extension": "^2.1.2",
     "@eslint/compat": "1.4.0",
     "@eslint/js": "9.36.0",
     "@sveltejs/adapter-auto": "6.1.0",

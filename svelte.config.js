@@ -17,6 +17,7 @@ const config = {
 			fallback: undefined,
 			precompress: false,
 			strict: true,
+			splitBuilds: true,
 			firefox: {
 				permissions: {
 					add: ['cookies', 'contextualIdentities']
