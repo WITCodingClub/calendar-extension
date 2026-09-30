@@ -727,8 +727,7 @@
             }
             incomingRequests = requestsResponse.incoming ?? [];
             outgoingRequests = requestsResponse.outgoing ?? [];
-            const pending = incomingRequests.length + outgoingRequests.length;
-            if (!manageOpenedForPending && pending > 0) {
+            if (!manageOpenedForPending && incomingRequests.length > 0) {
                 manageOpen = true;
                 manageOpenedForPending = true;
             }
