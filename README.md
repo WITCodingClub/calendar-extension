@@ -25,10 +25,9 @@ You can also manage event alerts, colors, and titles from within the extension.
 ## Development
 1. Install [npm/node.js](https://nodejs.org/en/download)
 2. Run ``npm i``
-3. Run ``npm run build-dev`` to build the extension. Built files will be in ``extension/``
-4. optional: if you're on firefox, run ``npm run build-firefox`` instead.
+3. Run ``npm run build`` to build the extension. Built files will be in ``extension/`` && ``extension-firefox/``
 
-``npm run build`` is the release build and leaves out the manifest ``key``, so
+``npm run build-prod`` is the release build and leaves out the manifest ``key``, so
 Chrome gives the unpacked copy a random extension ID. Google sign-in is tied to
 one ID — the published one — so a plain build fails at sign-in with
 ``redirect_uri_mismatch``. ``build-dev`` puts the key back and gives you the same

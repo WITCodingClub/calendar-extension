@@ -33,7 +33,7 @@ jobs:
 
       - name: Build Chrome extension
         working-directory: .
-        run: npm run build
+        run: npm run build-prod
 
       - name: Create Chrome zip artifact
         env:

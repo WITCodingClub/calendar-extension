@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "npm run build-dev && npm run build-firefox",
+    "build-prod": "vite build",
     "build-dev": "vite build && node scripts/patch-dev.js",
     "build-firefox": "vite build",
     "patch-dev": "node scripts/patch-dev.js",
