@@ -15,7 +15,7 @@
     import FriendsManagePanel from '$lib/components/FriendsManagePanel.svelte';
 
     // The session keeps the friend list and schedules while the user moves
-    // between this page and the calendar page.
+    // between this page and the calendar page. 
     const session = getPanelSession();
     let currentTermId = $state<string | undefined>(undefined);
     let termsFetched = $state(false);
