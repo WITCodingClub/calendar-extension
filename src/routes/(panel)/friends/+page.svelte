@@ -794,6 +794,20 @@
         }
     }
 
+    // The server reports an existing friendship and a pending request with the
+    // same "already exists" message, and records only expose id and name, so an
+    // email can only be told apart by whether any request is pending at all.
+    function friendRequestErrorMessage(error: unknown, value: string): string {
+        const message = error instanceof Error ? error.message : '';
+        if (/RecordNotFound|not found/i.test(message)) {
+            return 'No account associated with the email or user ID entered was found.';
+        }
+        if (/already exists/i.test(message)) {
+            return "You're already friends with this user or have a pending friend request with them.";
+        }
+        return message || 'Failed to send friend request.';
+    }
+
     async function sendFriendRequest() {
         const value = sendFriendIdInput.trim();
         if (!value) return;
@@ -808,7 +822,7 @@
             await loadFriendsAndRequests();
         } catch (error) {
             console.error('Failed to send friend request', error);
-            pageError = error instanceof Error ? error.message : 'Failed to send friend request.';
+            pageError = friendRequestErrorMessage(error, value);
         } finally {
             actionLoadingId = '';
         }
@@ -938,7 +952,10 @@
             {pendingRequestCount}
             ontoggleFriend={toggleFriend}
             onsetPrimary={setPrimary}
-            ontoggleManage={() => { manageOpen = !manageOpen; }}
+            ontoggleManage={() => {
+                manageOpen = !manageOpen;
+                if (!manageOpen) pageError = '';
+            }}
         />
         </div>
     </section>
