@@ -1,0 +1,73 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { getPanelUi } from '$lib/panelUi.svelte';
+	import { processedData, userSettings } from '$lib/store';
+	import { dateLabel, weekDates } from '$lib/calendarDates';
+	import { meetingMessage, minutesTime, timeMinutes } from './availability';
+	import FreePeriodResult from './FreePeriodResult.svelte';
+	import MeetingEventForm from './MeetingEventForm.svelte';
+	import PreviewDialog from './PreviewDialog.svelte';
+
+	const ui = getPanelUi();
+	const militaryTime = $derived($userSettings?.military_time ?? true);
+	const participants = $derived(ui.people.filter((person) => ui.selected.includes(person.id)));
+	const ownCourses = $derived(
+		$processedData.find((item) => String(item.termId) === ui.scheduleTerm)?.responseData.classes
+	);
+	const message = $derived(
+		ui.meetingDraft ? meetingMessage(ui, ownCourses, ui.meetingDraft.slot) : undefined
+	);
+
+	function preview() {
+		const draft = ui.meetingDraft;
+		if (!draft || message) return;
+		const start = timeMinutes(draft.slot.start)!;
+		const end = timeMinutes(draft.slot.end)!;
+		const slot = {
+			...draft.slot,
+			id: `${draft.slot.date}-${start}-${end}`,
+			day: dateLabel(draft.slot.date),
+			start: minutesTime(start),
+			end: minutesTime(end)
+		};
+		draft.slot = slot;
+		ui.starts[draft.period.id] = start;
+		ui.highlightedSlot = { ...slot };
+		ui.week = weekDates(slot.date)[0];
+		ui.term = ui.currentTerm ?? ui.term;
+		ui.comparison = true;
+		ui.meetingEditorOpen = false;
+		void goto(resolve('/calendar'));
+	}
+</script>
+
+{#if ui.meetingDraft && ui.meetingEditorOpen}
+	<PreviewDialog
+		bind:open={ui.meetingEditorOpen}
+		title={ui.meetingDetails ? 'Edit / confirm meeting' : 'Choose meeting time'}
+	>
+		{#if ui.meetingDetails}
+			<MeetingEventForm
+				slot={ui.meetingDraft.slot}
+				bind:title={ui.meetingDraft.title}
+				bind:location={ui.meetingDraft.location}
+				{participants}
+				{militaryTime}
+				{message}
+				onback={() => (ui.meetingDetails = false)}
+				onview={preview}
+			/>
+		{:else}
+			<FreePeriodResult
+				period={ui.meetingDraft.period}
+				bounds={ui.scheduleTerm ? ui.termBounds[ui.scheduleTerm] : undefined}
+				bind:slot={ui.meetingDraft.slot}
+				{militaryTime}
+				{message}
+				onadd={() => (ui.meetingDetails = true)}
+				onview={preview}
+			/>
+		{/if}
+	</PreviewDialog>
+{/if}

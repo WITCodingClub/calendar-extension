@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import PanelShell from '$lib/components/PanelShell.svelte';
+	import { PanelUi, setPanelUi } from '$lib/panelUi.svelte';
 	import { featureFlags } from '$lib/featureFlags';
 	import { PanelSession, setPanelSession } from '$lib/panelSession';
 	import { enrolledTerms, icsUrl, processedData, userSettings } from '$lib/store';
@@ -10,11 +12,16 @@
 	// friends pages, so their session lasts until the panel closes.
 	let session = $state.raw(new PanelSession());
 	setPanelSession(() => session);
+	let ui = $state.raw(new PanelUi());
+	setPanelUi(() => ui);
 
 	onMount(() => {
 		function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>) {
 			const change = changes.environment_data;
-			if (!change || change.oldValue?.current_environment === change.newValue?.current_environment) {
+			if (
+				!change ||
+				change.oldValue?.current_environment === change.newValue?.current_environment
+			) {
 				return;
 			}
 			// Drop the data of the environment that the user left, then start a
@@ -26,6 +33,7 @@
 			enrolledTerms.set([]);
 			featureFlags.clearCache();
 			session = new PanelSession();
+			ui = new PanelUi();
 		}
 
 		chrome.storage.onChanged.addListener(onStorageChanged);
@@ -37,5 +45,5 @@
 </script>
 
 {#key session}
-	{@render children()}
+	<PanelShell>{@render children()}</PanelShell>
 {/key}
