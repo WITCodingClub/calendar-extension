@@ -21,6 +21,7 @@ export const TELEMETRY_EVENTS = [
     'calendar_choice_google',
     'calendar_choice_other',
     'google_calendar_connected',
+    'outlook_calendar_connected',
     'schedule_import_succeeded',
     'schedule_import_failed',
     'calendar_link_copied'
