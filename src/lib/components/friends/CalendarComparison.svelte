@@ -322,7 +322,7 @@
 		{latestHour}
 		dayOrder={days}
 		{dates}
-		earliestClassOffsetRem={8}
+		earliestClassOffsetRem={0}
 		focusOffsetRem={proposedOffset}
 		onselect={(item, day) => {
 			if (item.preview) onedit();
