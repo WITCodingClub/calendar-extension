@@ -1,0 +1,53 @@
+.friends-preview {
+	--m3-util-background: rgb(var(--m3-scheme-surface-container-low));
+}
+
+.friends-preview .preview-fields > .m3-container,
+.friends-preview .preview-form-stack > .m3-container {
+	min-width: 0;
+	width: 100%;
+}
+
+.friends-preview .preview-fields input,
+.friends-preview .preview-form-stack input {
+	min-width: 0;
+}
+
+.friends-preview .preview-fields input[type='number'] {
+	padding-block: 0;
+}
+
+.friends-preview .preview-list .m3-container .body {
+	min-width: 0;
+}
+
+.friends-preview .preview-list .supporting {
+	overflow-wrap: anywhere;
+}
+
+.friends-preview .preview-group-checkbox.partial::after {
+	content: '';
+	position: absolute;
+	top: 0.5rem;
+	left: 0.25rem;
+	width: 0.625rem;
+	height: 0.125rem;
+	background: rgb(var(--m3-scheme-primary));
+	pointer-events: none;
+}
+
+.friends-preview .preview-drawer > .m3-container {
+	flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+	.friends-preview .preview-tabs > .m3-container {
+		padding-inline: 0.15rem;
+	}
+	.friends-preview .preview-tabs label {
+		padding-inline: 0.35rem;
+	}
+	.friends-preview .preview-tabs label span {
+		font-size: 0.75rem;
+	}
+}
