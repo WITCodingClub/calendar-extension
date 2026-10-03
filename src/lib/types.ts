@@ -10,7 +10,7 @@ interface Course {
     course_number: number;
     schedule_type: string;
     term: Term;
-    professor: Professor;
+    professor: Professor | null;
     meeting_times: MeetingTime[];
 }
 
@@ -31,7 +31,7 @@ interface FeatureFlagsResponse {
 }
 
 interface Location {
-    building: Building;
+    building: Building | null;
     rooms: string[];
 }
 
@@ -39,8 +39,8 @@ interface MeetingTime {
     id: number | string;  // Can be internal ID or public_id
     begin_time: string;
     end_time: string;
-    start_date: string;
-    end_date: string;
+    start_date: string | null;
+    end_date: string | null;
     location: Location;
     monday: boolean;
     tuesday: boolean;
@@ -179,16 +179,16 @@ interface CurrentTerm {
     name: string;
     id: number;
     pub_id?: string;
-    start_date?: string;
-    end_date?: string;
+    start_date?: string | null;
+    end_date?: string | null;
 }
 
 interface NextTerm {
     name: string;
     id: number;
     pub_id?: string;
-    start_date?: string;
-    end_date?: string;
+    start_date?: string | null;
+    end_date?: string | null;
 }
 
 interface TermResponse {

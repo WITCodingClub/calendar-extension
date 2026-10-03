@@ -3,7 +3,8 @@
 	import { Switch, TextFieldOutlined } from 'm3-svelte';
 	import { formatTime } from './formatTime';
 	import { timeMinutes, minutesTime } from './availability';
-	import { type MeetingPreferences as Preferences } from './fixtures';
+	import { type MeetingPreferences as Preferences } from './types';
+	import { validDate } from '$lib/friendSchedule';
 	let {
 		preferences = $bindable(),
 		militaryTime,
@@ -13,6 +14,16 @@
 		militaryTime: boolean;
 		bounds?: { start?: string; end?: string };
 	} = $props();
+	const dateError = $derived(
+		!validDate(preferences.from) ||
+			!validDate(preferences.until) ||
+			preferences.from > preferences.until ||
+			Boolean(bounds?.start && preferences.from < bounds.start) ||
+			Boolean(bounds?.end && preferences.until > bounds.end)
+	);
+	const start = $derived(timeMinutes(preferences.dailyStart));
+	const end = $derived(timeMinutes(preferences.dailyEnd));
+	const timeError = $derived(start === undefined || end === undefined || start >= end);
 
 	function normalizeTime(value: string, format = militaryTime) {
 		const minutes = timeMinutes(value);
@@ -37,6 +48,7 @@
 	>
 		<TextFieldOutlined
 			label="From"
+			error={dateError}
 			type="date"
 			bind:value={preferences.from}
 			min={bounds?.start}
@@ -44,6 +56,7 @@
 		/>
 		<TextFieldOutlined
 			label="Until"
+			error={dateError}
 			type="date"
 			bind:value={preferences.until}
 			min={bounds?.start}
@@ -51,6 +64,9 @@
 		/>
 		<TextFieldOutlined
 			label="Duration (minutes)"
+			error={!preferences.duration.trim() ||
+				!Number.isInteger(Number(preferences.duration)) ||
+				Number(preferences.duration) <= 0}
 			type="number"
 			value={preferences.duration}
 			oninput={(event) => (preferences.duration = event.currentTarget.value)}
@@ -59,11 +75,13 @@
 		/>
 		<TextFieldOutlined
 			label="Daily start"
+			error={timeError}
 			bind:value={preferences.dailyStart}
 			onblur={() => (preferences.dailyStart = normalizeTime(preferences.dailyStart))}
 		/>
 		<TextFieldOutlined
 			label="Daily end"
+			error={timeError}
 			bind:value={preferences.dailyEnd}
 			onblur={() => (preferences.dailyEnd = normalizeTime(preferences.dailyEnd))}
 		/>
@@ -76,6 +94,9 @@
 			<div class="preview-fields min-w-0 grid">
 				<TextFieldOutlined
 					label="Buffer (minutes)"
+					error={!preferences.buffer.trim() ||
+						!Number.isInteger(Number(preferences.buffer)) ||
+						Number(preferences.buffer) < 0}
 					type="number"
 					value={preferences.buffer}
 					oninput={(event) => (preferences.buffer = event.currentTarget.value)}

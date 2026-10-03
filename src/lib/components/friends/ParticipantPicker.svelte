@@ -62,7 +62,16 @@
 					<ListItem
 						label
 						headline={person.name}
-						supporting={person.id === 'you' ? 'Include your own schedule' : 'Full schedule'}
+						supporting={ui.scheduleTerm && selected.includes(person.id)
+							? (ui.scheduleErrors[ui.scheduleTerm]?.[person.id] ??
+								(ui.scheduleStatus[ui.scheduleTerm]?.[person.id] === 'loading'
+									? 'Loading schedule…'
+									: person.id === 'you'
+										? 'Include your own schedule'
+										: 'Full schedule'))
+							: person.id === 'you'
+								? 'Include your own schedule'
+								: 'Full schedule'}
 					>
 						{#snippet leading()}<Checkbox
 								><input type="checkbox" bind:group={selected} value={person.id} /></Checkbox
@@ -73,8 +82,15 @@
 			{#if ui.friendsLoading}<p class="text-sm text-on-surface-variant" role="status">
 					Loading friends…
 				</p>{/if}
-			{#if ui.friendError}<p class="text-sm text-error" role="alert">{ui.friendError}</p>
+			{#if ui.friendError || ui.friendsError}<p class="text-sm text-error" role="alert">
+					{ui.friendError || ui.friendsError}
+				</p>
 				<Button variant="text" onclick={() => ui.friendActions?.reload()}>Try again</Button>{/if}
+			{#if ui.scheduleTerm && selected.some((id) => ui.scheduleErrors[ui.scheduleTerm!]?.[id])}
+				<Button variant="text" onclick={() => ui.friendActions?.retrySchedules()}
+					>Reload schedules</Button
+				>
+			{/if}
 			<Button variant="text" onclick={() => (selected = ['you'])}>Clear friends</Button>
 		</div>
 	</PreviewDialog>

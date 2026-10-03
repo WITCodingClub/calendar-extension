@@ -1,7 +1,7 @@
 import { getContext, setContext } from 'svelte';
 import { API } from './api';
 import type { PasskeySummary } from './passkeys';
-import type { Course, FriendIdentity, TermResponse } from './types';
+import type { Course, FriendIdentity, ProcessedEvents, TermResponse } from './types';
 
 export type ConnectedAccount = {
     id: string;
@@ -48,15 +48,35 @@ export class PanelSession {
     readonly schedules: Record<string, Record<string, Course[]>> = {};
 
     #terms: Promise<TermResponse> | undefined;
+    #processed = new Map<string, Promise<ProcessedEvents>>();
+    readonly ownScheduleVersions: Record<string, number> = {};
+
+    invalidateOwnSchedule(term: string): void {
+        this.ownScheduleVersions[term] = (this.ownScheduleVersions[term] ?? 0) + 1;
+        this.#processed.delete(term);
+    }
+
+    loadProcessedEvents(term: string): Promise<ProcessedEvents> {
+        const pending = this.#processed.get(term);
+        if (pending) return pending;
+        const request = API.getProcessedEvents(term).finally(() => {
+            if (this.#processed.get(term) === request) this.#processed.delete(term);
+        });
+        this.#processed.set(term, request);
+        return request;
+    }
 
     // Both pages need the terms. They share one request, and a failed request
     // is not kept, so the next call tries again.
-    loadTerms(): Promise<TermResponse> {
-        this.#terms ??= API.getTerms().catch((error) => {
-            this.#terms = undefined;
+    loadTerms(force = false): Promise<TermResponse> {
+        if (force) this.#terms = undefined;
+        if (this.#terms) return this.#terms;
+        const request = API.getTerms().catch((error) => {
+            if (this.#terms === request) this.#terms = undefined;
             throw error;
         });
-        return this.#terms;
+        this.#terms = request;
+        return request;
     }
 
     // Changes loaded settings data. Does nothing before a full load, so a

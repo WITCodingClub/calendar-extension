@@ -1,398 +1,385 @@
 <script lang="ts">
 	import { API } from '$lib/api';
 	import { processedData as storedProcessedData } from '$lib/store';
-	import type { Course, DayItem } from '$lib/types';
+	import type { Course } from '$lib/types';
+	import { mapFriendCourses, validateCourses, validateTermBounds } from '$lib/friendSchedule';
+	import { friendRequestErrorMessage, requestInputMessage } from '$lib/friendData';
 	import { getPanelSession } from '$lib/panelSession';
+	import { snackbar } from 'm3-svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { onMount, untrack } from 'svelte';
 	import { getPanelUi } from '$lib/panelUi.svelte';
 	const session = getPanelSession();
 	const ui = getPanelUi();
 	let { loadSchedules = false }: { loadSchedules?: boolean } = $props();
 	const selected = $derived(ui.scheduleTerm);
-	let schedulesLoadVersion = 0;
-	let ownLoadingTerm: string | undefined;
-	type RawFriendMeeting = {
-		id?: number | string;
-		begin_time: string;
-		end_time: string;
-		day_of_week?: string;
-		start_date?: string;
-		end_date?: string;
-		monday?: boolean;
-		tuesday?: boolean;
-		wednesday?: boolean;
-		thursday?: boolean;
-		friday?: boolean;
-		saturday?: boolean;
-		sunday?: boolean;
-		color?: string;
-		title_overrides?: Partial<Record<DayItem['key'], string>>;
-		location?: {
-			building?: {
-				name?: string;
-				abbreviation?: string;
-			};
-			room?: string;
-			rooms?: string[];
-		};
-	};
+	let listsVersion = 0;
+	let termsVersion = 0;
+	const inFlight = new SvelteMap<string, Promise<void>>();
+	const generations: Record<string, number> = {};
+	const waiting: Array<() => void> = [];
+	let running = 0;
 
-	type RawFriendCourse = {
-		title: string;
-		subject?: string;
-		prefix?: string;
-		course_number?: number | string;
-		schedule_type?: string;
-		professor?: {
-			first_name?: string;
-			last_name?: string;
-			email?: string;
-		};
-		term?: {
-			uid?: number | string;
-			season?: string;
-			year?: number | string;
-		};
-		instructors?: Array<{
-			first_name?: string;
-			last_name?: string;
-			email?: string;
-		}>;
-		meeting_times?: RawFriendMeeting[];
-	};
+	function report(message: string) {
+		snackbar(message, undefined, true);
+	}
 
-	function parseTimeToMinutes(timeStr: string): number {
-		const trimmed = timeStr.trim();
-		const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-		if (ampmMatch) {
-			let hours = Number(ampmMatch[1]);
-			const minutes = Number(ampmMatch[2]);
-			const isPm = ampmMatch[3].toUpperCase() === 'PM';
-			if (hours === 12) hours = 0;
-			const total = hours + (isPm ? 12 : 0);
-			return total * 60 + minutes;
+	function errorMessage(operation: string, error: unknown, retry: string) {
+		return `${operation}: ${error instanceof Error ? error.message : 'Request failed'}. ${retry}`;
+	}
+
+	async function withScheduleSlot(action: () => Promise<void>) {
+		if (running >= 4) await new Promise<void>((resolve) => waiting.push(resolve));
+		else ++running;
+		try {
+			await action();
+		} finally {
+			const next = waiting.shift();
+			if (next) next();
+			else --running;
 		}
-		const parts = trimmed.split(':');
-		const h = Number(parts[0]);
-		const m = Number(parts[1] ?? 0);
-		return h * 60 + m;
 	}
 
-	function to24Hour(timeStr: string): string {
-		const mins = parseTimeToMinutes(timeStr);
-		return minutesToHHMM(mins);
-	}
-
-	function minutesToHHMM(total: number): string {
-		const h = Math.floor(total / 60);
-		const m = total % 60;
-		return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-	}
-
-	function mapFriendCourses(
-		data: { processed_courses?: RawFriendCourse[]; classes?: RawFriendCourse[] },
-		friendId: string
-	): Course[] {
-		const processedCourses = Array.isArray(data?.processed_courses)
-			? (data.processed_courses as RawFriendCourse[])
-			: Array.isArray(data?.classes)
-				? data.classes
-				: [];
-		return processedCourses.map((c, ci: number) => ({
-			title: c.title,
-			prefix: c.subject ?? c.prefix ?? '',
-			course_number: Number(c.course_number ?? 0),
-			schedule_type: c.schedule_type ?? '',
-			term: {
-				uid: Number(c.term?.uid ?? 0),
-				season: c.term?.season ?? '',
-				year: Number(c.term?.year ?? 0)
-			},
-			professor: {
-				first_name: c.professor?.first_name ?? c.instructors?.[0]?.first_name ?? '',
-				last_name: c.professor?.last_name ?? c.instructors?.[0]?.last_name ?? '',
-				email: c.professor?.email ?? c.instructors?.[0]?.email ?? ''
-			},
-			meeting_times: (Array.isArray(c.meeting_times) ? c.meeting_times : []).map(
-				(m, mi: number) => {
-					const begin = to24Hour(m.begin_time);
-					const end = to24Hour(m.end_time);
-					const dayKey = String(m.day_of_week ?? '').toLowerCase() as DayItem['key'];
-					const hasDayFlags =
-						m.monday !== undefined ||
-						m.tuesday !== undefined ||
-						m.wednesday !== undefined ||
-						m.thursday !== undefined ||
-						m.friday !== undefined ||
-						m.saturday !== undefined ||
-						m.sunday !== undefined;
-					const mappedRooms = m.location?.rooms;
-					return {
-						id: m.id ?? `${friendId}-${ci}-${mi}-${dayKey}`,
-						begin_time: begin,
-						end_time: end,
-						start_date: m.start_date ?? '',
-						end_date: m.end_date ?? '',
-						location: {
-							building: {
-								name: m.location?.building?.name ?? '',
-								abbreviation: m.location?.building?.abbreviation ?? ''
-							},
-							rooms: Array.isArray(mappedRooms)
-								? mappedRooms
-								: m.location?.room
-									? [m.location.room]
-									: []
-						},
-						monday: hasDayFlags ? Boolean(m.monday) : dayKey === 'monday',
-						tuesday: hasDayFlags ? Boolean(m.tuesday) : dayKey === 'tuesday',
-						wednesday: hasDayFlags ? Boolean(m.wednesday) : dayKey === 'wednesday',
-						thursday: hasDayFlags ? Boolean(m.thursday) : dayKey === 'thursday',
-						friday: hasDayFlags ? Boolean(m.friday) : dayKey === 'friday',
-						saturday: hasDayFlags ? Boolean(m.saturday) : dayKey === 'saturday',
-						sunday: hasDayFlags ? Boolean(m.sunday) : dayKey === 'sunday',
-						color: m.color,
-						title_overrides: m.title_overrides
-					};
-				}
-			)
-		}));
+	function discardFriend(id: string) {
+		for (const term of new Set([
+			...Object.keys(ui.friendSchedules),
+			...Object.keys(session.schedules),
+			...Object.keys(ui.scheduleStatus)
+		])) {
+			const key = `${term}:${id}`;
+			generations[key] = (generations[key] ?? 0) + 1;
+			inFlight.delete(key);
+			delete ui.friendSchedules[term]?.[id];
+			delete session.schedules[term]?.[id];
+			delete ui.scheduleStatus[term]?.[id];
+			delete ui.scheduleErrors[term]?.[id];
+		}
 	}
 
 	async function loadFriendsAndRequests(useCachedFriends = false) {
-		ui.friendError = '';
+		if (!session.active) return;
+		const version = ++listsVersion;
+		const fresh = () => session.active && version === listsVersion;
 		const cachedFriends = useCachedFriends ? session.friends : undefined;
-		if (cachedFriends) {
-			ui.friends = cachedFriends;
-		}
+		if (cachedFriends) ui.friends = cachedFriends;
 		ui.friendsLoading = !cachedFriends;
 		ui.requestsLoading = true;
-		try {
-			const [friendsResponse, requestsResponse] = await Promise.all([
-				cachedFriends ? Promise.resolve(undefined) : API.getFriends(),
-				API.getFriendRequests()
-			]);
-			if (friendsResponse) {
-				const friends = friendsResponse.friends ?? [];
-				ui.friends = friends;
-				session.friends = friends;
-			}
-			ui.incomingRequests = requestsResponse.incoming ?? [];
-			if (!session.active) return;
-			ui.outgoingRequests = requestsResponse.outgoing ?? [];
-			const ids = new Set(['you', ...ui.friends.map((friend) => friend.id)]);
-			ui.selected = ui.selected.filter((id) => ids.has(id));
-			ui.groups = ui.groups.map((group) => ({
-				...group,
-				members: group.members.filter((id) => ids.has(id))
-			}));
-			for (const term of Object.keys(ui.friendSchedules)) {
-				for (const id of Object.keys(ui.friendSchedules[term])) {
-					if (!ids.has(id)) {
-						delete ui.friendSchedules[term][id];
-						delete session.schedules[term]?.[id];
-						delete ui.scheduleStatus[term]?.[id];
-					}
+		ui.friendsError = '';
+		ui.requestsError = '';
+		await Promise.all([
+			(async () => {
+				try {
+					const friends = cachedFriends ?? (await API.getFriends()).friends;
+					if (!fresh()) return;
+					const ids = new Set(['you', ...friends.map((friend) => friend.id)]);
+					const removed = ui.selected.some((id) => !ids.has(id));
+					for (const friend of ui.friends) if (!ids.has(friend.id)) discardFriend(friend.id);
+					ui.friends = friends;
+					session.friends = friends;
+					ui.selected = ui.selected.filter((id) => ids.has(id));
+					ui.groups = ui.groups.map((group) => ({
+						...group,
+						members: group.members.filter((id) => ids.has(id))
+					}));
+					if (removed)
+						report('A selected friend is no longer available and was removed from planning.');
+				} catch (error) {
+					console.error('Failed to load friends data', error);
+					if (!fresh()) return;
+					ui.friendsError = errorMessage(
+						'Could not load friends',
+						error,
+						'Reload friends to try again.'
+					);
+					report(ui.friendsError);
+				} finally {
+					if (fresh()) ui.friendsLoading = false;
 				}
-			}
-		} catch (error) {
-			console.error('Failed to load friends data', error);
-			ui.friendError = 'Failed to load friends data.';
-		} finally {
-			ui.friendsLoading = false;
-			ui.requestsLoading = false;
-		}
+			})(),
+			(async () => {
+				try {
+					const requests = await API.getFriendRequests();
+					if (!fresh()) return;
+					ui.incomingRequests = requests.incoming;
+					ui.outgoingRequests = requests.outgoing;
+				} catch (error) {
+					console.error('Failed to load friends data', error);
+					if (!fresh()) return;
+					ui.requestsError = errorMessage(
+						'Could not load requests',
+						error,
+						'Reload requests to try again.'
+					);
+					report(ui.requestsError);
+				} finally {
+					if (fresh()) ui.requestsLoading = false;
+				}
+			})()
+		]);
 	}
 
-	async function loadFriendSchedules(termUid: string) {
-		const loadVersion = ++schedulesLoadVersion;
-		const cachedSchedules = (session.schedules[termUid] ??= {});
-		// Only friends without a cached schedule for this term need a request.
-		const friends = ui.friends.filter((friend) => ui.selected.includes(friend.id));
-		ui.friendSchedules[termUid] ??= {};
-		ui.scheduleStatus[termUid] ??= {};
-		try {
-			const coursesByFriend = await Promise.all(
-				friends.map(async (friend) => {
-					const cachedCourses = cachedSchedules[friend.id];
-					if (cachedCourses) {
-						ui.friendSchedules[termUid][friend.id] = cachedCourses;
-						ui.scheduleStatus[termUid][friend.id] = 'loaded';
-						return { id: friend.id, courses: cachedCourses };
-					}
-					ui.scheduleStatus[termUid][friend.id] = 'loading';
-					try {
-						const response = await API.getFriendProcessedEvents(friend.id, termUid);
-						const courses = mapFriendCourses(response, friend.id);
-						if (!session.active || !ui.friends.some((person) => person.id === friend.id))
-							return { id: friend.id, courses: [] as Course[] };
-						ui.friendSchedules[termUid][friend.id] = courses;
-						cachedSchedules[friend.id] = courses;
-						ui.scheduleStatus[termUid][friend.id] = 'loaded';
-						return { id: friend.id, courses };
-					} catch (error) {
-						// Failed and unprocessed schedules are not cached. The friend
-						// can finish setup later, so the next visit asks again.
-						try {
-							const status = await API.friendIsProcessed(friend.id, termUid);
-							if (!status.processed) {
-								ui.scheduleStatus[termUid][friend.id] = 'unprocessed';
-								return { id: friend.id, courses: [] as Course[] };
-							}
-						} catch (statusError) {
-							console.error(`Failed to check processed status for ${friend.id}`, statusError);
-						}
-						console.error(`Failed to load schedule for ${friend.id}`, error);
-						ui.scheduleStatus[termUid][friend.id] = 'error';
-						return { id: friend.id, courses: [] as Course[] };
-					}
-				})
-			);
-			if (loadVersion !== schedulesLoadVersion) return;
-			if (!session.active) return;
-			for (const friend of coursesByFriend) ui.friendSchedules[termUid][friend.id] = friend.courses;
-		} finally {
-			if (loadVersion === schedulesLoadVersion && !session.active) ++schedulesLoadVersion;
+	function loadSchedule(term: string, id: string): Promise<void> {
+		if (!session.active || ui.scheduleTerm !== term || !ui.selected.includes(id))
+			return Promise.resolve();
+		const key = `${term}:${id}`;
+		const pending = inFlight.get(key);
+		if (pending) return pending;
+		const generation = generations[key] ?? 0;
+		const ownVersion = session.ownScheduleVersions[term] ?? 0;
+		const fresh = () =>
+			session.active &&
+			ui.scheduleTerm === term &&
+			ui.selected.includes(id) &&
+			(generations[key] ?? 0) === generation &&
+			(id !== 'you' || (session.ownScheduleVersions[term] ?? 0) === ownVersion) &&
+			(id === 'you' || ui.friends.some((person) => person.id === id));
+		ui.scheduleStatus[term] ??= {};
+		ui.scheduleErrors[term] ??= {};
+		const cached =
+			id === 'you'
+				? $storedProcessedData.find((item) => String(item.termId) === term)?.responseData.classes
+				: session.schedules[term]?.[id];
+		if (cached) {
+			try {
+				validateCourses(cached);
+				if (id !== 'you') {
+					ui.friendSchedules[term] ??= {};
+					ui.friendSchedules[term][id] = cached;
+				}
+				ui.scheduleStatus[term][id] = 'loaded';
+				delete ui.scheduleErrors[term][id];
+				return Promise.resolve();
+			} catch (error) {
+				console.error(`Failed to load schedule for ${id}`, error);
+			}
 		}
+		ui.scheduleStatus[term][id] = 'loading';
+		delete ui.scheduleErrors[term][id];
+		const request = withScheduleSlot(async () => {
+			if (!fresh()) return;
+			try {
+				const response =
+					id === 'you'
+						? await session.loadProcessedEvents(term)
+						: await API.getFriendProcessedEvents(id, term);
+				if (!fresh()) return;
+				let courses: Course[];
+				if (id === 'you') {
+					courses = 'classes' in response ? response.classes : [];
+					validateCourses('classes' in response ? response.classes : undefined);
+				} else courses = mapFriendCourses(response, id);
+				if (!fresh()) return;
+				if (id === 'you') {
+					storedProcessedData.update((data) => [
+						...data.filter((item) => String(item.termId) !== term),
+						{ termId: term, responseData: { classes: courses, ics_url: '' } }
+					]);
+				} else {
+					ui.friendSchedules[term] ??= {};
+					session.schedules[term] ??= {};
+					ui.friendSchedules[term][id] = courses;
+					session.schedules[term][id] = courses;
+				}
+				ui.scheduleStatus[term][id] = 'loaded';
+				delete ui.scheduleErrors[term][id];
+			} catch (error) {
+				// Failed and unprocessed schedules are not cached. The friend
+				// can finish setup later, so the next visit asks again.
+				if (!fresh()) return;
+				let unprocessed = false;
+				try {
+					const status =
+						id === 'you' ? await API.userIsProcessed(term) : await API.friendIsProcessed(id, term);
+					if (!fresh()) return;
+					unprocessed = !status.processed;
+				} catch (statusError) {
+					console.error(`Failed to check processed status for ${id}`, statusError);
+				}
+				if (!fresh()) return;
+				if (id === 'you') console.error('Failed to load your schedule', error);
+				else console.error(`Failed to load schedule for ${id}`, error);
+				const name =
+					id === 'you' ? 'Your' : `${ui.friends.find((person) => person.id === id)?.name}'s`;
+				ui.scheduleStatus[term][id] = unprocessed ? 'unprocessed' : 'error';
+				ui.scheduleErrors[term][id] = unprocessed
+					? `${name} schedule is not set up for this term. Finish calendar setup, then reload schedules.`
+					: errorMessage(
+							`Could not load ${name.toLowerCase()} schedule`,
+							error,
+							'Reload schedules to try again.'
+						);
+				report(ui.scheduleErrors[term][id]);
+			}
+		});
+		inFlight.set(key, request);
+		void request.finally(() => {
+			if (inFlight.get(key) === request) inFlight.delete(key);
+		});
+		return request;
+	}
+
+	async function loadFriendSchedules(term: string) {
+		// Only friends without a cached schedule for this term need a request.
+		await Promise.all(
+			ui.friends
+				.filter((friend) => ui.selected.includes(friend.id))
+				.map((friend) => loadSchedule(term, friend.id))
+		);
 	}
 
 	async function loadOwnSchedule(term: string) {
-		if (
-			$storedProcessedData.some((item) => String(item.termId) === term) ||
-			ownLoadingTerm === term
-		)
-			return;
-		ownLoadingTerm = term;
+		await loadSchedule(term, 'you');
+	}
+
+	async function performAction(
+		id: string,
+		operation: string,
+		action: () => Promise<unknown>,
+		after?: () => void
+	) {
+		if (!session.active || ui.actionLoadingId) return;
+		ui.actionLoadingId = id;
+		ui.friendError = '';
 		try {
-			const response = await API.getProcessedEvents(term);
+			await action();
 			if (!session.active) return;
-			if (!Array.isArray(response.classes))
-				throw new Error('No processed class schedule was returned.');
-			storedProcessedData.update((data) =>
-				data.some((item) => String(item.termId) === term)
-					? data
-					: [
-							...data,
-							{
-								termId: term,
-								responseData: { classes: response.classes, ics_url: '' }
-							}
-						]
-			);
+			after?.();
+			await loadFriendsAndRequests();
 		} catch (error) {
-			console.error('Failed to load your schedule', error);
+			console.error(operation, error);
+			if (!session.active) return;
+			ui.friendError = errorMessage(operation, error, 'Try the action again.');
+			report(ui.friendError);
+		} finally {
+			if (session.active) ui.actionLoadingId = '';
 		}
 	}
 
 	async function sendFriendRequest() {
 		const value = ui.sendFriendIdInput.trim();
-		if (!value) return;
-		ui.actionLoadingId = 'send-request';
-		ui.friendError = '';
-		try {
-			const isEmail = value.includes('@');
-			await API.createFriendRequest(isEmail ? { friend_email: value } : { friend_id: value });
-			ui.sendFriendIdInput = '';
-			await loadFriendsAndRequests();
-		} catch (error) {
-			console.error('Failed to send friend request', error);
-			ui.friendError = error instanceof Error ? error.message : 'Failed to send friend request.';
-		} finally {
-			ui.actionLoadingId = '';
+		const message = requestInputMessage(value);
+		if (message) {
+			ui.friendError = message;
+			report(message);
+			return;
 		}
+		await performAction(
+			'send-request',
+			'Failed to send friend request',
+			() =>
+				API.createFriendRequest(
+					value.includes('@') ? { friend_email: value } : { friend_id: value }
+				).catch((error) => {
+					throw new Error(friendRequestErrorMessage(error));
+				}),
+			() => {
+				ui.sendFriendIdInput = '';
+			}
+		);
 	}
 
 	async function acceptRequest(requestId: string) {
-		ui.actionLoadingId = `accept-${requestId}`;
-		ui.friendError = '';
-		try {
-			await API.acceptFriendRequest(requestId);
-			await loadFriendsAndRequests();
-			if (selected) {
-				await loadFriendSchedules(selected);
-			}
-		} catch (error) {
-			console.error('Failed to accept request', error);
-			ui.friendError = 'Failed to accept request.';
-		} finally {
-			ui.actionLoadingId = '';
-		}
+		await performAction(`accept-${requestId}`, 'Failed to accept request', () =>
+			API.acceptFriendRequest(requestId)
+		);
 	}
 
 	async function declineRequest(requestId: string) {
-		ui.actionLoadingId = `decline-${requestId}`;
-		ui.friendError = '';
-		try {
-			await API.declineFriendRequest(requestId);
-			await loadFriendsAndRequests();
-		} catch (error) {
-			console.error('Failed to decline request', error);
-			ui.friendError = 'Failed to decline request.';
-		} finally {
-			ui.actionLoadingId = '';
-		}
+		await performAction(`decline-${requestId}`, 'Failed to decline request', () =>
+			API.declineFriendRequest(requestId)
+		);
 	}
 
 	async function cancelRequest(requestId: string) {
-		ui.actionLoadingId = `cancel-${requestId}`;
-		ui.friendError = '';
-		try {
-			await API.cancelFriendRequest(requestId);
-			await loadFriendsAndRequests();
-		} catch (error) {
-			console.error('Failed to cancel request', error);
-			ui.friendError = 'Failed to cancel request.';
-		} finally {
-			ui.actionLoadingId = '';
-		}
+		await performAction(`cancel-${requestId}`, 'Failed to cancel request', () =>
+			API.cancelFriendRequest(requestId)
+		);
 	}
 
 	async function unfriend(friendId: string) {
-		ui.actionLoadingId = `unfriend-${friendId}`;
-		ui.friendError = '';
-		try {
-			await API.removeFriend(friendId);
-			await loadFriendsAndRequests();
-			if (selected) {
-				await loadFriendSchedules(selected);
+		await performAction(
+			`unfriend-${friendId}`,
+			'Failed to remove friend',
+			() => API.removeFriend(friendId),
+			() => {
+				discardFriend(friendId);
+				ui.friends = ui.friends.filter((person) => person.id !== friendId);
+				session.friends = ui.friends;
+				if (ui.selected.includes(friendId))
+					report('Removed friend from the active planning participants.');
+				ui.selected = ui.selected.filter((id) => id !== friendId);
+				ui.groups = ui.groups.map((group) => ({
+					...group,
+					members: group.members.filter((id) => id !== friendId)
+				}));
 			}
-		} catch (error) {
-			console.error('Failed to remove friend', error);
-			ui.friendError = 'Failed to remove friend.';
-		} finally {
-			ui.actionLoadingId = '';
-		}
+		);
 	}
 
-	onMount(async () => {
+	async function loadTerms(force = false) {
+		const version = ++termsVersion;
+		const fresh = () => session.active && version === termsVersion;
 		try {
 			// The calendar page may already have loaded the terms in this session.
-			const terms = await session.loadTerms();
+			const terms = await session.loadTerms(force);
+			if (!fresh()) return;
 			const current = terms.current_term ?? terms.next_term;
-			ui.currentTerm = current?.id != null ? String(current.id) : ui.term;
+			if (!current) throw new Error('No current planning term was returned.');
+			const bounds: Record<string, { start?: string; end?: string }> = {};
 			for (const term of [terms.current_term, terms.next_term]) {
-				if (term)
-					ui.termBounds[String(term.id)] = {
-						start: term.start_date?.slice(0, 10),
-						end: term.end_date?.slice(0, 10)
-					};
+				if (!term) continue;
+				validateTermBounds({ start: term.start_date, end: term.end_date });
+				bounds[String(term.id)] = {
+					start: term.start_date?.slice(0, 10),
+					end: term.end_date?.slice(0, 10)
+				};
 			}
+			ui.termBounds = bounds;
+			ui.currentTerm = String(current.id);
 			ui.term ??= ui.currentTerm;
+			ui.termError = '';
 		} catch (error) {
 			// Without the terms the page cannot pick a term, but the friend
 			// list and the requests below still load.
 			console.error('Failed to load terms', error);
+			if (!fresh()) return;
+			ui.termError = errorMessage(
+				'Could not load planning term',
+				error,
+				'Reload schedules to try again.'
+			);
+			report(ui.termError);
 		}
-		await loadFriendsAndRequests(true);
+	}
+
+	onMount(() => {
+		void loadTerms();
+		void loadFriendsAndRequests(true);
 	});
 
 	ui.friendActions = {
 		reload: () => loadFriendsAndRequests(),
 		retrySchedules: async () => {
-			if (selected) {
-				ownLoadingTerm = undefined;
-				await Promise.all([loadFriendSchedules(selected), loadOwnSchedule(selected)]);
+			if (ui.termError || !ui.currentTerm) await loadTerms(true);
+			const term = selected;
+			if (!term || !session.active || ui.termError) return;
+			for (const id of ui.selected) {
+				const key = `${term}:${id}`;
+				generations[key] = (generations[key] ?? 0) + 1;
+				inFlight.delete(key);
+				delete session.schedules[term]?.[id];
+				delete ui.friendSchedules[term]?.[id];
+				delete ui.scheduleStatus[term]?.[id];
+				delete ui.scheduleErrors[term]?.[id];
 			}
+			if (ui.selected.includes('you')) {
+				session.invalidateOwnSchedule(term);
+				storedProcessedData.update((data) => data.filter((item) => String(item.termId) !== term));
+			}
+			await Promise.all([
+				loadFriendSchedules(term),
+				...(ui.selected.includes('you') ? [loadOwnSchedule(term)] : [])
+			]);
 		},
 		send: sendFriendRequest,
 		accept: acceptRequest,
@@ -404,7 +391,7 @@
 		const term = selected;
 		const ids = ui.selected.join(',');
 		const friends = ui.friends;
-		if (!loadSchedules || !term || !ids || !friends) return;
+		if (!loadSchedules || !term || !ids || !friends || ui.termError) return;
 		untrack(() => {
 			void loadFriendSchedules(term);
 			if (ui.selected.includes('you')) void loadOwnSchedule(term);

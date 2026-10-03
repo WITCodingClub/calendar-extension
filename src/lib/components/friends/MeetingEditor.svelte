@@ -8,6 +8,7 @@
 	import FreePeriodResult from './FreePeriodResult.svelte';
 	import MeetingEventForm from './MeetingEventForm.svelte';
 	import PreviewDialog from './PreviewDialog.svelte';
+	import { snackbar } from 'm3-svelte';
 
 	const ui = getPanelUi();
 	const militaryTime = $derived($userSettings?.military_time ?? true);
@@ -18,10 +19,24 @@
 	const message = $derived(
 		ui.meetingDraft ? meetingMessage(ui, ownCourses, ui.meetingDraft.slot) : undefined
 	);
+	const windowAvailable = $derived(
+		ui.meetingDraft &&
+			!meetingMessage(ui, ownCourses, {
+				...ui.meetingDraft.slot,
+				date: ui.meetingDraft.period.date,
+				start: minutesTime(ui.meetingDraft.period.start),
+				end: minutesTime(ui.meetingDraft.period.end)
+			})
+	);
 
 	function preview() {
 		const draft = ui.meetingDraft;
-		if (!draft || message) return;
+		if (!draft) return;
+		const error = meetingMessage(ui, ownCourses, draft.slot);
+		if (error) {
+			snackbar(error, undefined, true);
+			return;
+		}
 		const start = timeMinutes(draft.slot.start)!;
 		const end = timeMinutes(draft.slot.end)!;
 		const slot = {
@@ -35,7 +50,7 @@
 		ui.starts[draft.period.id] = start;
 		ui.highlightedSlot = { ...slot };
 		ui.week = weekDates(slot.date)[0];
-		ui.term = ui.currentTerm ?? ui.term;
+		ui.term = ui.scheduleTerm ?? ui.term;
 		ui.comparison = true;
 		ui.meetingEditorOpen = false;
 		void goto(resolve('/calendar'));
@@ -65,7 +80,12 @@
 				bind:slot={ui.meetingDraft.slot}
 				{militaryTime}
 				{message}
-				onadd={() => (ui.meetingDetails = true)}
+				windowAvailable={Boolean(windowAvailable)}
+				onadd={() => {
+					const error = meetingMessage(ui, ownCourses, ui.meetingDraft!.slot);
+					if (error) snackbar(error, undefined, true);
+					else ui.meetingDetails = true;
+				}}
 				onview={preview}
 			/>
 		{/if}

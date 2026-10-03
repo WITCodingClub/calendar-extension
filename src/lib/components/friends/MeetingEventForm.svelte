@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button, Checkbox, SelectOutlined, TextFieldOutlined } from 'm3-svelte';
-	import type { PreviewPerson, PreviewSlot } from './fixtures';
+	import type { Participant, PreviewSlot } from './types';
 	import { dateLabel } from '$lib/calendarDates';
 	import { minutesTime, timeMinutes } from './availability';
 	import { formatTime } from './formatTime';
@@ -17,7 +17,7 @@
 		slot: PreviewSlot;
 		title?: string;
 		location?: string;
-		participants: PreviewPerson[];
+		participants: Participant[];
 		onback: () => void;
 		onview: () => void;
 		militaryTime: boolean;

@@ -5,9 +5,11 @@
 	import CalendarGrid, { type CalendarGridEvent } from '$lib/components/CalendarGrid.svelte';
 	import type { Course, DayItem } from '$lib/types';
 	import PreviewDialog from './PreviewDialog.svelte';
-	import { type PreviewPerson, type PreviewSlot } from './fixtures';
+	import { type Participant, type PreviewSlot } from './types';
 	import { dateLabel, mergeBusy, minutesTime, timeMinutes, weekDates } from './availability';
 	import { formatTime } from './formatTime';
+	import { getPanelUi } from '$lib/panelUi.svelte';
+	const ui = getPanelUi();
 
 	let {
 		participants,
@@ -22,7 +24,7 @@
 		onedit,
 		militaryTime
 	}: {
-		participants: PreviewPerson[];
+		participants: Participant[];
 		comparison: boolean;
 		slot?: PreviewSlot;
 		date: string;
@@ -34,11 +36,12 @@
 		onedit: () => void;
 		militaryTime: boolean;
 	} = $props();
-	let display = $state<string>();
 	let detail = $state<{ item: CalendarGridEvent; day: DayItem; date: string }>();
-	const mode = $derived(display ?? (slot || participants.length > 3 ? 'group' : 'detailed'));
+	const mode = $derived(
+		ui.comparisonDisplay ?? (slot || participants.length > 3 ? 'group' : 'detailed')
+	);
 	$effect(() => {
-		if (slot?.id) display = 'group';
+		if (slot?.id) ui.comparisonDisplay = 'group';
 	});
 	const visiblePeople = $derived(
 		comparison ? participants : participants.filter((person) => person.id === 'you')
@@ -261,7 +264,7 @@
 <section class="min-w-0 gap-4 grid" aria-label="Calendar comparison">
 	<div class="gap-3 flex flex-wrap items-center justify-between">
 		<div>
-			<h2>{comparison ? 'Compare schedules' : 'Your week'}</h2>
+			<h2>{comparison ? `Compare schedules (${participants.length} people)` : 'Your week'}</h2>
 		</div>
 		{#if comparison}<Button variant="text" onclick={onexit}>Exit comparison</Button>{/if}
 	</div>
@@ -272,14 +275,14 @@
 				name="preview-display"
 				id="preview-detailed"
 				checked={mode === 'detailed'}
-				onchange={() => (display = 'detailed')}
+				onchange={() => (ui.comparisonDisplay = 'detailed')}
 			/><Button for="preview-detailed">Detailed</Button>
 			<input
 				type="radio"
 				name="preview-display"
 				id="preview-group"
 				checked={mode === 'group'}
-				onchange={() => (display = 'group')}
+				onchange={() => (ui.comparisonDisplay = 'group')}
 			/><Button for="preview-group">Group availability</Button>
 		</ConnectedButtons>{/if}
 	{#if upcomingSlot}
@@ -366,10 +369,10 @@
 							{detail.item.course.course_number} · {detail.item.course.schedule_type}
 						</dd>
 						<dt class="text-on-surface-variant">Location</dt>
-						<dd>{detail.item.meeting.location.building.name}</dd>
+						<dd>{detail.item.meeting.location?.building?.name}</dd>
 						<dt class="text-on-surface-variant">Instructor</dt>
 						<dd>
-							{[detail.item.course.professor.first_name, detail.item.course.professor.last_name]
+							{[detail.item.course.professor?.first_name, detail.item.course.professor?.last_name]
 								.filter(Boolean)
 								.join(' ')}
 						</dd>

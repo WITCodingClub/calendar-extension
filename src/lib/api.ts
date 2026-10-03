@@ -1,6 +1,8 @@
 import { EnvironmentManager } from "./environment";
 import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
 import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
+import { friendList, friendRequests, processedStatus, requestCreated, requestAccepted, mutationResult } from './friendData';
+import { validatedTerms, validateCourses } from './friendSchedule';
 import type { PasskeySummary } from "./passkeys";
 
 export class API {
@@ -97,7 +99,7 @@ export class API {
         const response = await fetch(`${baseUrl}/terms/current_and_next`, {
             method: 'GET'
         });
-        return this.readJson(response, 'Failed to fetch terms');
+        return validatedTerms(await this.readJson<TermResponse>(response, 'Failed to fetch terms'));
     }
 
     public static async getUserEmail(): Promise<{ email: string }> {
@@ -111,7 +113,7 @@ export class API {
         return this.readJson(response, 'Failed to fetch the user email');
     }
 
-    public static async userSettings(settings?: UserSettings): Promise<UserSettings> {
+    public static async userSettings(settings?: Partial<UserSettings>): Promise<UserSettings> {
         const baseUrl = await this.getBaseUrl();
         const url = `${baseUrl}/user/extension_config`;
         const token = await this.getJwtToken();
@@ -149,7 +151,7 @@ export class API {
             },
             body: JSON.stringify({ term_uid: termUid })
         });
-        return response.json();
+        return processedStatus(await this.readJson<isProcessed>(response, 'Failed to check your schedule status'));
     }
 
     public static async getProcessedEvents(termUid: string): Promise<ProcessedEvents> {
@@ -163,7 +165,9 @@ export class API {
             },
             body: JSON.stringify({ term_uid: termUid })
         });
-        return response.json();
+        const data = await this.readJson<ProcessedEvents>(response, 'Failed to fetch your schedule');
+        validateCourses(data?.classes);
+        return data;
     }
 
     public static async getFriends(): Promise<FriendListResponse> {
@@ -175,7 +179,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return this.readJson(response, 'Failed to fetch friends');
+        return friendList(await this.readJson<FriendListResponse>(response, 'Failed to fetch friends'));
     }
 
     public static async getFriendRequests(): Promise<FriendRequestsResponse> {
@@ -187,7 +191,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return friendRequests(await this.readJson<FriendRequestsResponse>(response, 'Failed to fetch friend requests'));
     }
 
     public static async createFriendRequest(
@@ -203,7 +207,7 @@ export class API {
             },
             body: JSON.stringify(payload)
         });
-        return this.readJson(response, 'Failed to send the friend request');
+        return requestCreated(await this.readJson<FriendRequestCreateResponse>(response, 'Failed to send the friend request'));
     }
 
     public static async acceptFriendRequest(requestId: string): Promise<FriendRequestAcceptResponse> {
@@ -215,7 +219,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return requestAccepted(await this.readJson<FriendRequestAcceptResponse>(response, 'Failed to accept the friend request'));
     }
 
     public static async declineFriendRequest(requestId: string): Promise<OkResponse> {
@@ -227,7 +231,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return mutationResult(await this.readJson<OkResponse>(response, 'Failed to decline the friend request'));
     }
 
     public static async cancelFriendRequest(requestId: string): Promise<OkResponse> {
@@ -239,7 +243,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return mutationResult(await this.readJson<OkResponse>(response, 'Failed to cancel the friend request'));
     }
 
     public static async removeFriend(friendId: string): Promise<OkResponse> {
@@ -251,7 +255,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return mutationResult(await this.readJson<OkResponse>(response, 'Failed to remove the friend'));
     }
 
     public static async friendIsProcessed(friendId: string, termUid: string): Promise<isProcessed> {
@@ -265,7 +269,7 @@ export class API {
             },
             body: JSON.stringify({ term_uid: termUid })
         });
-        return response.json();
+        return processedStatus(await this.readJson<isProcessed>(response, 'Failed to check the friend schedule status'));
     }
 
     public static async getFriendProcessedEvents(friendId: string, termUid: string): Promise<FriendProcessedEventsResponse> {

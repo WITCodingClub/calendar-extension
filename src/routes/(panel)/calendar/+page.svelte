@@ -29,6 +29,7 @@
 		Chip
 	} from 'm3-svelte';
 	import { onMount, onDestroy } from 'svelte';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import CalendarGrid from '$lib/components/CalendarGrid.svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { API } from '$lib/api';
@@ -113,7 +114,7 @@
 	const session = getPanelSession();
 	// Terms whose preference refresh already ran on this page. A failed refresh
 	// is not recorded in the session, and this set stops an endless retry.
-	const refreshTried = new Set<string>();
+	const refreshTried = new SvelteSet<string>();
 	let showHistoricTerms = $derived($storedUserSettings?.show_historic_terms ?? false);
 	let displayTerms = $derived(
 		(() => {
@@ -289,7 +290,7 @@
 	async function checkBetaAccess() {
 		const beta_access = await chrome.storage.local.get('beta_access');
 		if (beta_access && (beta_access.beta_access === 'false' || beta_access.beta_access === false)) {
-			goto('/beta-access-denied/');
+			goto(resolve('/beta-access-denied/'));
 			return Promise.reject(new Error('Beta access denied')) as never;
 		}
 	}
@@ -346,14 +347,6 @@
 			window.removeEventListener('keydown', onWindowKeyDown, true);
 		}
 	});
-
-	function convertTo12Hour(time24: string): string {
-		if (militaryTime) return time24;
-		const [hours, minutes] = time24.split(':').map(Number);
-		const period = hours >= 12 ? 'PM' : 'AM';
-		const hours12 = hours % 12 || 12;
-		return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
-	}
 
 	function getTextColor(bgColor: string): string {
 		const hex = bgColor.replace('#', '');
@@ -629,7 +622,7 @@
 			// Persist the authoritative enrolled terms from the Banner dropdown
 			if (termOptions.length > 0) {
 				enrolledTerms.set(termOptions);
-				API.userSettings({ enrolled_terms: termOptions } as any).catch(() => {});
+				API.userSettings({ enrolled_terms: termOptions }).catch(() => {});
 			}
 
 			if (registrations.length === 0) {
@@ -666,14 +659,22 @@
 
 	async function ensureProcessedForTerm(termId: string | undefined) {
 		if (!termId || loading) return;
+		const version = session.ownScheduleVersions[termId] ?? 0;
+		const fresh = () =>
+			session.active &&
+			selected === termId &&
+			(session.ownScheduleVersions[termId] ?? 0) === version;
 		try {
 			loading = true;
 			const status = await API.userIsProcessed(termId);
+			if (!fresh()) return;
 			if (status?.processed) {
-				const events = await API.getProcessedEvents(termId);
+				const events = await session.loadProcessedEvents(termId);
+				if (!fresh()) return;
 				let ics = $storedIcsUrl;
 				if (!ics) {
 					const icsResponse = await API.getIcsUrl();
+					if (!fresh()) return;
 					ics = icsResponse.ics_url;
 					if (ics) {
 						storedIcsUrl.set(ics);
@@ -693,9 +694,10 @@
 				await runScrapeAndProcess(termId);
 			}
 		} catch (e) {
-			snackbar('Failed to fetch calendar: ' + e, undefined, true);
 			console.error('Failed to ensure processed for term:', e);
+			if (fresh()) snackbar('Failed to fetch calendar: ' + e, undefined, true);
 		} finally {
+			if (selected !== termId) session.attemptedTerms.delete(termId);
 			loading = false;
 		}
 	}
@@ -733,8 +735,15 @@
 	}
 
 	async function syncProcessedEventsForTerm(termId: string) {
+		const version = session.ownScheduleVersions[termId] ?? 0;
 		try {
-			const events = await API.getProcessedEvents(termId);
+			const events = await session.loadProcessedEvents(termId);
+			if (
+				!session.active ||
+				selected !== termId ||
+				(session.ownScheduleVersions[termId] ?? 0) !== version
+			)
+				return;
 			if (!Array.isArray(events?.classes)) return;
 			storedProcessedData.update((list) => {
 				const tid = String(termId);
@@ -749,6 +758,8 @@
 			});
 		} catch (e) {
 			console.error('Failed to sync processed events:', e);
+		} finally {
+			if (selected !== termId) session.attemptedTerms.delete(termId);
 		}
 	}
 
@@ -760,7 +771,7 @@
 	async function fetchPreferencesFor(
 		ids: Array<number | string>
 	): Promise<Map<number | string, GetPreferencesResponse>> {
-		const map = new Map<number | string, GetPreferencesResponse>();
+		const map = new SvelteMap<number | string, GetPreferencesResponse>();
 		const chunks: Array<Array<number | string>> = [];
 		for (let i = 0; i < ids.length; i += PREFERENCES_BATCH_SIZE) {
 			chunks.push(ids.slice(i, i + PREFERENCES_BATCH_SIZE));
@@ -806,7 +817,7 @@
 		const map = await fetchPreferencesFor(ids);
 		if (!session.active) return false;
 		if (map.size === 0) return ids.length === 0;
-		const dayKeys = [
+		const dayKeys: DayItem['key'][] = [
 			'monday',
 			'tuesday',
 			'wednesday',
@@ -832,7 +843,7 @@
 					const title = pref.preview?.title;
 					if (title) {
 						for (const k of dayKeys) {
-							if ((mt as any)[k]) {
+							if (mt[k]) {
 								title_overrides = { ...title_overrides, [k]: title };
 							}
 						}
@@ -853,9 +864,17 @@
 
 	async function runScrapeAndProcess(termId: string | undefined) {
 		if (loading) return;
+		let expectedTerm = termId;
+		let version = expectedTerm ? (session.ownScheduleVersions[expectedTerm] ?? 0) : 0;
+		const fresh = () =>
+			session.active &&
+			(!expectedTerm ||
+				(selected === expectedTerm &&
+					(session.ownScheduleVersions[expectedTerm] ?? 0) === version));
 		try {
 			loading = true;
 			const res = await fetchFromCurrentPage(termId);
+			if (!fresh()) return;
 			if (!res?.ics_url) {
 				throw new Error('No ICS URL in response');
 			}
@@ -867,12 +886,12 @@
 			if (actualTermId !== termId) {
 				ui.term = actualTermId;
 			}
+			expectedTerm = actualTermId;
+			session.invalidateOwnSchedule(actualTermId);
+			version = session.ownScheduleVersions[actualTermId];
+			const events = await session.loadProcessedEvents(actualTermId);
+			if (!fresh()) return;
 			storedIcsUrl.set(res.ics_url);
-			const events = await API.getProcessedEvents(actualTermId);
-			if (!Array.isArray(events?.classes)) {
-				const msg = (events as any)?.error ?? 'Unexpected response from server';
-				throw new Error(`Failed to load calendar events: ${msg}`);
-			}
 			storedProcessedData.update((list) => {
 				const tid = String(actualTermId);
 				const i = list.findIndex((x) => String(x.termId) === tid);
@@ -883,9 +902,13 @@
 				return next;
 			});
 			track('schedule_import_succeeded');
+			ui.scheduleStatus[actualTermId] ??= {};
+			ui.scheduleStatus[actualTermId].you = 'loaded';
+			delete ui.scheduleErrors[actualTermId]?.you;
 			snackbar('Calendar fetched successfully!', undefined, true);
 		} catch (e) {
 			console.error('Failed to scrape and process:', e);
+			if (!fresh()) return;
 			track('schedule_import_failed');
 			snackbar('Failed to fetch calendar: ' + e, undefined, true);
 		} finally {
@@ -895,9 +918,13 @@
 
 	async function refreshSchedule(termId: string | undefined) {
 		if (!termId || refreshing || loading) return;
+		let version = session.ownScheduleVersions[termId] ?? 0;
+		const fresh = () =>
+			session.active &&
+			selected === termId &&
+			(session.ownScheduleVersions[termId] ?? 0) === version;
 		try {
 			refreshing = true;
-			lastRefreshResult = null;
 
 			// Scrape current courses from LeopardWeb
 			let tabToUse: chrome.tabs.Tab | undefined;
@@ -981,7 +1008,7 @@
 
 			if (refreshTermOptions.length > 0) {
 				enrolledTerms.set(refreshTermOptions);
-				API.userSettings({ enrolled_terms: refreshTermOptions } as any).catch(() => {});
+				API.userSettings({ enrolled_terms: refreshTermOptions }).catch(() => {});
 			}
 
 			if (!Array.isArray(registrationData)) {
@@ -994,6 +1021,7 @@
 
 			// Call the reprocess endpoint
 			const response = await API.reprocessCourses(eventsToReprocess);
+			if (!fresh()) return;
 
 			if (response.ics_url) {
 				storedIcsUrl.set(response.ics_url);
@@ -1001,7 +1029,10 @@
 
 			const actualRefreshTermId = String(eventsToReprocess[0]?.term ?? termId);
 
-			const events = await API.getProcessedEvents(actualRefreshTermId);
+			session.invalidateOwnSchedule(actualRefreshTermId);
+			version = session.ownScheduleVersions[termId] ?? 0;
+			const events = await session.loadProcessedEvents(actualRefreshTermId);
+			if (!fresh()) return;
 			storedProcessedData.update((list) => {
 				const tid = String(actualRefreshTermId);
 				const i = list.findIndex((x) => String(x.termId) === tid);
@@ -1016,10 +1047,9 @@
 			});
 
 			// Show results
-			lastRefreshResult = {
-				removed: response.removed_enrollments,
-				removedCourses: response.removed_courses
-			};
+			ui.scheduleStatus[actualRefreshTermId] ??= {};
+			ui.scheduleStatus[actualRefreshTermId].you = 'loaded';
+			delete ui.scheduleErrors[actualRefreshTermId]?.you;
 
 			if (response.removed_enrollments > 0) {
 				const courseNames = response.removed_courses.map((c) => c.title).join(', ');
@@ -1036,6 +1066,7 @@
 			await refreshAllEventPrefsForCurrentTerm();
 		} catch (e) {
 			console.error('Failed to refresh schedule:', e);
+			if (!fresh()) return;
 			snackbar(
 				'Failed to refresh schedule: ' + (e instanceof Error ? e.message : String(e)),
 				undefined,
@@ -1047,7 +1078,6 @@
 	}
 
 	async function saveEventPerfs() {
-		const baseUrl = await API.baseUrl;
 		const event_preference: Partial<{
 			title_template: string;
 			description_template: string;
@@ -1256,10 +1286,6 @@
 	let editDescriptionManual = $state('');
 	let editLocationManual = $state('');
 	let refreshing = $state(false);
-	let lastRefreshResult = $state<{
-		removed: number;
-		removedCourses: Array<{ crn: number; title: string; course_number: number }>;
-	} | null>(null);
 
 	function clearEnvironmentData() {
 		storedProcessedData.set([]);
@@ -1379,9 +1405,8 @@
 			notificationsDisabled = currentEventPrefs.notifications_disabled ?? false;
 
 			if (resolved?.reminder_settings && resolved.reminder_settings.length > 0) {
-				//@ts-ignore
 				notifications = resolved.reminder_settings.map((r) => ({
-					time: parseInt(r.time.toString()),
+					time: String(r.time),
 					type: r.type,
 					method: r.method as NotificationMethod
 				}));
@@ -1419,7 +1444,7 @@
 							variant="tonal"
 							square
 							onclick={async () => {
-								await goto('/');
+								await goto(resolve('/'));
 							}}
 						>
 							<span class="gap-2 flex flex-row items-center">
@@ -1825,7 +1850,7 @@
 								currently disabled. Re-enable notifications in Settings to activate them.
 							</p>
 						{/if}
-						{#each notifications as _, i (notifications[i])}
+						{#each notifications as notification, i (notification)}
 							<div
 								class={[
 									'stuff-moment gap-2 rounded-xl bg-surface-container-low p-3 grid grid-cols-[minmax(0,1fr)_minmax(5rem,0.65fr)_minmax(0,0.8fr)_auto] items-center @max-[30rem]:grid-cols-2',

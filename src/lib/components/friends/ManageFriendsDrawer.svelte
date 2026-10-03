@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { getPanelUi } from '$lib/panelUi.svelte';
+	import { requestInputMessage } from '$lib/friendData';
 	let { open = $bindable(false) } = $props();
 	const ui = getPanelUi();
 	let dialog: HTMLDialogElement;
@@ -16,8 +17,12 @@
 	let groupMembers = $state<string[]>([]);
 	const activePerson = $derived(ui.friends.find((person) => person.id === personId));
 	const requestCount = $derived(ui.incomingRequests.length + ui.outgoingRequests.length);
+	const inputMessage = $derived(
+		ui.sendFriendIdInput ? requestInputMessage(ui.sendFriendIdInput) : undefined
+	);
 
 	$effect(() => {
+		if (!open) ui.friendError = '';
 		if (open && !dialog.open) dialog.showModal();
 		else if (!open && dialog.open) dialog.close();
 	});
@@ -112,11 +117,13 @@
 		]}
 	/>
 	<div class="min-h-0 p-4 [&>*+*]:mt-4 flex-1 overflow-y-auto overscroll-contain">
-		{#if ui.friendError}<div
+		{#if ui.friendError || ui.friendsError || ui.requestsError}<div
 				class="rounded-xl bg-error-container p-3 text-sm text-on-error-container"
 				role="alert"
 			>
-				<p>{ui.friendError}</p>
+				{#each [ui.friendError, ui.friendsError, ui.requestsError].filter(Boolean) as message (message)}
+					<p>{message}</p>
+				{/each}
 				<Button variant="text" onclick={() => ui.friendActions?.reload()}>Try again</Button>
 			</div>{/if}
 		{#if tab === 'people'}
@@ -159,12 +166,14 @@
 				<div class="preview-form-stack min-w-0 gap-4 grid">
 					<TextFieldOutlined
 						label="Email or user ID"
+						error={Boolean(inputMessage)}
 						bind:value={ui.sendFriendIdInput}
 						onkeydown={(event) => {
 							if (event.key === 'Enter' && !ui.actionLoadingId && ui.sendFriendIdInput.trim())
 								void ui.friendActions?.send();
 						}}
 					/>
+					{#if inputMessage}<p class="text-sm text-error" role="status">{inputMessage}</p>{/if}
 					<Button
 						iconType="left"
 						disabled={!ui.sendFriendIdInput.trim() || ui.actionLoadingId !== ''}

@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { Button } from 'm3-svelte';
+	import { Button, snackbar } from 'm3-svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import type { FreePeriod } from './fixtures';
-	import { minutesTime, meetingSlot } from './availability';
+	import type { FreePeriod } from './types';
+	import { minutesTime, meetingSlot, meetingMessage } from './availability';
+	import { processedData } from '$lib/store';
 	import { formatTime } from './formatTime';
 	import { getPanelUi } from '$lib/panelUi.svelte';
 	const ui = getPanelUi();
@@ -32,8 +33,7 @@
 
 	function choose(period: FreePeriod) {
 		const start = starts[period.id];
-		ui.highlightedSlot = undefined;
-		ui.meetingDraft = {
+		const draft = {
 			period,
 			slot: meetingSlot(
 				period,
@@ -45,6 +45,16 @@
 			title: '',
 			location: ''
 		};
+		const ownCourses = $processedData.find((item) => String(item.termId) === ui.scheduleTerm)
+			?.responseData.classes;
+		const error = meetingMessage(ui, ownCourses, draft.slot);
+		if (error) {
+			snackbar(error, undefined, true);
+			return;
+		}
+		ui.highlightedSlot = undefined;
+		ui.restoredPreview = undefined;
+		ui.meetingDraft = draft;
 		ui.meetingDetails = false;
 		ui.meetingEditorOpen = true;
 	}

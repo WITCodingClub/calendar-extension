@@ -5,8 +5,10 @@
 	import { browser } from '$app/environment';
 	import { Button, ConnectedButtons, VariableTabs, LoadingIndicator } from 'm3-svelte';
 	import { processedData } from '$lib/store';
-	import { meetingMessage } from './friends/availability';
-	import type { Snippet } from 'svelte';
+	import { meetingMessage, scheduleMessage } from './friends/availability';
+	import { savePanelHandoff } from '$lib/panelHandoff';
+	import { getPanelSession } from '$lib/panelSession';
+	import { onMount, type Snippet } from 'svelte';
 	import OpenInTabButton from './OpenInTabButton.svelte';
 	import ManageFriendsDrawer from './friends/ManageFriendsDrawer.svelte';
 	import ConnectedFriends from './ConnectedFriends.svelte';
@@ -15,6 +17,14 @@
 	import './friends/preview.css';
 	let { children }: { children: Snippet } = $props();
 	const ui = getPanelUi();
+	const session = getPanelSession();
+	onMount(() => {
+		const timer = setInterval(() => {
+			const now = Date.now();
+			if (Math.floor(now / 60000) !== Math.floor(ui.now / 60000)) ui.now = now;
+		}, 1000);
+		return () => clearInterval(timer);
+	});
 	const view = $derived(browser ? page.url.searchParams.get('view') : null);
 	const activeTab = $derived(
 		page.route.id === '/(panel)/friends'
@@ -32,11 +42,31 @@
 		help: 'Help'
 	};
 	$effect(() => {
+		ui.planning = activeTab === 'friends';
+	});
+	$effect(() => {
 		ui.savePlanning();
+	});
+	$effect(() => {
+		const slot = ui.restoredPreview;
+		if (!slot) return;
+		const ownCourses = $processedData.find((item) => String(item.termId) === ui.scheduleTerm)
+			?.responseData.classes;
+		if (scheduleMessage(ui, ownCourses)) return;
+		if (
+			!meetingMessage(ui, ownCourses, slot) &&
+			(!ui.meetingDraft || JSON.stringify(ui.meetingDraft.slot) === JSON.stringify(slot))
+		)
+			ui.highlightedSlot = slot;
+		ui.restoredPreview = undefined;
 	});
 	$effect(() => {
 		const slot = ui.highlightedSlot;
 		if (!slot) return;
+		if (ui.meetingDraft && JSON.stringify(ui.meetingDraft.slot) !== JSON.stringify(slot)) {
+			ui.highlightedSlot = undefined;
+			return;
+		}
 		const ownCourses = (
 			ui.scheduleTerm
 				? $processedData.find((item) => String(item.termId) === ui.scheduleTerm)
@@ -58,7 +88,10 @@
 			<h1 class="leading-tight text-[clamp(1.35rem,5cqi,1.8rem)] font-[750] tracking-[-0.025em]">
 				{titles[activeTab]}
 			</h1>
-			<OpenInTabButton view={activeTab === 'calendar' ? 'a' : activeTab} />
+			<OpenInTabButton
+				view={activeTab === 'calendar' ? 'a' : activeTab}
+				prepareHref={() => savePanelHandoff(ui, session, page.url.href)}
+			/>
 		</header>
 		<div class="bg-surface flex items-center">
 			<div class="preview-tabs min-w-0 flex-1">

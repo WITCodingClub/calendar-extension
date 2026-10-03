@@ -1,32 +1,19 @@
 import type { PanelUi } from '$lib/panelUi.svelte';
 import type { Course, DayItem } from '$lib/types';
 import { todayDate, dateLabel } from '$lib/calendarDates';
+import { validDate, validateCourses, validateTermBounds } from '$lib/friendSchedule';
 export { dateLabel, weekDates } from '$lib/calendarDates';
 import {
 	type FreePeriod,
 	type MeetingPreferences,
-	type PreviewClass,
+	type ScheduleClass,
 	type PreviewSlot
-} from './fixtures';
+} from './types';
 
-export function timeMinutes(value: string): number | undefined {
-	const match = value.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
-	if (!match) return undefined;
-	let hours = Number(match[1]);
-	const minutes = Number(match[2]);
-	if (minutes > 59 || hours > 23) return undefined;
-	if (match[3]) {
-		if (hours < 1 || hours > 12) return undefined;
-		hours = (hours % 12) + (match[3].toUpperCase() === 'PM' ? 12 : 0);
-	}
-	return hours * 60 + minutes;
-}
+import { timeMinutes, minutesTime } from './formatTime';
+export { timeMinutes, minutesTime } from './formatTime';
 
-export function minutesTime(minutes: number): string {
-	return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-}
-
-export function dayClasses(date: string, selected: string[], source: PreviewClass[]) {
+export function dayClasses(date: string, selected: string[], source: ScheduleClass[]) {
 	const weekday = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
 	return source.filter(
 		(item) =>
@@ -50,8 +37,9 @@ export function mergeBusy(intervals: Array<{ start: number; end: number }>) {
 export function findFreePeriods(
 	selected: string[],
 	preferences: MeetingPreferences,
-	source: PreviewClass[],
-	bounds?: { start?: string; end?: string }
+	source: ScheduleClass[],
+	bounds?: { start?: string; end?: string },
+	now = new Date()
 ): { periods: FreePeriod[]; message?: string } {
 	const duration = Number(preferences.duration);
 	const buffer = Number(preferences.buffer);
@@ -91,12 +79,19 @@ export function findFreePeriods(
 	if (dailyStart === undefined || dailyEnd === undefined || dailyStart >= dailyEnd)
 		return { periods: [], message: 'Choose a daily start before the daily end.' };
 	const periods: FreePeriod[] = [];
+	try {
+		validateTermBounds(bounds ?? {});
+	} catch {
+		return { periods: [], message: 'Invalid term dates. Reload schedules to try again.' };
+	}
+	const today = todayDate();
+	const earliestToday = now.getHours() * 60 + now.getMinutes() + 1;
 	for (const date = new Date(from); date <= until; date.setUTCDate(date.getUTCDate() + 1)) {
 		if (date.getUTCDay() === 0 || date.getUTCDay() === 6) continue;
 		const dateString = date.toISOString().slice(0, 10);
-		if (dateString < todayDate()) continue;
+		if (dateString < today) continue;
 		const classes = dayClasses(dateString, selected, source);
-		let start = dailyStart;
+		let start = dateString === today ? Math.max(dailyStart, earliestToday) : dailyStart;
 		let end = dailyEnd;
 		if (preferences.betweenClasses) {
 			if (!classes.length) continue;
@@ -142,7 +137,7 @@ export function meetingSlot(period: FreePeriod, start: number, duration: number)
 	};
 }
 
-export function schedulingClasses(courses: Course[], personId = 'you'): PreviewClass[] {
+export function schedulingClasses(courses: Course[], personId = 'you'): ScheduleClass[] {
 	const days: DayItem['key'][] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 	return courses.flatMap((course) =>
 		(course.meeting_times ?? []).map((meeting) => ({
@@ -167,20 +162,42 @@ export function schedulingClasses(courses: Course[], personId = 'you'): PreviewC
 
 export function scheduleMessage(ui: PanelUi, ownCourses?: Course[]): string | undefined {
 	const term = ui.scheduleTerm;
+	if (ui.termError) return ui.termError;
+	if (ui.friendsError) return ui.friendsError;
 	if (!ui.hasSelectedFriends)
 		return ui.friendsLoading ? 'Loading friends…' : 'Select some friends to plan together.';
 	if (!term) return 'Loading the current term…';
-	if (ui.selected.includes('you') && !ownCourses)
-		return 'Your class schedule is not loaded for this term.';
+	if (ui.selected.includes('you')) {
+		const status = ui.scheduleStatus[term]?.you;
+		if (status === 'error' || status === 'unprocessed')
+			return (
+				ui.scheduleErrors[term]?.you ??
+				'Could not load your schedule. Reload schedules to try again.'
+			);
+		if (status === 'loading' || !ownCourses) return 'Loading your class schedule…';
+		try {
+			validateCourses(ownCourses);
+		} catch {
+			return 'Your schedule contains invalid class data. Reload schedules to try again.';
+		}
+	}
 	for (const id of ui.selected.filter((id) => id !== 'you')) {
 		const status = ui.scheduleStatus[term]?.[id];
 		const person = ui.friends.find((person) => person.id === id);
 		if (!person) return 'Choose people from your current friends.';
 		if (!status || status === 'loading') return `Loading ${person.name}'s schedule…`;
 		if (status !== 'loaded')
-			return status === 'unprocessed'
-				? `${person.name} has not set up a class schedule for this term.`
-				: `Could not load ${person.name}'s schedule. Try again.`;
+			return (
+				ui.scheduleErrors[term]?.[id] ??
+				(status === 'unprocessed'
+					? `${person.name} has not set up a class schedule for this term.`
+					: `Could not load ${person.name}'s schedule. Reload schedules to try again.`)
+			);
+		try {
+			validateCourses(ui.friendSchedules[term]?.[id]);
+		} catch {
+			return `${person.name}'s schedule contains invalid class data. Reload schedules to try again.`;
+		}
 	}
 }
 
@@ -198,7 +215,13 @@ export function scheduleAvailability(
 			.filter((id) => id !== 'you')
 			.flatMap((id) => schedulingClasses(ui.friendSchedules[term]?.[id] ?? [], id))
 	];
-	return findFreePeriods(ui.selected, preferences, source, ui.termBounds[term]);
+	return findFreePeriods(
+		ui.selected,
+		preferences,
+		source,
+		ui.termBounds[term],
+		new Date(Math.max(ui.now, Date.now()))
+	);
 }
 
 export function meetingMessage(
@@ -208,9 +231,13 @@ export function meetingMessage(
 ): string | undefined {
 	const start = timeMinutes(slot.start);
 	const end = timeMinutes(slot.end);
+	if (!validDate(slot.date) || slot.date.length !== 10) return 'Choose a valid meeting date.';
 	if (start === undefined || end === undefined || start >= end)
 		return 'Choose a valid start time and an end after it.';
 	if (slot.date < todayDate()) return 'Choose today or a future date.';
+	const now = new Date(Math.max(ui.now, Date.now()));
+	if (slot.date === todayDate() && start <= now.getHours() * 60 + now.getMinutes())
+		return 'This start time has passed. Choose a later time.';
 	const weekday = new Date(slot.date + 'T00:00:00Z').getUTCDay();
 	if (weekday === 0 || weekday === 6) return 'Choose a weekday for this meeting.';
 	const availability = scheduleAvailability(ui, ownCourses, {

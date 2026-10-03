@@ -20,7 +20,7 @@
 	const availability = $derived(scheduleAvailability(ui, ownCourses));
 
 	function compare() {
-		ui.term = ui.currentTerm ?? ui.term;
+		ui.term = ui.scheduleTerm ?? ui.term;
 		ui.comparison = true;
 		void goto(resolve('/calendar'));
 	}
@@ -46,12 +46,14 @@
 			bind:starts={ui.starts}
 			{militaryTime}
 		/>
-		{#if availability.message}<Button
-				variant="text"
-				onclick={() => ui.friendActions?.retrySchedules()}>Reload schedules</Button
-			>{/if}
+		<Button variant="text" onclick={() => ui.friendActions?.retrySchedules()}
+			>Reload schedules</Button
+		>
 		<MeetingLinks />
 	{:else}
+		{#if ui.friendsError}<p class="text-sm text-error" role="alert">{ui.friendsError}</p>
+			<Button variant="text" onclick={() => ui.friendActions?.reload()}>Reload friends</Button>
+		{/if}
 		<div class="gap-3 rounded-2xl bg-surface-container-low p-4 grid" role="status">
 			<p class="text-sm text-on-surface-variant">
 				{ui.friendsLoading

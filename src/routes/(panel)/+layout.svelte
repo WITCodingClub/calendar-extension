@@ -5,6 +5,10 @@
 	import { featureFlags } from '$lib/featureFlags';
 	import { PanelSession, setPanelSession } from '$lib/panelSession';
 	import { enrolledTerms, icsUrl, processedData, userSettings } from '$lib/store';
+	import { browser } from '$app/environment';
+	import { page } from '$app/state';
+	import { restorePanelHandoff } from '$lib/panelHandoff';
+	import { snackbar } from 'm3-svelte';
 
 	let { children } = $props();
 
@@ -14,13 +18,32 @@
 	setPanelSession(() => session);
 	let ui = $state.raw(new PanelUi());
 	setPanelUi(() => ui);
+	let restoring = $state(browser && page.url.searchParams.has('panel-state'));
 
 	onMount(() => {
+		if (restoring) {
+			void restorePanelHandoff(ui, session, page.url.href)
+				.catch((error) => {
+					console.error('Failed to restore panel state', error);
+					snackbar(
+						'Could not restore the panel state. Reopen the page from the panel to try again.',
+						undefined,
+						true
+					);
+				})
+				.finally(() => {
+					restoring = false;
+				});
+		}
 		function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>) {
 			const change = changes.environment_data;
+			const previousEnvironment = change?.oldValue?.current_environment ?? 'prod';
+			const currentEnvironment = change?.newValue?.current_environment ?? 'prod';
 			if (
 				!change ||
-				change.oldValue?.current_environment === change.newValue?.current_environment
+				(previousEnvironment === currentEnvironment &&
+					change.oldValue?.jwt_tokens?.[previousEnvironment] ===
+						change.newValue?.jwt_tokens?.[currentEnvironment])
 			) {
 				return;
 			}
@@ -44,6 +67,8 @@
 	});
 </script>
 
-{#key session}
-	<PanelShell>{@render children()}</PanelShell>
-{/key}
+{#if !restoring}
+	{#key session}
+		<PanelShell>{@render children()}</PanelShell>
+	{/key}
+{/if}

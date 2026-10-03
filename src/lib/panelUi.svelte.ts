@@ -4,10 +4,10 @@ import { schoolDays, weekDates } from './calendarDates';
 import type {
 	MeetingPreferences,
 	MeetingDraft,
-	PreviewPerson,
-	PreviewGroup,
+	Participant,
+	FriendGroup,
 	PreviewSlot
-} from './components/friends/fixtures';
+} from './components/friends/types';
 
 import { browser } from '$app/environment';
 import { timeMinutes } from './components/friends/availability';
@@ -27,15 +27,16 @@ export class PanelUi {
 		loading: boolean;
 	}>();
 	currentTerm = $state<string>();
+	now = $state(Date.now());
 
 	termBounds = $state<Record<string, { start?: string; end?: string }>>({});
 	friends = $state<FriendIdentity[]>([]);
 	hasSelectedFriends = $derived(this.friends.some((friend) => this.selected.includes(friend.id)));
-	people = $derived<PreviewPerson[]>([
+	people = $derived<Participant[]>([
 		{ id: 'you', name: 'You', sharing: 'Full schedule' },
 		...this.friends.map((person) => ({ ...person, sharing: 'Full schedule' as const }))
 	]);
-	groups = $state<PreviewGroup[]>([]);
+	groups = $state<FriendGroup[]>([]);
 	friendSchedules = $state<Record<string, Record<string, Course[]>>>({});
 	scheduleStatus = $state<
 		Record<string, Record<string, 'loading' | 'loaded' | 'unprocessed' | 'error'>>
@@ -43,6 +44,11 @@ export class PanelUi {
 	incomingRequests = $state<FriendRequestIncoming[]>([]);
 	outgoingRequests = $state<FriendRequestOutgoing[]>([]);
 	friendError = $state('');
+	friendsError = $state('');
+	requestsError = $state('');
+	termError = $state('');
+	planning = $state(false);
+	scheduleErrors = $state<Record<string, Record<string, string>>>({});
 	friendsLoading = $state(false);
 	requestsLoading = $state(false);
 	actionLoadingId = $state('');
@@ -57,9 +63,13 @@ export class PanelUi {
 		remove: (id: string) => Promise<void>;
 	}>();
 	comparison = $state(false);
-	scheduleTerm = $derived(this.comparison ? this.term : (this.currentTerm ?? this.term));
+	comparisonDisplay = $state<'group' | 'detailed'>();
+	scheduleTerm = $derived(
+		this.planning ? this.currentTerm : this.comparison ? this.term : this.currentTerm
+	);
 	manageOpen = $state(false);
 	highlightedSlot = $state<PreviewSlot>();
+	restoredPreview = $state<PreviewSlot>();
 	meetingDraft = $state<MeetingDraft>();
 	meetingEditorOpen = $state(false);
 	meetingDetails = $state(false);

@@ -127,7 +127,12 @@
 
 			{#each dayOrder.slice(0, 5) as day (day.key)}
 				{@const dayEvents = stackedMeetings.byDay?.[day.key] ?? []}
-				<div class="border-outline-variant relative flex min-h-[120px] flex-1 flex-row border-b">
+				{@const lanes = Math.max(1, ...dayEvents.map((item) => item.overlapCount))}
+				{@const rowHeight = Math.max(120, lanes * 56 + (lanes + 1) * 4)}
+				<div
+					class="border-outline-variant relative flex min-h-[120px] flex-1 flex-row border-b"
+					style:min-height={`${rowHeight}px`}
+				>
 					<div
 						class="w-24 left-0 border-outline-variant bg-secondary-container text-on-secondary-container sticky z-20 flex shrink-0 items-center justify-center border-r @max-[20rem]:static"
 					>
@@ -150,11 +155,9 @@
 
 						{#each dayEvents as item (`${item.ownerId ?? 'you'}:${item.meeting.id}`)}
 							{@const overlapCount = Math.max(item.overlapCount ?? 1, 1)}
-							{@const heightPct = Math.max(
-								(100 - (overlapCount + 1) * stackGapPct) / overlapCount,
-								0
-							)}
-							{@const topPct = stackGapPct + item.stackIndex * (heightPct + stackGapPct)}
+							{@const gapPct = Math.min(stackGapPct, 400 / rowHeight)}
+							{@const heightPct = Math.max((100 - (overlapCount + 1) * gapPct) / overlapCount, 0)}
+							{@const topPct = gapPct + item.stackIndex * (heightPct + gapPct)}
 							{@const rooms = (item.meeting.location?.rooms ?? []).filter(Boolean).join(' / ')}
 							{@const buildingAbbr = item.meeting.location?.building?.abbreviation ?? ''}
 							<button

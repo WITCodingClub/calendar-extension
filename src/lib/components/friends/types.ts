@@ -1,12 +1,12 @@
-export type PreviewPerson = {
+export type Participant = {
 	id: string;
 	name: string;
 	sharing: 'Full schedule';
 	expiry?: string;
 };
 
-export type PreviewGroup = { id: string; name: string; members: string[] };
-export type PreviewClass = {
+export type FriendGroup = { id: string; name: string; members: string[] };
+export type ScheduleClass = {
 	id: string;
 	personId: string;
 	title: string;

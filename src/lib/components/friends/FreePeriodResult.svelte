@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { Button, Slider, TextFieldOutlined } from 'm3-svelte';
-	import type { FreePeriod, PreviewSlot } from './fixtures';
+	import type { FreePeriod, PreviewSlot } from './types';
 	import { dateLabel, minutesTime, timeMinutes } from './availability';
 	import { formatTime } from './formatTime';
 	import { todayDate } from '$lib/calendarDates';
@@ -11,6 +11,7 @@
 		slot = $bindable(),
 		militaryTime,
 		message,
+		windowAvailable = false,
 		bounds,
 		onadd,
 		onview
@@ -19,6 +20,7 @@
 		slot: PreviewSlot;
 		militaryTime: boolean;
 		message?: string;
+		windowAvailable?: boolean;
 		bounds?: { start?: string; end?: string };
 		onadd: () => void;
 		onview: () => void;
@@ -67,7 +69,9 @@
 <div class="gap-4 grid">
 	<div>
 		<h3>{dateLabel(slot.date)}</h3>
-		{#if period.date === slot.date}<p class="mt-1 text-sm text-on-surface-variant">
+		{#if period.date === slot.date && windowAvailable && !message}<p
+				class="mt-1 text-sm text-on-surface-variant"
+			>
 				Everyone free {formatTime(minutesTime(period.start), militaryTime)}–{formatTime(
 					minutesTime(period.end),
 					militaryTime
@@ -104,7 +108,7 @@
 				/>
 			</div>
 		</div>
-		{#if period.date === slot.date && duration > 0 && period.end - period.start > duration}
+		{#if windowAvailable && period.date === slot.date && duration > 0 && period.end - period.start > duration}
 			<div>
 				<p class="mb-1 text-sm">Slide to move the meeting</p>
 				{#key sliderVersion + ':' + duration}
