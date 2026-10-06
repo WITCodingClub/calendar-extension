@@ -3,8 +3,6 @@ name: Extension UI
 on:
   pull_request:
   merge_group:
-  push:
-    branches: [ui-testing]
 
 permissions:
   contents: read
