@@ -191,7 +191,7 @@ Reports and optional agent guidance stay under ignored `.agents/`. The tests do 
 
 Normal tests use the real browser and Chrome extension APIs, with fake sign-in data and controlled backend replies. This proves the extension's UI behavior, not that real authentication or the backend works. The test browser uses system fonts because the Google Fonts stylesheet is replaced with an empty response.
 
-Unexpected requests fail the tests. A local blocking proxy also catches traffic that bypasses Playwright's request handling. The suite checks both the extension page and background worker; it also tests the blocking proxy directly. Browser startup connections are blocked separately without failing the suite. These are protections within the test browser, not a system-wide firewall.
+Unexpected requests fail the tests. A local blocking proxy also catches traffic that bypasses Playwright's request handling. The suite checks both the extension page and background worker; it also tests the blocking proxy directly. Known browser background connections, including Chromium's spellcheck dictionary downloads to `redirector.gvt1.com`, are blocked separately without failing the suite. Extension page and worker fetches to those hosts still fail the strict request guard. These are protections within the test browser, not a system-wide firewall.
 
 **Leave** `.verification/profiles/wit-calendar` **untouched.** It contains a personal login. Never copy its credentials, upload it, reset it, or use its account for automated changes. The shared fixture creates its own temporary profiles and cannot select that profile.
 

@@ -1,6 +1,7 @@
 import { test, expect } from './extension.fixture';
 import { origin, terms } from './backend';
 import { fitsViewport } from './helpers';
+import { request } from 'node:http';
 
 test('signed-out route guards and local reset use only a disposable profile', async ({
 	extension
@@ -37,7 +38,7 @@ test('signed-out route guards and local reset use only a disposable profile', as
 test('network interception covers extension pages and worker bypasses are contained', async ({
 	extension
 }) => {
-	const { page, worker, proxyDenied, allowedProbeHosts, unexpected } = extension;
+	const { page, worker, proxyDenied, proxyUrl, allowedProbeHosts, unexpected } = extension;
 	await extension.open();
 	expect(
 		await page.evaluate(
@@ -55,6 +56,39 @@ test('network interception covers extension pages and worker bypasses are contai
 	}, `${origin}/api/terms/current_and_next`);
 	expect(workerResult).toEqual({ data: terms });
 	expect(extension.network.some((row) => row.source === 'worker')).toBe(true);
+	// Browser-owned dictionary downloads bypass routing but must still be denied.
+	const browserHost = 'redirector.gvt1.com';
+	const beforeBrowserProbe = [...unexpected];
+	const proxyStatus = await new Promise<number | undefined>((resolve, reject) => {
+		const probe = request(proxyUrl, { method: 'CONNECT', path: `${browserHost}:443` });
+		probe.once('connect', (response, socket) => {
+			socket.destroy();
+			resolve(response.statusCode);
+		});
+		probe.once('error', reject);
+		probe.end();
+	});
+	expect(proxyStatus).toBe(502);
+	expect(proxyDenied).toContain(browserHost);
+	expect(unexpected).toEqual(beforeBrowserProbe);
+	// The browser exception must not allow page or worker fetches to that host.
+	const beforeFetchProbe = unexpected.length;
+	const fetchBlocked = async (url: string) => {
+		try {
+			await fetch(url);
+			return false;
+		} catch {
+			return true;
+		}
+	};
+	const fetchUrl = `https://${browserHost}/__route_guard__`;
+	expect(await page.evaluate(fetchBlocked, fetchUrl)).toBe(true);
+	expect(await worker.evaluate(fetchBlocked, fetchUrl)).toBe(true);
+	expect(unexpected.slice(beforeFetchProbe)).toEqual([
+		`GET ${browserHost}/__route_guard__`,
+		`GET ${browserHost}/__route_guard__`
+	]);
+	unexpected.splice(beforeFetchProbe); // Only these explicit containment probes are expected.
 	const count = unexpected.length;
 	const blocked = await page.evaluate(async () => {
 		try {

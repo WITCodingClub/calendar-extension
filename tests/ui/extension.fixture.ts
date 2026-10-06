@@ -29,6 +29,7 @@ type Extension = {
 	network: NetworkRow[];
 	unexpected: string[];
 	proxyDenied: string[];
+	proxyUrl: string;
 	allowedProbeHosts: Set<string>;
 	open: (route?: string, signedIn?: boolean) => Promise<void>;
 };
@@ -74,7 +75,7 @@ export const test = base.extend<{ extension: Extension }>({
 		const rows = new WeakMap<import('@playwright/test').Request, NetworkRow>();
 		const pending = new Set<import('@playwright/test').Request>();
 		const allowedProbeHosts = new Set<string>();
-		// Chromium startup traffic and app-declared font preconnects are denied too.
+		// Chromium background traffic and app-declared font preconnects are denied too.
 		// Only proxy connection attempts are exempt from test failures; a fetch from
 		// an extension page/worker to these hosts still hits the strict route below.
 		const browserConnections = new Set([
@@ -82,6 +83,7 @@ export const test = base.extend<{ extension: Extension }>({
 			'www.google.com',
 			'accounts.google.com',
 			'android.clients.google.com',
+			'redirector.gvt1.com', // Chromium spellcheck dictionary downloads.
 			'fonts.googleapis.com',
 			'fonts.gstatic.com'
 		]);
@@ -111,6 +113,7 @@ export const test = base.extend<{ extension: Extension }>({
 		await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
 		const address = proxy.address();
 		if (!address || typeof address === 'string') throw new Error('Could not start egress guard');
+		const proxyUrl = `http://127.0.0.1:${address.port}`;
 		const profile = await mkdtemp(path.join(tmpdir(), 'wit-ui-'));
 		if (
 			path.dirname(profile) !== path.resolve(tmpdir()) ||
@@ -125,9 +128,7 @@ export const test = base.extend<{ extension: Extension }>({
 				viewport: { width: 1280, height: 900 },
 				timezoneId: 'America/New_York',
 				locale: 'en-US',
-				proxy: live
-					? undefined
-					: { server: `http://127.0.0.1:${address.port}`, bypass: '<-loopback>' },
+				proxy: live ? undefined : { server: proxyUrl, bypass: '<-loopback>' },
 				args: [
 					`--disable-extensions-except=${extensionPath}`,
 					`--load-extension=${extensionPath}`,
@@ -257,6 +258,7 @@ export const test = base.extend<{ extension: Extension }>({
 				network,
 				unexpected,
 				proxyDenied,
+				proxyUrl,
 				allowedProbeHosts,
 				open
 			});
