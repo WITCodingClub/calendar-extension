@@ -9,7 +9,7 @@
 	import { savePanelHandoff } from '$lib/panelHandoff';
 	import { getPanelSession } from '$lib/panelSession';
 	import { onMount, type Snippet } from 'svelte';
-	import OpenInTabButton from './OpenInTabButton.svelte';
+	import AppShell from './AppShell.svelte';
 	import ManageFriendsDrawer from './friends/ManageFriendsDrawer.svelte';
 	import ConnectedFriends from './ConnectedFriends.svelte';
 	import MeetingEditor from './friends/MeetingEditor.svelte';
@@ -27,7 +27,7 @@
 	});
 	const view = $derived(browser ? page.url.searchParams.get('view') : null);
 	const activeTab = $derived(
-		page.route.id === '/(panel)/friends'
+		page.route.id === '/(panel)/(calendar)/friends'
 			? 'friends'
 			: view === 'settings'
 				? 'settings'
@@ -76,23 +76,13 @@
 	});
 </script>
 
-<div
-	class="friends-preview min-w-0 gap-3 p-3 text-on-surface @max-[20rem]:p-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_h4]:font-semibold @container flex w-full flex-col"
+<AppShell
+	title={titles[activeTab]}
+	view={activeTab === 'calendar' ? 'a' : activeTab}
+	prepareHref={() => savePanelHandoff(ui, session, page.url.href)}
+	class="friends-preview"
 >
-	<section
-		class="rounded-2xl bg-surface-container w-full shrink-0 overflow-hidden shadow-[0_0.2rem_0.75rem_rgb(var(--m3-scheme-shadow)/0.12)]"
-	>
-		<header
-			class="gap-3 bg-secondary-container px-4 py-4 text-on-secondary-container flex items-center justify-between"
-		>
-			<h1 class="leading-tight text-[clamp(1.35rem,5cqi,1.8rem)] font-[750] tracking-[-0.025em]">
-				{titles[activeTab]}
-			</h1>
-			<OpenInTabButton
-				view={activeTab === 'calendar' ? 'a' : activeTab}
-				prepareHref={() => savePanelHandoff(ui, session, page.url.href)}
-			/>
-		</header>
+	{#snippet controls()}
 		<div class="bg-surface flex items-center">
 			<div class="preview-tabs min-w-0 flex-1">
 				<VariableTabs
@@ -200,11 +190,11 @@
 				</p>
 			</div>
 		{/if}
-	</section>
+	{/snippet}
 	{@render children()}
 	<ConnectedFriends
 		loadSchedules={(activeTab === 'friends' || ui.comparison) && ui.hasSelectedFriends}
 	/>
 	<ManageFriendsDrawer bind:open={ui.manageOpen} />
 	<MeetingEditor />
-</div>
+</AppShell>

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import PanelShell from '$lib/components/PanelShell.svelte';
 	import { PanelUi, setPanelUi } from '$lib/panelUi.svelte';
 	import { featureFlags } from '$lib/featureFlags';
 	import { PanelSession, setPanelSession } from '$lib/panelSession';
@@ -79,6 +78,6 @@
 
 {#if !restoring}
 	{#key session}
-		<PanelShell>{@render children()}</PanelShell>
+		{@render children()}
 	{/key}
 {/if}
