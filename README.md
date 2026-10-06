@@ -44,3 +44,7 @@ You can also manage event alerts, colors, and titles from within the extension.
 4. Simply click on the extension icon to use it.
 
 - See instructions for developing the backend [here](https://github.com/WITCodingClub/calendar-backend/blob/main/README.md).
+
+### Headless UI regression tests
+
+See [the verification guide](tests/ui/README.md) for more info on how to run automated tests.
