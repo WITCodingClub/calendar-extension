@@ -51,7 +51,7 @@ After setup, `npm run test:ui` is the usual command to run after a UI change.
 
 | Command                                    | What it does                                                           |
 | ------------------------------------------ | ---------------------------------------------------------------------- |
-| `npm run test:ui`                          | Builds the extension and runs all seven normal UI tests.               |
+| `npm run test:ui`                          | Builds the extension and runs the normal UI tests.                     |
 | `npm run test:ui:check`                    | Checks the UI test code for TypeScript errors.                         |
 | `npm run test:ui:built -- friends.spec.ts` | Runs one test file using the extension you already built.              |
 | `npm test`                                 | Runs the existing unit tests. These are separate from the UI tests.    |
@@ -60,14 +60,14 @@ After setup, `npm run test:ui` is the usual command to run after a UI change.
 
 ## What the tests cover
 
-| Area                                                    | What is checked                                                                                                                                                                              |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Calendar](calendar.spec.ts)                            | Open two different event dialogs and close each one. Report the time to open each dialog separately from the time spent on backend requests.                                                 |
-| [Friends planner](friends.spec.ts)                      | Search for and select friends, change planning preferences, reject invalid inputs, reload schedules, and expand results.                                                                     |
-| [Meeting draft](friends.spec.ts)                        | Choose and adjust a time, use the slider, enter draft details, preview the meeting, and reopen it for editing. Creation and link controls stay disabled while those features are unfinished. |
-| [Calendar comparison](friends.spec.ts)                  | Check the selected people's schedules, combined busy periods, detail dialogs, week navigation, and exit controls.                                                                            |
-| [Settings and management](settings-management.spec.ts)  | Scroll through Settings without changing its values. Navigate People, Groups, and Requests, and exercise forms without submitting relationship changes.                                      |
-| [Sign-in guards and network protection](guards.spec.ts) | Check signed-out pages and local reset. Verify that requests from the extension page and background worker are intercepted, and that attempted production requests are blocked.              |
+| Area                                                    | What is checked                                                                                                                                                                                                                                     |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Calendar](calendar.spec.ts)                            | Open two different events using cached preferences. Check five-minute version polling, changed/failed checks, draft preservation, legacy servers, late responses, and server-confirmed saves. Report UI readiness separately from startup requests. |
+| [Friends planner](friends.spec.ts)                      | Search for and select friends, change planning preferences, reject invalid inputs, reload schedules, and expand results.                                                                                                                            |
+| [Meeting draft](friends.spec.ts)                        | Choose and adjust a time, use the slider, enter draft details, preview the meeting, and reopen it for editing. Creation and link controls stay disabled while those features are unfinished.                                                        |
+| [Calendar comparison](friends.spec.ts)                  | Check the selected people's schedules, combined busy periods, detail dialogs, week navigation, and exit controls.                                                                                                                                   |
+| [Settings and management](settings-management.spec.ts)  | Scroll through Settings without changing its values. Navigate People, Groups, and Requests, and exercise forms without submitting relationship changes.                                                                                             |
+| [Sign-in guards and network protection](guards.spec.ts) | Check signed-out pages and local reset. Verify that requests from the extension page and background worker are intercepted, and that attempted production requests are blocked.                                                                     |
 
 The tests also check that pages, dialogs, and drawers fit at widths of **320, 480, and 1280 pixels**. The Calendar grid is allowed to scroll horizontally.
 

@@ -20,6 +20,16 @@
 	setPanelUi(() => ui);
 	let restoring = $state(browser && page.url.searchParams.has('panel-state'));
 
+	$effect(() => {
+		const current = session;
+		const unsubscribe = current.preferences.subscribe(() => current.refreshedTerms.clear());
+		const stop = current.preferences.start();
+		return () => {
+			unsubscribe();
+			stop();
+		};
+	});
+
 	onMount(() => {
 		if (restoring) {
 			void restorePanelHandoff(ui, session, page.url.href)

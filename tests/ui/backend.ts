@@ -84,6 +84,8 @@ export function preference(id: string) {
 export function responseFor(method: string, path: string, body: Record<string, unknown> | null) {
 	if (method === 'GET') {
 		switch (path) {
+			case '/api/user/preferences/version':
+				return { version: 'a'.repeat(64) };
 			case '/api/terms/current_and_next':
 				return terms;
 			case '/api/user/extension_config':
