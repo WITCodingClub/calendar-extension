@@ -837,8 +837,7 @@
 		try {
 			const map = await session.preferences.loadTerm(term, async () => {
 				const result = await fetchPreferencesFor(ids);
-				if (result.size !== ids.length) throw new Error('Incomplete event preferences');
-				return result;
+return result;
 			});
 			if (
 				!map ||
