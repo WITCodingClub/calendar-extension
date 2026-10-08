@@ -1,7 +1,7 @@
 export type Participant = {
 	id: string;
 	name: string;
-	sharing: 'Full schedule';
+	sharing: 'Full schedule' | 'Availability only' | 'Sharing unavailable';
 	expiry?: string;
 };
 

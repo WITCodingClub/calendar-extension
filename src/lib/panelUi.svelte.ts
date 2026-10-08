@@ -1,5 +1,13 @@
 import { getContext, setContext } from 'svelte';
-import type { Course, Friend, FriendRequestIncoming, FriendRequestOutgoing } from './types';
+import type {
+	Course,
+	Friend,
+	FriendRequestIncoming,
+	FriendRequestOutgoing,
+	SharingLevel
+} from './types';
+import type { BusyBlocksResponse } from './friendSchedule';
+import { sharingLabel } from './friendData';
 import { schoolDays, weekDates } from './calendarDates';
 import type {
 	MeetingPreferences,
@@ -32,11 +40,17 @@ export class PanelUi {
 	termBounds = $state<Record<string, { start?: string; end?: string }>>({});
 	friends = $state<Friend[]>([]);
 	hasSelectedFriends = $derived(this.friends.some((friend) => this.selected.includes(friend.id)));
+	hasAvailabilityOnly = $derived(
+		this.friends.some(
+			(friend) =>
+				this.selected.includes(friend.id) && friend.visibility?.theirs === 'availability_only'
+		)
+	);
 	people = $derived<Participant[]>([
 		{ id: 'you', name: 'You', sharing: 'Full schedule' },
 		...this.friends.map((person) => ({
 			...person,
-			sharing: 'Full schedule' as const,
+			sharing: sharingLabel(person.visibility?.theirs),
 			expiry: person.expires_at ?? undefined
 		}))
 	]);
@@ -50,6 +64,14 @@ export class PanelUi {
 		remove: (id: string) => Promise<boolean>;
 	}>();
 	friendSchedules = $state<Record<string, Record<string, Course[]>>>({});
+	busyBlocks = $state<Record<string, Record<string, BusyBlocksResponse>>>({});
+	busyStatus = $state<Record<string, Record<string, 'loading' | 'loaded' | 'error'>>>({});
+	busyErrors = $state<Record<string, Record<string, string>>>({});
+	busyVersion = $state(0);
+	busyActions = $state.raw<{
+		load: (from: string, until: string) => Promise<void>;
+		invalidate: (id: string) => void;
+	}>();
 	scheduleStatus = $state<
 		Record<string, Record<string, 'loading' | 'loaded' | 'unprocessed' | 'error'>>
 	>({});
@@ -67,15 +89,18 @@ export class PanelUi {
 	actionLoadingId = $state('');
 	sendFriendIdInput = $state('');
 	sendFriendExpiry = $state('');
+	sendFriendVisibility = $state<SharingLevel>('full');
+	acceptFriendVisibility = $state<Record<string, SharingLevel>>({});
 	friendActions = $state.raw<{
 		reload: () => Promise<void>;
 		retrySchedules: () => Promise<void>;
 		send: () => Promise<void>;
-		accept: (id: string) => Promise<void>;
+		accept: (id: string, visibility?: SharingLevel) => Promise<void>;
 		decline: (id: string) => Promise<void>;
 		cancel: (id: string) => Promise<void>;
 		remove: (id: string) => Promise<void>;
 		setExpiry: (id: string, value: string | null) => Promise<void>;
+		setSharing: (id: string, visibility: SharingLevel) => Promise<void>;
 	}>();
 	comparison = $state(false);
 	comparisonDisplay = $state<'group' | 'detailed'>();

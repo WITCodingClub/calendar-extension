@@ -6,13 +6,13 @@ import type {
     GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse,
     UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings,
     FriendRequestInput, FriendExpiryResponse, MeetingLinkInput, MeetingLinkCreateResponse,
-    MeetingLinkResponse, MeetingLinksResponse
+    MeetingLinkResponse, MeetingLinksResponse, SharingLevel, FriendVisibilityResponse
 } from './types';
 import {
     friendList, friendRequests, processedStatus, requestCreated, requestAccepted, mutationResult,
-    friendExpiry, meetingLinks, meetingLink, meetingLinkCreated
+    friendExpiry, meetingLinks, meetingLink, meetingLinkCreated, friendVisibility
 } from './friendData';
-import { validatedTerms, validateCourses } from './friendSchedule';
+import { validatedTerms, validateCourses, busyBlocks, type BusyBlocksResponse } from './friendSchedule';
 import type { PasskeySummary } from "./passkeys";
 import type { FriendGroup } from './components/friends/types';
 import { friendGroups, friendGroup } from './friendGroups';
@@ -259,14 +259,16 @@ export class API {
         return requestCreated(await this.readJson<FriendRequestCreateResponse>(response, 'Failed to send the friend request'));
     }
 
-    public static async acceptFriendRequest(requestId: string): Promise<FriendRequestAcceptResponse> {
+    public static async acceptFriendRequest(requestId: string, visibility?: SharingLevel): Promise<FriendRequestAcceptResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}/accept`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`
-            }
+                'Authorization': `Bearer ${token}`,
+                ...(visibility === undefined ? {} : { 'Content-Type': 'application/json' })
+            },
+            ...(visibility === undefined ? {} : { body: JSON.stringify({ visibility }) })
         });
         return requestAccepted(await this.readJson<FriendRequestAcceptResponse>(response, 'Failed to accept the friend request'));
     }
@@ -344,6 +346,21 @@ export class API {
 
     public static async getMeetingLinks(): Promise<MeetingLinksResponse> {
         return meetingLinks(await this.friendApiRequest('/meeting_links', 'Failed to fetch meeting links'));
+    }
+
+    public static async setFriendVisibility(friendId: string, visibility: SharingLevel): Promise<FriendVisibilityResponse> {
+        const result = friendVisibility(await this.friendApiRequest(
+            `/friends/${encodeURIComponent(friendId)}/visibility`, 'Failed to update sharing',
+            'PATCH', { visibility }
+        ));
+        if (result.friend_id !== friendId) throw new Error('The sharing change was not confirmed. Reload friends to try again.');
+        return result;
+    }
+
+    public static async getBusyBlocks(id: string, from: string, until: string): Promise<BusyBlocksResponse> {
+        const range = new URLSearchParams({ start_date: from, end_date: until });
+        const path = id === 'you' ? '/user/busy_blocks' : `/friends/${encodeURIComponent(id)}/busy_blocks`;
+        return busyBlocks(await this.friendApiRequest(`${path}?${range}`, 'Failed to fetch availability'), from, until);
     }
 
     public static async getFriendGroups(): Promise<FriendGroup[]> {

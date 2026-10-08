@@ -959,6 +959,7 @@
 			}
 			expectedTerm = actualTermId;
 			session.invalidateOwnSchedule(actualTermId);
+			ui.busyActions?.invalidate('you');
 			version = session.ownScheduleVersions[actualTermId];
 			const events = await session.loadProcessedEvents(actualTermId);
 			if (!fresh()) return;
@@ -1101,6 +1102,7 @@
 			const actualRefreshTermId = String(eventsToReprocess[0]?.term ?? termId);
 
 			session.invalidateOwnSchedule(actualRefreshTermId);
+			ui.busyActions?.invalidate('you');
 			version = session.ownScheduleVersions[termId] ?? 0;
 			const events = await session.loadProcessedEvents(actualRefreshTermId);
 			if (!fresh()) return;

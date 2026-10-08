@@ -5,6 +5,11 @@
 	import { timeMinutes, minutesTime } from './availability';
 	import { type MeetingPreferences as Preferences } from './types';
 	import { validDate } from '$lib/friendSchedule';
+	import { getPanelUi } from '$lib/panelUi.svelte';
+	const ui = getPanelUi();
+	$effect(() => {
+		if (ui.hasAvailabilityOnly) preferences.betweenClasses = false;
+	});
 	let {
 		preferences = $bindable(),
 		militaryTime,
@@ -108,9 +113,15 @@
 				class="min-h-12 gap-4 rounded-lg bg-surface-container px-3 py-2 flex cursor-pointer items-center justify-between"
 			>
 				<span class="text-sm">Between classes</span><span class="flex shrink-0"
-					><Switch bind:checked={preferences.betweenClasses} /></span
+					><Switch
+						bind:checked={preferences.betweenClasses}
+						disabled={ui.hasAvailabilityOnly}
+					/></span
 				>
 			</label>
+			{#if ui.hasAvailabilityOnly}<p class="text-xs text-on-surface-variant">
+					Between classes needs full class details for every selected participant.
+				</p>{/if}
 			{#if preferences.betweenClasses}<p class="text-xs text-on-surface-variant">
 					Only gaps between the group's earliest and latest classes each day.
 				</p>{/if}

@@ -235,7 +235,10 @@
 						}
 					}}>{copied ? 'Copied' : 'Copy link'}</Button
 				>
-			{:else}<Button disabled={submitting || attempted} onclick={() => void generate()}
+			{:else}<p class="text-sm text-on-surface-variant">
+					Meeting link creation is not available yet.
+				</p>
+				<Button disabled onclick={() => void generate()}
 					>{submitting ? 'Generating…' : 'Generate link'}</Button
 				>{/if}
 		</div>

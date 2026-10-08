@@ -1,5 +1,6 @@
 import { test, expect } from './extension.fixture';
 import { chooseRadio, fitsViewport, selectFriends, toggle } from './helpers';
+import { friends, origin } from './backend';
 
 test('picker, planning preferences, meeting validation, draft, preview and link form', async ({
 	extension
@@ -108,7 +109,7 @@ test('picker, planning preferences, meeting validation, draft, preview and link 
 	const link = page.getByRole('dialog', { name: 'Create meeting link' });
 	await link.getByLabel('Meeting name (optional)').fill('Test link draft');
 	await link.getByLabel('Link expires').fill('2026-10-20');
-	await expect(link.getByRole('button', { name: 'Generate link' })).toBeEnabled();
+	await expect(link.getByRole('button', { name: 'Generate link' })).toBeDisabled();
 	for (const width of [320, 480, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		await fitsViewport(page, link);
@@ -161,4 +162,41 @@ test('detailed/group comparison uses real selected schedules, details and week n
 	}
 	await page.getByRole('button', { name: 'Exit comparison' }).click();
 	await expect(page.getByRole('radio', { name: 'Detailed', exact: true })).toHaveCount(0);
+	await extension.context.route(origin + '/api/friends', async (route) =>
+		route.fulfill({
+			json: {
+				friends: friends.map((friend) =>
+					friend.id === 'friend-ada'
+						? { ...friend, visibility: { mine: 'full', theirs: 'availability_only' } }
+						: friend
+				)
+			}
+		})
+	);
+	const detailsBefore = extension.network.filter(
+		(row) => row.path.endsWith('/processed_events') || row.path.endsWith('/is_processed')
+	).length;
+	await page.getByRole('button', { name: 'Manage friends', exact: true }).click();
+	const drawer = page.getByRole('dialog', { name: 'Manage friends' });
+	await expect(drawer.getByText('Availability only', { exact: true }).first()).toBeVisible();
+	await drawer.getByRole('button', { name: 'Close manage friends', exact: true }).click();
+	await chooseRadio(page, 'Friends');
+	await page.getByRole('button', { name: 'Compare calendars', exact: true }).click();
+	await chooseRadio(page, 'Detailed');
+	await expect(page.getByRole('button', { name: /Ada Test · Busy/ })).toHaveCount(5);
+	await expect(page.getByRole('button', { name: /Ada Class/ })).toHaveCount(0);
+	expect(
+		extension.network.filter(
+			(row) => row.path.endsWith('/processed_events') || row.path.endsWith('/is_processed')
+		)
+	).toHaveLength(detailsBefore);
+	await page.getByRole('button', { name: 'Exit comparison' }).click();
+	await chooseRadio(page, 'Friends');
+	await page.getByText('Additional options', { exact: true }).click();
+	await expect(page.getByRole('switch', { name: 'Between classes' })).toBeDisabled();
+	await expect(
+		page.getByText('Between classes needs full class details for every selected participant.', {
+			exact: true
+		})
+	).toBeVisible();
 });

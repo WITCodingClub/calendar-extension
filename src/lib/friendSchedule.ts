@@ -254,3 +254,78 @@ export function validateCourses(value: unknown): void {
 		}
 	}
 }
+
+export type BusyBlock = { date: string; weekday: string; start: string; end: string };
+export type BusyBlocksResponse = {
+	time_zone: string;
+	start_date: string;
+	end_date: string;
+	busy: BusyBlock[];
+};
+
+export function busyRangeKey(from: string, until: string): string {
+	return `${from}:${until}`;
+}
+
+export function validBusyRange(from: string, until: string): boolean {
+	return (
+		validDate(from) &&
+		from.length === 10 &&
+		validDate(until) &&
+		until.length === 10 &&
+		from <= until &&
+		(Date.parse(until) - Date.parse(from)) / 86400000 < 120
+	);
+}
+
+export function busyEndMinutes(value: string): number | undefined {
+	return value === '24:00' ? 1440 : timeMinutes(value);
+}
+
+export function busyForRange(
+	source: Record<string, Record<string, BusyBlocksResponse>>,
+	id: string,
+	from: string,
+	until: string
+): BusyBlocksResponse | undefined {
+	return Object.values(source)
+		.map((people) => people[id])
+		.find((data) => data && data.start_date <= from && data.end_date >= until);
+}
+
+export function busyBlocks(value: unknown, from: string, until: string): BusyBlocksResponse {
+	const data = value as BusyBlocksResponse | null;
+	const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+	if (
+		!validBusyRange(from, until) ||
+		!data ||
+		data.time_zone !== 'America/New_York' ||
+		data.start_date !== from ||
+		data.end_date !== until ||
+		!Array.isArray(data.busy) ||
+		!data.busy.every((block) => {
+			if (
+				!block ||
+				!validDate(block.date) ||
+				block.date.length !== 10 ||
+				block.date < from ||
+				block.date > until ||
+				typeof block.start !== 'string' ||
+				typeof block.end !== 'string' ||
+				!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(block.start) ||
+				!/^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/.test(block.end)
+			)
+				return false;
+			const start = timeMinutes(block.start);
+			const end = busyEndMinutes(block.end);
+			return (
+				start !== undefined &&
+				end !== undefined &&
+				start < end &&
+				block.weekday === weekdays[new Date(block.date + 'T00:00:00Z').getUTCDay()]
+			);
+		})
+	)
+		throw new Error('Invalid busy blocks returned. Reload schedules to try again.');
+	return data;
+}

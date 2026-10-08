@@ -71,12 +71,25 @@ interface FriendIdentity {
     name: string;
 }
 
+type SharingLevel = 'full' | 'availability_only';
+
+interface FriendVisibility {
+    mine: SharingLevel;
+    theirs: SharingLevel;
+}
+
+interface FriendVisibilityResponse extends FriendVisibility {
+    friend_id: string;
+}
+
 interface Friend extends FriendIdentity {
     expires_at?: string | null;
+    visibility?: FriendVisibility | null;
 }
 
 type FriendRequestInput = ({ friend_id: string } | { friend_email: string }) & {
     expires_at?: string | null;
+    visibility?: SharingLevel;
 };
 
 interface FriendExpiryResponse {
@@ -324,6 +337,7 @@ interface NotificationSetting {
 
 export {
     type Friend, type FriendRequestInput, type FriendExpiryResponse,
+    type SharingLevel, type FriendVisibility, type FriendVisibilityResponse,
     type MeetingLinkDuration, type MeetingLinkInput, type MeetingLink,
     type MeetingLinkCreateResponse, type MeetingLinkResponse, type MeetingLinksResponse,
     FEATURE_FLAGS,

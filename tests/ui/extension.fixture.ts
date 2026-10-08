@@ -169,7 +169,7 @@ export const test = base.extend<{ extension: Extension }>({
 							url.pathname
 						);
 					const readGet =
-						/^\/api\/(?:terms\/current_and_next|friends(?:\/requests)?|meeting_links|user\/(?:extension_config|email|notifications_status|oauth_credentials|passkeys|ics_url|feature_flags|preferences\/version)|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference)$/.test(
+						/^\/api\/(?:terms\/current_and_next|friends(?:\/requests|\/groups|\/[^/]+\/busy_blocks)?|meeting_links|user\/(?:busy_blocks|extension_config|email|notifications_status|oauth_credentials|passkeys|ics_url|feature_flags|preferences\/version)|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference)$/.test(
 							url.pathname
 						);
 					if (
@@ -184,7 +184,7 @@ export const test = base.extend<{ extension: Extension }>({
 					} catch {
 						/* no JSON body */
 					}
-					const data = responseFor(method, url.pathname, body);
+					const data = responseFor(method, url.pathname, body, url.searchParams);
 					if (data !== undefined) {
 						const row: NetworkRow = {
 							method,

@@ -9,6 +9,9 @@
 	import { dateLabel, mergeBusy, minutesTime, timeMinutes, weekDates } from './availability';
 	import { formatTime } from './formatTime';
 	import { getPanelUi } from '$lib/panelUi.svelte';
+	import { untrack } from 'svelte';
+	import { busyForRange } from '$lib/friendSchedule';
+	import { availabilityMessage } from './availability';
 	const ui = getPanelUi();
 	function endMinutes(value: string): number {
 		return value === '24:00' ? 1440 : timeMinutes(value)!;
@@ -57,6 +60,15 @@
 		{ key: 'friday', label: 'Friday', abbr: 'F', order: 4 }
 	];
 	const dates = $derived(weekDates(week));
+	const busyMessage = $derived(availabilityMessage(ui, dates[0], dates[4]));
+	$effect(() => {
+		const from = dates[0];
+		const until = dates[4];
+		const people = participants.map((person) => `${person.id}:${person.sharing}`).join(',');
+		const version = ui.busyVersion;
+		if (people) untrack(() => void ui.busyActions?.load(from, until));
+		void version;
+	});
 	const upcomingSlot = $derived(slot && slot.date >= todayDate() ? slot : undefined);
 	const visibleSlot = $derived(
 		upcomingSlot && dates.includes(upcomingSlot.date) ? upcomingSlot : undefined
@@ -77,6 +89,11 @@
 		Math.min(
 			8,
 			...meetings.map((meeting) => Math.floor(timeMinutes(meeting.begin_time)! / 60)),
+			...visiblePeople.flatMap((person) =>
+				(busyForRange(ui.busyBlocks, person.id, dates[0], dates[4])?.busy ?? [])
+					.filter((block) => dates.includes(block.date))
+					.map((block) => Math.floor(timeMinutes(block.start)! / 60))
+			),
 			...(visibleSlot ? [Math.floor(timeMinutes(visibleSlot.start)! / 60)] : [])
 		)
 	);
@@ -84,7 +101,12 @@
 		Math.max(
 			17,
 			...meetings.map((meeting) => Math.ceil(endMinutes(meeting.end_time) / 60)),
-			...(visibleSlot ? [Math.ceil(timeMinutes(visibleSlot.end)! / 60)] : [])
+			...visiblePeople.flatMap((person) =>
+				(busyForRange(ui.busyBlocks, person.id, dates[0], dates[4])?.busy ?? [])
+					.filter((block) => dates.includes(block.date))
+					.map((block) => Math.ceil(endMinutes(block.end) / 60))
+			),
+			...(visibleSlot ? [Math.ceil(endMinutes(visibleSlot.end) / 60)] : [])
 		)
 	);
 	const proposedOffset = $derived(
@@ -150,7 +172,7 @@
 	function eventsForDay(day: DayItem): CalendarGridEvent[] {
 		const date = dates[day.order];
 		const events = visiblePeople
-			.filter((person) => person.id !== 'you')
+			.filter((person) => person.id !== 'you' && person.sharing !== 'Availability only')
 			.flatMap((person) =>
 				(friendSchedules[person.id] ?? []).flatMap((course) =>
 					(course.meeting_times ?? [])
@@ -185,7 +207,53 @@
 					overlapCount: 1
 				}))
 			);
-		return events;
+		const result: CalendarGridEvent[] = [];
+		for (const person of visiblePeople) {
+			const blocks =
+				busyForRange(ui.busyBlocks, person.id, dates[0], dates[4])?.busy.filter(
+					(block) => block.date === date
+				) ?? [];
+			const detailed = events.filter(
+				(item) =>
+					item.ownerId === person.id &&
+					blocks.some(
+						(block) =>
+							timeMinutes(block.start)! <= timeMinutes(item.meeting.begin_time)! &&
+							endMinutes(block.end) >= endMinutes(item.meeting.end_time)
+					)
+			);
+			result.push(...detailed);
+			for (const block of blocks) {
+				let cursor = timeMinutes(block.start)!;
+				const end = endMinutes(block.end);
+				function addBusy(start: number, finish: number) {
+					if (finish <= start) return;
+					const item = makeEvent(
+						day,
+						'Busy',
+						minutesTime(start),
+						minutesTime(finish),
+						`busy-${person.id}-${date}-${start}`
+					);
+					item.ownerId = person.id;
+					item.ownerLabel = person.name;
+					item.bgColor = ownerColor(person.id);
+					result.push(item);
+				}
+				for (const interval of mergeBusy(
+					detailed.map((item) => ({
+						start: timeMinutes(item.meeting.begin_time)!,
+						end: endMinutes(item.meeting.end_time)
+					}))
+				)) {
+					if (interval.end <= cursor || interval.start >= end) continue;
+					addBusy(cursor, interval.start);
+					cursor = Math.max(cursor, interval.end);
+				}
+				addBusy(cursor, end);
+			}
+		}
+		return result;
 	}
 
 	function positionEvents(events: CalendarGridEvent[]) {
@@ -251,7 +319,22 @@
 		return { byDay };
 	});
 	$effect(() => {
-		if (detail && !dates.includes(detail.date)) detail = undefined;
+		const people = participants
+			.map((person) => `${person.id}:${person.sharing}:${person.expiry}`)
+			.join(',');
+		if (
+			detail &&
+			(!dates.includes(detail.date) ||
+				busyMessage ||
+				!(stackedMeetings.byDay[detail.day.key] ?? []).some(
+					(item) =>
+						item.ownerId === detail!.item.ownerId &&
+						item.meeting.id === detail!.item.meeting.id &&
+						item.course.title === detail!.item.course.title
+				))
+		)
+			detail = undefined;
+		void people;
 	});
 	const busyDetails = $derived(
 		detail
@@ -318,21 +401,34 @@
 			</div>
 		</div>
 	{/if}
-	<CalendarGrid
-		{stackedMeetings}
-		{militaryTime}
-		{startHour}
-		{latestHour}
-		dayOrder={days}
-		{dates}
-		earliestClassOffsetRem={0}
-		focusOffsetRem={proposedOffset}
-		onselect={(item, day) => {
-			if (item.preview) onedit();
-			else if (onownselect && item.ownerId === 'you') onownselect(item, day);
-			else detail = { item, day, date: dates[day.order] };
-		}}
-	/>
+	{#if busyMessage}<p class="text-sm text-on-surface-variant" role="status">{busyMessage}</p>
+		<Button
+			variant="text"
+			onclick={async () => {
+				await ui.friendActions?.retrySchedules();
+				await ui.busyActions?.load(dates[0], dates[4]);
+			}}>Reload schedules</Button
+		>
+	{:else}<CalendarGrid
+			{stackedMeetings}
+			{militaryTime}
+			{startHour}
+			{latestHour}
+			dayOrder={days}
+			{dates}
+			earliestClassOffsetRem={0}
+			focusOffsetRem={proposedOffset}
+			onselect={(item, day) => {
+				if (item.preview) onedit();
+				else if (
+					onownselect &&
+					item.ownerId === 'you' &&
+					!String(item.meeting.id).startsWith('busy-')
+				)
+					onownselect(item, day);
+				else detail = { item, day, date: dates[day.order] };
+			}}
+		/>{/if}
 	{#if detail}
 		<PreviewDialog
 			open

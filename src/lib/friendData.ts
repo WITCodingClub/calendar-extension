@@ -9,7 +9,10 @@ import type {
 	FriendExpiryResponse,
 	MeetingLinkResponse,
 	MeetingLinkCreateResponse,
-	MeetingLinksResponse
+	MeetingLinksResponse,
+	SharingLevel,
+	FriendVisibility,
+	FriendVisibilityResponse
 } from './types';
 
 function identity(value: unknown): value is FriendIdentity {
@@ -32,11 +35,43 @@ function optionalExpiry(value: { expires_at?: unknown }): boolean {
 	);
 }
 
+export function sharingLevel(value: unknown): value is SharingLevel {
+	return value === 'full' || value === 'availability_only';
+}
+
+function visibility(value: unknown): value is FriendVisibility {
+	return record(value) && sharingLevel(value.mine) && sharingLevel(value.theirs);
+}
+
+export function sharingLabel(
+	value?: SharingLevel
+): 'Full schedule' | 'Availability only' | 'Sharing unavailable' {
+	return value === 'full'
+		? 'Full schedule'
+		: value === 'availability_only'
+			? 'Availability only'
+			: 'Sharing unavailable';
+}
+
+export function friendVisibility(value: unknown): FriendVisibilityResponse {
+	return checked(
+		value,
+		record(value) && text(value.friend_id) && visibility(value),
+		'friend sharing'
+	);
+}
+
 export function friendList(value: FriendListResponse): FriendListResponse {
 	if (
 		!Array.isArray(value?.friends) ||
 		!value.friends.every(identity) ||
 		!value.friends.every(optionalExpiry) ||
+		!value.friends.every(
+			(person) =>
+				person.visibility === undefined ||
+				person.visibility === null ||
+				visibility(person.visibility)
+		) ||
 		new Set(value.friends.map((person) => person.id)).size !== value.friends.length
 	)
 		throw new Error('Invalid friends list returned. Reload friends to try again.');

@@ -1,10 +1,18 @@
 <script lang="ts">
-	import { Button, Checkbox, ListItem, TextFieldOutlined, VariableTabs } from 'm3-svelte';
+	import {
+		Button,
+		Checkbox,
+		ListItem,
+		SelectOutlined,
+		TextFieldOutlined,
+		VariableTabs
+	} from 'm3-svelte';
 	import { calendarDateTime, shiftDate, todayDate } from '$lib/calendarDates';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { getPanelUi } from '$lib/panelUi.svelte';
-	import { requestInputMessage } from '$lib/friendData';
+	import { requestInputMessage, sharingLabel, sharingLevel } from '$lib/friendData';
+	import type { SharingLevel } from '$lib/types';
 	let { open = $bindable(false) } = $props();
 	const ui = getPanelUi();
 	let dialog: HTMLDialogElement;
@@ -19,6 +27,11 @@
 	let groupMembers = $state<string[]>([]);
 	let requestExpiry = $state<Record<string, string>>({});
 	const activePerson = $derived(ui.friends.find((person) => person.id === personId));
+	const sharingOptions = [
+		{ text: 'Full schedule', value: 'full' },
+		{ text: 'Availability only', value: 'availability_only' }
+	];
+	let ownSharing = $derived<SharingLevel | ''>(activePerson?.visibility?.mine ?? '');
 	let expiryDate = $derived(
 		activePerson?.expires_at
 			? new Intl.DateTimeFormat('en-CA', {
@@ -178,11 +191,34 @@
 				<Button variant="text" onclick={() => (personId = undefined)}>All people</Button>
 				<h3>{activePerson.name}</h3>
 				<p class="text-sm text-on-surface-variant">
+					They share: {sharingLabel(activePerson.visibility?.theirs)}. You share: {sharingLabel(
+						activePerson.visibility?.mine
+					)}.
+				</p>
+				<p class="text-sm text-on-surface-variant">
 					{activePerson.expires_at
 						? `Expires ${new Date(activePerson.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}`
 						: 'No expiry'}
 				</p>
 				<div class="preview-form-stack min-w-0 gap-3 grid">
+					<SelectOutlined
+						label="What you share"
+						bind:value={ownSharing}
+						options={ownSharing
+							? sharingOptions
+							: [{ text: 'Choose sharing', value: '' }, ...sharingOptions]}
+						disabled={ui.actionLoadingId !== ''}
+					/>
+					<Button
+						variant="text"
+						disabled={ui.actionLoadingId !== '' ||
+							!sharingLevel(ownSharing) ||
+							ownSharing === activePerson.visibility?.mine}
+						onclick={() => {
+							if (sharingLevel(ownSharing))
+								void ui.friendActions?.setSharing(activePerson.id, ownSharing);
+						}}>Save sharing</Button
+					>
 					<TextFieldOutlined
 						label="Friendship expires (optional)"
 						type="date"
@@ -244,6 +280,12 @@
 						}}
 					/>
 					{#if inputMessage}<p class="text-sm text-error" role="status">{inputMessage}</p>{/if}
+					<SelectOutlined
+						label="What you share"
+						bind:value={ui.sendFriendVisibility}
+						options={sharingOptions}
+						disabled={ui.actionLoadingId !== ''}
+					/>
 					<TextFieldOutlined
 						label="Friendship expires (optional)"
 						type="date"
@@ -281,7 +323,7 @@
 							.includes(search.toLowerCase())) as person (person.id)}
 						<ListItem
 							headline={person.name}
-							supporting={`Full schedule${person.expires_at ? ` · Expires ${new Date(person.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}` : ''}`}
+							supporting={`${sharingLabel(person.visibility?.theirs)}${person.expires_at ? ` · Expires ${new Date(person.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}` : ''}`}
 							onclick={() => (personId = person.id)}
 						/>
 					{/each}
@@ -382,6 +424,16 @@
 						</p>{/if}
 
 					<div class="preview-form-stack min-w-0 gap-2 grid">
+						<SelectOutlined
+							label={`What you share with ${request.from.name}`}
+							value={ui.acceptFriendVisibility[request.request_id] ?? 'full'}
+							options={sharingOptions}
+							disabled={ui.actionLoadingId !== ''}
+							onchange={(event) => {
+								if (sharingLevel(event.currentTarget.value))
+									ui.acceptFriendVisibility[request.request_id] = event.currentTarget.value;
+							}}
+						/>
 						<TextFieldOutlined
 							label={`New expiry for ${request.from.name} (optional)`}
 							type="date"
@@ -401,7 +453,11 @@
 						<Button
 							variant="tonal"
 							disabled={ui.actionLoadingId !== ''}
-							onclick={() => ui.friendActions?.accept(request.request_id)}>Accept</Button
+							onclick={() =>
+								ui.friendActions?.accept(
+									request.request_id,
+									ui.acceptFriendVisibility[request.request_id] ?? 'full'
+								)}>Accept</Button
 						>
 						<Button
 							variant="text"

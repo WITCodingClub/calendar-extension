@@ -9,8 +9,16 @@
 	import MeetingEventForm from './MeetingEventForm.svelte';
 	import PreviewDialog from './PreviewDialog.svelte';
 	import { snackbar } from 'm3-svelte';
+	import { untrack } from 'svelte';
 
 	const ui = getPanelUi();
+	$effect(() => {
+		const date = ui.meetingDraft?.slot.date;
+		const ids = ui.selected.join(',');
+		const version = ui.busyVersion;
+		if (ui.meetingEditorOpen && date && ids) untrack(() => void ui.busyActions?.load(date, date));
+		void version;
+	});
 	const militaryTime = $derived($userSettings?.military_time ?? true);
 	const participants = $derived(ui.people.filter((person) => ui.selected.includes(person.id)));
 	const ownCourses = $derived(
