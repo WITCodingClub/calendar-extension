@@ -704,12 +704,29 @@
 	}
 
 	async function getEventPerfs(eventId: number | string) {
-		const data = await API.getMeetingTimePreference(eventId);
-		courseColor = toDropdownColor(
-			data.resolved?.color_id || activeMeeting?.color,
-			defaultEventColor()
-		);
-		currentEventPrefs = data;
+		const term = selected;
+		if (!term) return;
+		const snapshot = session.preferences.snapshot(term);
+		currentEventPrefs = undefined;
+		try {
+			const data =
+				session.preferences.get(term, eventId) ?? (await API.getMeetingTimePreference(eventId));
+			if (
+				!session.preferences.isCurrent(term, snapshot) ||
+				selected !== term ||
+				String(activeMeeting?.id) !== String(eventId)
+			)
+				return;
+			courseColor = toDropdownColor(
+				data.resolved?.color_id || activeMeeting?.color,
+				defaultEventColor()
+			);
+			currentEventPrefs = data;
+		} catch {
+			if (session.active && selected === term && String(activeMeeting?.id) === String(eventId)) {
+				snackbar('Could not load event preferences. Please try again.', undefined, true);
+			}
+		}
 	}
 
 	function mergeProcessedClasses(existing: Course[] | undefined, fresh: Course[]): Course[] {
@@ -771,22 +788,25 @@
 	// endpoint yet, it asks for each id on its own, as before.
 	async function fetchPreferencesFor(
 		ids: Array<number | string>
-	): Promise<Map<number | string, GetPreferencesResponse>> {
+	): Promise<{
+		preferences: Map<number | string, GetPreferencesResponse>;
+		version?: string;
+	}> {
 		const map = new SvelteMap<number | string, GetPreferencesResponse>();
 		const chunks: Array<Array<number | string>> = [];
 		for (let i = 0; i < ids.length; i += PREFERENCES_BATCH_SIZE) {
 			chunks.push(ids.slice(i, i + PREFERENCES_BATCH_SIZE));
 		}
 
-		await Promise.all(
+		const versions = await Promise.all(
 			chunks.map(async (chunk) => {
-				const batch = await API.getMeetingTimePreferences(chunk).catch(() => undefined);
+				const batch = await API.getMeetingTimePreferences(chunk);
 				if (batch) {
 					for (const id of chunk) {
-						const data = batch[String(id)];
+						const data = batch.preferences[String(id)];
 						if (data) map.set(id, data);
 					}
-					return;
+					return batch.version;
 				}
 
 				await Promise.all(
@@ -802,12 +822,18 @@
 			})
 		);
 
-		return map;
+		const version = versions[0];
+		return {
+			preferences: map,
+			version: versions.every((value) => value === version) ? version : undefined
+		};
 	}
 
 	// Returns false when no preferences loaded for a term that has meeting times.
 	async function refreshAllEventPrefsForCurrentTerm(): Promise<boolean> {
 		if (!selected || !processedData) return false;
+		const term = selected;
+		const scheduleVersion = session.ownScheduleVersions[term] ?? 0;
 		const ids = Array.from(
 			new Set(
 				processedData.flatMap((c) =>
@@ -815,9 +841,22 @@
 				)
 			)
 		);
-		const map = await fetchPreferencesFor(ids);
-		if (!session.active) return false;
-		if (map.size === 0) return ids.length === 0;
+		try {
+			const map = await session.preferences.loadTerm(term, () => fetchPreferencesFor(ids));
+			if (
+				!map ||
+				!session.preferences.isLoaded(term, map) ||
+				(session.ownScheduleVersions[term] ?? 0) !== scheduleVersion
+			)
+				return false;
+			applyPreferencesForTerm(term, map);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	function applyPreferencesForTerm(term: string, map: Map<string, GetPreferencesResponse>) {
 		const dayKeys: DayItem['key'][] = [
 			'monday',
 			'tuesday',
@@ -828,14 +867,14 @@
 			'sunday'
 		] as const;
 		storedProcessedData.update((list) => {
-			const tid = String(selected);
+			const tid = term;
 			const i = list.findIndex((x) => String(x.termId) === tid);
 			if (i < 0) return list;
 			const entry = list[i];
 			const classes = entry.responseData.classes.map((c) => {
 				const updatedMeetingTimes = (c.meeting_times ?? []).map((mt) => {
 					if (!mt) return mt;
-					const pref = map.get(mt.id);
+					const pref = map.get(String(mt.id));
 					if (!pref) return mt;
 					const color = pref.resolved?.color_id
 						? toDropdownColor(pref.resolved.color_id)
@@ -860,8 +899,21 @@
 			};
 			return next;
 		});
-		return true;
 	}
+
+	onMount(() =>
+		session.preferences.subscribe(() => {
+			refreshTried.clear();
+			if (selected && processedData) {
+				const term = selected;
+				refreshTried.add(term);
+				void refreshAllEventPrefsForCurrentTerm().then((ok) => {
+					if (ok) session.refreshedTerms.add(term);
+					else refreshTried.delete(term);
+				});
+			}
+		})
+	);
 
 	async function runScrapeAndProcess(termId: string | undefined) {
 		if (loading) return;
@@ -1151,71 +1203,22 @@
 
 		const payload = { event_preference };
 		const meetingIdForUpdate = activeMeeting?.id;
-		if (!meetingIdForUpdate) {
+		const termForUpdate = selected;
+		if (!meetingIdForUpdate || !termForUpdate) {
 			snackbar('No meeting selected', undefined, true);
 			return;
 		}
+		const preferenceSnapshot = session.preferences.snapshot(termForUpdate);
 		try {
-			await API.updateMeetingTimePreference(meetingIdForUpdate, payload);
+			const saved = await API.updateMeetingTimePreference(meetingIdForUpdate, payload);
+			if (!session.active) return;
+			if (session.preferences.isCurrent(termForUpdate, preferenceSnapshot)) {
+				session.preferences.update(termForUpdate, meetingIdForUpdate, saved);
+				applyPreferencesForTerm(termForUpdate, new Map([[String(meetingIdForUpdate), saved]]));
+			}
+			if (selected !== termForUpdate || String(activeMeeting?.id) !== String(meetingIdForUpdate))
+				return;
 			snackbar('Event preferences saved successfully!', undefined, true);
-			let updatedTitle: string | undefined = undefined;
-			if (titleManualChanged) {
-				updatedTitle = editTitleManual;
-			} else if (titleChanged) {
-				updatedTitle = parseTemplate(editTitle).join('');
-			}
-			const meetingId = activeMeeting?.id;
-			const dayKey = activeDay?.key;
-			if (updatedTitle && meetingId && selected && dayKey) {
-				storedProcessedData.update((list) => {
-					const tid = String(selected);
-					const i = list.findIndex((x) => String(x.termId) === tid);
-					if (i < 0) return list;
-					const entry = list[i];
-					const classes = entry.responseData.classes.map((c) => {
-						if (!c.meeting_times.some((mt) => mt.id === meetingId)) return c;
-						const updatedMeetingTimes = c.meeting_times.map((mt) => {
-							if (mt.id !== meetingId) return mt;
-							const existing = mt.title_overrides ?? {};
-							return { ...mt, title_overrides: { ...existing, [dayKey]: updatedTitle! } };
-						});
-						return { ...c, meeting_times: updatedMeetingTimes };
-					});
-					const next = [...list];
-					next[i] = {
-						termId: entry.termId,
-						responseData: {
-							ics_url: entry.responseData.ics_url,
-							classes
-						}
-					};
-					return next;
-				});
-			}
-			if (colorChanged && meetingId && selected) {
-				storedProcessedData.update((list) => {
-					const tid = String(selected);
-					const i = list.findIndex((x) => String(x.termId) === tid);
-					if (i < 0) return list;
-					const entry = list[i];
-					const classes = entry.responseData.classes.map((c) => {
-						if (!c.meeting_times.some((mt) => mt.id === meetingId)) return c;
-						const updatedMeetingTimes = c.meeting_times.map((mt) =>
-							mt.id === meetingId ? { ...mt, color: courseColor } : mt
-						);
-						return { ...c, meeting_times: updatedMeetingTimes };
-					});
-					const next = [...list];
-					next[i] = {
-						termId: entry.termId,
-						responseData: {
-							ics_url: entry.responseData.ics_url,
-							classes
-						}
-					};
-					return next;
-				});
-			}
 			activeCourse = undefined;
 			activeMeeting = undefined;
 			activeDay = undefined;
@@ -1390,6 +1393,7 @@
 			// visit tries a failed one again.
 			refreshAllEventPrefsForCurrentTerm().then((ok) => {
 				if (ok) session.refreshedTerms.add(term);
+				else refreshTried.delete(term);
 			});
 		}
 	});
