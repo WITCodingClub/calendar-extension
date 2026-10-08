@@ -248,8 +248,12 @@ export function meetingMessage(
 		return 'Choose a valid start time and an end after it.';
 	if (slot.date < todayDate('America/New_York')) return 'Choose today or a future date.';
 	const now = new Date(Math.max(ui.now, Date.now()));
-	if (Date.parse(calendarDateTime(slot.date, slot.start)) <= now.getTime())
-		return 'This start time has passed. Choose a later time.';
+	try {
+		if (Date.parse(calendarDateTime(slot.date, minutesTime(start))) <= now.getTime())
+			return 'This start time has passed. Choose a later time.';
+	} catch (error) {
+		return error instanceof Error ? error.message : 'Choose a valid meeting date and time.';
+	}
 	const weekday = new Date(slot.date + 'T00:00:00Z').getUTCDay();
 	if (weekday === 0 || weekday === 6) return 'Choose a weekday for this meeting.';
 	const availability = scheduleAvailability(ui, ownCourses, {
