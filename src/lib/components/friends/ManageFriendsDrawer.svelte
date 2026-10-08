@@ -10,6 +10,7 @@
 	let dialog: HTMLDialogElement;
 	let tab = $state('people');
 	let search = $state('');
+	let groupSearch = $state('');
 	let personId = $state<string>();
 	let groupId = $state<string>();
 	let adding = $state(false);
@@ -260,7 +261,7 @@
 				</div>
 			{:else}
 				<div class="gap-3 flex flex-wrap items-center justify-between">
-					<h3>People</h3>
+					<h2>People</h2>
 					<Button variant="tonal" iconType="left" onclick={() => (adding = true)}
 						>{@render addIcon()}Add friend</Button
 					>
@@ -339,7 +340,7 @@
 				</div>
 			{:else}
 				<div class="gap-3 flex flex-wrap items-center justify-between">
-					<h3>Private groups</h3>
+					<h2>Groups</h2>
 					<Button
 						variant="tonal"
 						iconType="left"
@@ -347,9 +348,14 @@
 						onclick={() => editGroup()}>{@render addIcon()}Create group</Button
 					>
 				</div>
+				<div class="preview-form-stack min-w-0 grid">
+					<TextFieldOutlined label="Search Groups" type="search" bind:value={groupSearch} />
+				</div>
 				<p class="text-sm text-on-surface-variant">Only you can see your groups.</p>
 				<ul class="preview-list p-0 list-none">
-					{#each ui.groups as group (group.id)}
+					{#each ui.groups.filter((group) => group.name
+							.toLowerCase()
+							.includes(groupSearch.toLowerCase())) as group (group.id)}
 						<ListItem
 							headline={group.name}
 							supporting={`${group.members.length} members`}
@@ -359,17 +365,13 @@
 				</ul>
 			{/if}
 		{:else}
-			<p class="text-sm text-on-surface-variant">
-				Earlier dates apply now. Later dates or no expiry require the other person's approval in the
-				web dashboard. Leave empty to propose no expiry. Dates use Eastern time.
-			</p>
 			{#if ui.requestsLoading}<p class="text-sm text-on-surface-variant" role="status">
 					Loading requests…
 				</p>
 			{:else if !requestCount}<p class="text-sm text-on-surface-variant">
 					No pending requests.
 				</p>{/if}
-			<h3>Incoming requests</h3>
+			{#if ui.incomingRequests.length}<h3>Incoming requests</h3>{/if}
 			{#each ui.incomingRequests as request (request.request_id)}
 				<section class="gap-3 border-outline-variant pb-4 grid border-b">
 					<h4>{request.from.name}</h4>
@@ -409,39 +411,42 @@
 					</div>
 				</section>
 			{/each}
-			<h3>Outgoing requests</h3>
-			<ul class="preview-list p-0 list-none">
-				{#each ui.outgoingRequests as request (request.request_id)}
-					<ListItem
-						headline={request.to.name}
-						supporting={request.expires_at
-							? `Pending · Expires ${new Date(request.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}`
-							: 'Pending'}
-					>
-						{#snippet trailing()}<Button
+			{#if ui.outgoingRequests.length}
+				<h3>Outgoing requests</h3>
+				<ul class="preview-list p-0 list-none">
+					{#each ui.outgoingRequests as request (request.request_id)}
+						<ListItem
+							headline={request.to.name}
+							supporting={request.expires_at
+								? `Pending · Expires ${new Date(request.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}`
+								: 'Pending'}
+						>
+							{#snippet trailing()}<Button
+									variant="text"
+									disabled={ui.actionLoadingId !== ''}
+									onclick={() => ui.friendActions?.cancel(request.request_id)}>Cancel</Button
+								>{/snippet}
+						</ListItem>
+
+						<li class="preview-form-stack min-w-0 gap-2 pb-3 grid">
+							<TextFieldOutlined
+								label={`New expiry for ${request.to.name} (optional)`}
+								type="date"
+								min={todayDate('America/New_York')}
+								value={requestExpiry[request.request_id] ?? ''}
+								onchange={(event) =>
+									(requestExpiry[request.request_id] = event.currentTarget.value)}
+							/>
+							<Button
 								variant="text"
 								disabled={ui.actionLoadingId !== ''}
-								onclick={() => ui.friendActions?.cancel(request.request_id)}>Cancel</Button
-							>{/snippet}
-					</ListItem>
-
-					<li class="preview-form-stack min-w-0 gap-2 pb-3 grid">
-						<TextFieldOutlined
-							label={`New expiry for ${request.to.name} (optional)`}
-							type="date"
-							min={todayDate('America/New_York')}
-							value={requestExpiry[request.request_id] ?? ''}
-							onchange={(event) => (requestExpiry[request.request_id] = event.currentTarget.value)}
-						/>
-						<Button
-							variant="text"
-							disabled={ui.actionLoadingId !== ''}
-							onclick={() => saveExpiry(request.to.id, requestExpiry[request.request_id] ?? '')}
-							>Set or propose expiry</Button
-						>
-					</li>
-				{/each}
-			</ul>
+								onclick={() => saveExpiry(request.to.id, requestExpiry[request.request_id] ?? '')}
+								>Set or propose expiry</Button
+							>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 		{/if}
 	</div>
 </dialog>
