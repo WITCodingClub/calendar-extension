@@ -253,7 +253,7 @@
 							.includes(search.toLowerCase())) as person (person.id)}
 						<ListItem
 							headline={person.name}
-							supporting={`Full schedule${person.expires_at ? ` � Expires ${new Date(person.expires_at).toLocaleDateString()}` : ''}`}
+							supporting={`Full schedule${person.expires_at ? ` · Expires ${new Date(person.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}` : ''}`}
 							onclick={() => (personId = person.id)}
 						/>
 					{/each}
@@ -323,7 +323,9 @@
 				<section class="gap-3 border-outline-variant pb-4 grid border-b">
 					<h4>{request.from.name}</h4>
 					{#if request.expires_at}<p class="text-sm text-on-surface-variant">
-							Expires {new Date(request.expires_at).toLocaleDateString()}
+							Expires {new Date(request.expires_at).toLocaleDateString(undefined, {
+								timeZone: 'America/New_York'
+							})}
 						</p>{/if}
 
 					<div class="preview-form-stack min-w-0 gap-2 grid">
@@ -362,7 +364,7 @@
 					<ListItem
 						headline={request.to.name}
 						supporting={request.expires_at
-							? `Pending · Expires ${new Date(request.expires_at).toLocaleDateString()}`
+							? `Pending · Expires ${new Date(request.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}`
 							: 'Pending'}
 					>
 						{#snippet trailing()}<Button

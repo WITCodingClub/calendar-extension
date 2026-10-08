@@ -169,7 +169,7 @@ export const test = base.extend<{ extension: Extension }>({
 							url.pathname
 						);
 					const readGet =
-						/^\/api\/(?:terms\/current_and_next|friends(?:\/requests)?|user\/(?:extension_config|email|notifications_status|oauth_credentials|passkeys|ics_url|feature_flags)|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference)$/.test(
+						/^\/api\/(?:terms\/current_and_next|friends(?:\/requests)?|meeting_links|user\/(?:extension_config|email|notifications_status|oauth_credentials|passkeys|ics_url|feature_flags)|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference)$/.test(
 							url.pathname
 						);
 					if (

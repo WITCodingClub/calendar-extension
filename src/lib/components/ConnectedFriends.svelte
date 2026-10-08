@@ -463,6 +463,19 @@
 		});
 	});
 	$effect(() => {
+		const now = ui.now;
+		const incoming = ui.incomingRequests.filter(
+			(request) => !(request.expires_at && Date.parse(request.expires_at) <= now)
+		);
+		const outgoing = ui.outgoingRequests.filter(
+			(request) => !(request.expires_at && Date.parse(request.expires_at) <= now)
+		);
+		untrack(() => {
+			if (incoming.length !== ui.incomingRequests.length) ui.incomingRequests = incoming;
+			if (outgoing.length !== ui.outgoingRequests.length) ui.outgoingRequests = outgoing;
+		});
+	});
+	$effect(() => {
 		if (ui.manageOpen)
 			untrack(() => {
 				void loadFriendsAndRequests();
