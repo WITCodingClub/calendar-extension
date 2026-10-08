@@ -80,10 +80,10 @@
 									? 'Loading schedule…'
 									: person.id === 'you'
 										? 'Include your own schedule'
-										: 'Full schedule'))
+										: person.sharing))
 							: person.id === 'you'
 								? 'Include your own schedule'
-								: 'Full schedule'}
+								: person.sharing}
 					>
 						{#snippet leading()}<Checkbox
 								><input type="checkbox" bind:group={selected} value={person.id} /></Checkbox

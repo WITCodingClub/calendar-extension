@@ -43,7 +43,6 @@
 	import { savedMeetingCourses, type SavedMeetingsResponse } from '$lib/savedMeetings';
 	import ParticipantPicker from '$lib/components/friends/ParticipantPicker.svelte';
 	import { getPanelUi } from '$lib/panelUi.svelte';
-	import { scheduleMessage } from '$lib/components/friends/availability';
 	import { todayDate, weekDates } from '$lib/calendarDates';
 	import { userSettings as storedUserSettings } from '$lib/store';
 	import { browser } from '$app/environment';
@@ -77,7 +76,13 @@
 	let processedData: Course[] | undefined = $derived(responseData?.classes);
 	let savedData = $state.raw<SavedMeetingsResponse>({ meetings: [], occurrences: [] });
 	let selectedSavedOccurrence = $state('');
-	const comparisonMessage = $derived(scheduleMessage(ui, processedData));
+	const comparisonMessage = $derived(
+		ui.hasSelectedFriends
+			? undefined
+			: ui.friendsLoading
+				? 'Loading friends…'
+				: ui.friendsError || 'Select some friends to compare calendars.'
+	);
 	let terms = $state<TermResponse | undefined>(undefined);
 	const termDates = $derived.by(() => {
 		const meetings = (processedData ?? []).flatMap((course) => course.meeting_times ?? []);
@@ -91,12 +96,14 @@
 			.sort();
 		return { start: starts[0], end: ends.at(-1) };
 	});
-	const historicSchedule = $derived(
-		Boolean(
-			(termDates.end && termDates.end < todayDate()) ||
-				(selected && terms?.current_term && Number(selected) < terms.current_term.id)
-		)
-	);
+	const historicSchedule = $derived.by(() => {
+		const currentTerm = terms?.current_term?.id ?? ui.currentTerm;
+		return Boolean(
+			selected && currentTerm != null
+				? Number(selected) < Number(currentTerm)
+				: termDates.end && termDates.end < todayDate()
+		);
+	});
 	const calendarCourses = $derived([
 		...(processedData ?? []),
 		...(historicSchedule ? [] : savedMeetingCourses(savedData, dates))
@@ -132,7 +139,14 @@
 				terms?.current_term && { id: String(terms.current_term.id), name: terms.current_term.name },
 				terms?.next_term && { id: String(terms.next_term.id), name: terms.next_term.name }
 			].filter((t): t is { id: string; name: string } => !!t);
-			const base = fromEnrolled.length > 0 ? fromEnrolled : fromApi;
+			const base = ui.comparison
+				? [
+						...fromEnrolled,
+						...fromApi.filter((term) => !fromEnrolled.some((t) => t.id === term.id))
+					]
+				: fromEnrolled.length > 0
+					? fromEnrolled
+					: fromApi;
 			if (!showHistoricTerms && currentTermId != null) {
 				return base.filter((t) => parseInt(t.id) >= currentTermId);
 			}
@@ -1384,7 +1398,11 @@
 				const initial = terms?.current_term?.id ?? terms?.next_term?.id;
 				ui.term = initial != null ? String(initial) : undefined;
 			}
-		} else if (displayTerms.length > 0 && !displayTerms.some((t) => t?.id === selected)) {
+		} else if (
+			!ui.comparison &&
+			displayTerms.length > 0 &&
+			!displayTerms.some((t) => t?.id === selected)
+		) {
 			if (preferredDisplayTerm?.id) ui.term = preferredDisplayTerm.id;
 		}
 	});
