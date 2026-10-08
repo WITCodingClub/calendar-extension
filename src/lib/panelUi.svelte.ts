@@ -1,5 +1,5 @@
 import { getContext, setContext } from 'svelte';
-import type { Course, FriendIdentity, FriendRequestIncoming, FriendRequestOutgoing } from './types';
+import type { Course, Friend, FriendRequestIncoming, FriendRequestOutgoing } from './types';
 import { schoolDays, weekDates } from './calendarDates';
 import type {
 	MeetingPreferences,
@@ -30,11 +30,15 @@ export class PanelUi {
 	now = $state(Date.now());
 
 	termBounds = $state<Record<string, { start?: string; end?: string }>>({});
-	friends = $state<FriendIdentity[]>([]);
+	friends = $state<Friend[]>([]);
 	hasSelectedFriends = $derived(this.friends.some((friend) => this.selected.includes(friend.id)));
 	people = $derived<Participant[]>([
 		{ id: 'you', name: 'You', sharing: 'Full schedule' },
-		...this.friends.map((person) => ({ ...person, sharing: 'Full schedule' as const }))
+		...this.friends.map((person) => ({
+			...person,
+			sharing: 'Full schedule' as const,
+			expiry: person.expires_at ?? undefined
+		}))
 	]);
 	groups = $state<FriendGroup[]>([]);
 	friendSchedules = $state<Record<string, Record<string, Course[]>>>({});
@@ -53,6 +57,7 @@ export class PanelUi {
 	requestsLoading = $state(false);
 	actionLoadingId = $state('');
 	sendFriendIdInput = $state('');
+	sendFriendExpiry = $state('');
 	friendActions = $state.raw<{
 		reload: () => Promise<void>;
 		retrySchedules: () => Promise<void>;
@@ -61,6 +66,7 @@ export class PanelUi {
 		decline: (id: string) => Promise<void>;
 		cancel: (id: string) => Promise<void>;
 		remove: (id: string) => Promise<void>;
+		setExpiry: (id: string, value: string | null) => Promise<void>;
 	}>();
 	comparison = $state(false);
 	comparisonDisplay = $state<'group' | 'detailed'>();

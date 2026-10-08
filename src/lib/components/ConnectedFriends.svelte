@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { API } from '$lib/api';
+	import { calendarDateTime, shiftDate } from '$lib/calendarDates';
 	import { processedData as storedProcessedData } from '$lib/store';
 	import type { Course } from '$lib/types';
 	import { mapFriendCourses, validateCourses, validateTermBounds } from '$lib/friendSchedule';
@@ -13,7 +14,9 @@
 	const ui = getPanelUi();
 	let { loadSchedules = false }: { loadSchedules?: boolean } = $props();
 	const selected = $derived(ui.scheduleTerm);
-	let listsVersion = 0;
+	const friendIds = $derived(ui.friends.map((friend) => friend.id).join(','));
+	let friendsVersion = 0;
+	let requestsVersion = 0;
 	let termsVersion = 0;
 	const inFlight = new SvelteMap<string, Promise<void>>();
 	const generations: Record<string, number> = {};
@@ -56,66 +59,69 @@
 		}
 	}
 
-	async function loadFriendsAndRequests(useCachedFriends = false) {
+	async function loadFriends(useCachedFriends = false) {
 		if (!session.active) return;
-		const version = ++listsVersion;
-		const fresh = () => session.active && version === listsVersion;
+		const version = ++friendsVersion;
+		const fresh = () => session.active && version === friendsVersion;
 		const cachedFriends = useCachedFriends ? session.friends : undefined;
-		if (cachedFriends) ui.friends = cachedFriends;
 		ui.friendsLoading = !cachedFriends;
-		ui.requestsLoading = true;
 		ui.friendsError = '';
+		try {
+			const friends = cachedFriends ?? (await API.getFriends()).friends;
+			if (!fresh()) return;
+			const ids = new Set(['you', ...friends.map((friend) => friend.id)]);
+			const removed = ui.selected.some((id) => !ids.has(id));
+			for (const friend of ui.friends) if (!ids.has(friend.id)) discardFriend(friend.id);
+			ui.friends = friends;
+			session.friends = friends;
+			ui.selected = ui.selected.filter((id) => ids.has(id));
+			ui.groups = ui.groups.map((group) => ({
+				...group,
+				members: group.members.filter((id) => ids.has(id))
+			}));
+			if (removed)
+				report('A selected friend is no longer available and was removed from planning.');
+		} catch (error) {
+			console.error('Failed to load friends data', error);
+			if (!fresh()) return;
+			ui.friendsError = errorMessage(
+				'Could not load friends',
+				error,
+				'Reload friends to try again.'
+			);
+			report(ui.friendsError);
+		} finally {
+			if (fresh()) ui.friendsLoading = false;
+		}
+	}
+
+	async function loadRequests() {
+		if (!session.active) return;
+		const version = ++requestsVersion;
+		const fresh = () => session.active && version === requestsVersion;
+		ui.requestsLoading = true;
 		ui.requestsError = '';
-		await Promise.all([
-			(async () => {
-				try {
-					const friends = cachedFriends ?? (await API.getFriends()).friends;
-					if (!fresh()) return;
-					const ids = new Set(['you', ...friends.map((friend) => friend.id)]);
-					const removed = ui.selected.some((id) => !ids.has(id));
-					for (const friend of ui.friends) if (!ids.has(friend.id)) discardFriend(friend.id);
-					ui.friends = friends;
-					session.friends = friends;
-					ui.selected = ui.selected.filter((id) => ids.has(id));
-					ui.groups = ui.groups.map((group) => ({
-						...group,
-						members: group.members.filter((id) => ids.has(id))
-					}));
-					if (removed)
-						report('A selected friend is no longer available and was removed from planning.');
-				} catch (error) {
-					console.error('Failed to load friends data', error);
-					if (!fresh()) return;
-					ui.friendsError = errorMessage(
-						'Could not load friends',
-						error,
-						'Reload friends to try again.'
-					);
-					report(ui.friendsError);
-				} finally {
-					if (fresh()) ui.friendsLoading = false;
-				}
-			})(),
-			(async () => {
-				try {
-					const requests = await API.getFriendRequests();
-					if (!fresh()) return;
-					ui.incomingRequests = requests.incoming;
-					ui.outgoingRequests = requests.outgoing;
-				} catch (error) {
-					console.error('Failed to load friends data', error);
-					if (!fresh()) return;
-					ui.requestsError = errorMessage(
-						'Could not load requests',
-						error,
-						'Reload requests to try again.'
-					);
-					report(ui.requestsError);
-				} finally {
-					if (fresh()) ui.requestsLoading = false;
-				}
-			})()
-		]);
+		try {
+			const requests = await API.getFriendRequests();
+			if (!fresh()) return;
+			ui.incomingRequests = requests.incoming;
+			ui.outgoingRequests = requests.outgoing;
+		} catch (error) {
+			console.error('Failed to load friends data', error);
+			if (!fresh()) return;
+			ui.requestsError = errorMessage(
+				'Could not load requests',
+				error,
+				'Reload requests to try again.'
+			);
+			report(ui.requestsError);
+		} finally {
+			if (fresh()) ui.requestsLoading = false;
+		}
+	}
+
+	async function loadFriendsAndRequests(useCachedFriends = false) {
+		await Promise.all([loadFriends(useCachedFriends), loadRequests()]);
 	}
 
 	function loadSchedule(term: string, id: string): Promise<void> {
@@ -231,20 +237,19 @@
 		await loadSchedule(term, 'you');
 	}
 
-	async function performAction(
+	async function performAction<T>(
 		id: string,
 		operation: string,
-		action: () => Promise<unknown>,
-		after?: () => void
+		action: () => Promise<T>,
+		after?: (result: T) => void | Promise<void>
 	) {
 		if (!session.active || ui.actionLoadingId) return;
 		ui.actionLoadingId = id;
 		ui.friendError = '';
 		try {
-			await action();
+			const result = await action();
 			if (!session.active) return;
-			after?.();
-			await loadFriendsAndRequests();
+			await after?.(result);
 		} catch (error) {
 			console.error(operation, error);
 			if (!session.active) return;
@@ -267,32 +272,50 @@
 			'send-request',
 			'Failed to send friend request',
 			() =>
-				API.createFriendRequest(
-					value.includes('@') ? { friend_email: value } : { friend_id: value }
-				).catch((error) => {
+				API.createFriendRequest({
+					...(value.includes('@') ? { friend_email: value } : { friend_id: value }),
+					...(ui.sendFriendExpiry
+						? {
+								expires_at: new Date(
+									Date.parse(calendarDateTime(shiftDate(ui.sendFriendExpiry, 1), '00:00')) - 1
+								).toISOString()
+							}
+						: {})
+				}).catch((error) => {
 					throw new Error(friendRequestErrorMessage(error));
 				}),
-			() => {
+			async () => {
 				ui.sendFriendIdInput = '';
+				ui.sendFriendExpiry = '';
+				await loadRequests();
 			}
 		);
 	}
 
 	async function acceptRequest(requestId: string) {
-		await performAction(`accept-${requestId}`, 'Failed to accept request', () =>
-			API.acceptFriendRequest(requestId)
+		await performAction(
+			`accept-${requestId}`,
+			'Failed to accept request',
+			() => API.acceptFriendRequest(requestId),
+			() => loadFriendsAndRequests()
 		);
 	}
 
 	async function declineRequest(requestId: string) {
-		await performAction(`decline-${requestId}`, 'Failed to decline request', () =>
-			API.declineFriendRequest(requestId)
+		await performAction(
+			`decline-${requestId}`,
+			'Failed to decline request',
+			() => API.declineFriendRequest(requestId),
+			() => loadRequests()
 		);
 	}
 
 	async function cancelRequest(requestId: string) {
-		await performAction(`cancel-${requestId}`, 'Failed to cancel request', () =>
-			API.cancelFriendRequest(requestId)
+		await performAction(
+			`cancel-${requestId}`,
+			'Failed to cancel request',
+			() => API.cancelFriendRequest(requestId),
+			() => loadRequests()
 		);
 	}
 
@@ -302,6 +325,8 @@
 			'Failed to remove friend',
 			() => API.removeFriend(friendId),
 			() => {
+				++friendsVersion;
+				ui.friendsLoading = false;
 				discardFriend(friendId);
 				ui.friends = ui.friends.filter((person) => person.id !== friendId);
 				session.friends = ui.friends;
@@ -385,16 +410,56 @@
 		accept: acceptRequest,
 		decline: declineRequest,
 		cancel: cancelRequest,
-		remove: unfriend
+		remove: unfriend,
+		setExpiry: (id, value) =>
+			performAction(
+				`expiry-${id}`,
+				'Failed to update expiry',
+				() => API.setFriendExpiry(id, value),
+				(result) => {
+					++friendsVersion;
+					++requestsVersion;
+					ui.friendsLoading = false;
+					ui.requestsLoading = false;
+					ui.friends = ui.friends.map((friend) =>
+						friend.id === id ? { ...friend, expires_at: result.expires_at } : friend
+					);
+					session.friends = ui.friends;
+					ui.incomingRequests = ui.incomingRequests.map((request) =>
+						request.from.id === id ? { ...request, expires_at: result.expires_at } : request
+					);
+					ui.outgoingRequests = ui.outgoingRequests.map((request) =>
+						request.to.id === id ? { ...request, expires_at: result.expires_at } : request
+					);
+				}
+			)
 	};
 	$effect(() => {
 		const term = selected;
 		const ids = ui.selected.join(',');
-		const friends = ui.friends;
-		if (!loadSchedules || !term || !ids || !friends || ui.termError) return;
+		const friends = friendIds;
+		if (!loadSchedules || !term || !ids || ui.termError) return;
+		void friends;
 		untrack(() => {
 			void loadFriendSchedules(term);
 			if (ui.selected.includes('you')) void loadOwnSchedule(term);
+		});
+	});
+	$effect(() => {
+		const expired = ui.friends.filter(
+			(friend) => friend.expires_at && Date.parse(friend.expires_at) <= ui.now
+		);
+		if (!expired.length) return;
+		untrack(() => {
+			for (const friend of expired) discardFriend(friend.id);
+			const ids = new Set(expired.map((friend) => friend.id));
+			ui.friends = ui.friends.filter((friend) => !ids.has(friend.id));
+			session.friends = ui.friends;
+			ui.selected = ui.selected.filter((id) => !ids.has(id));
+			ui.groups = ui.groups.map((group) => ({
+				...group,
+				members: group.members.filter((id) => !ids.has(id))
+			}));
 		});
 	});
 	$effect(() => {

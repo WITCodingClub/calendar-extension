@@ -1,6 +1,6 @@
 import type { PanelUi } from '$lib/panelUi.svelte';
 import type { Course, DayItem } from '$lib/types';
-import { todayDate, dateLabel } from '$lib/calendarDates';
+import { calendarDateTime, todayDate, dateLabel } from '$lib/calendarDates';
 import { validDate, validateCourses, validateTermBounds } from '$lib/friendSchedule';
 export { dateLabel, weekDates } from '$lib/calendarDates';
 import {
@@ -84,8 +84,18 @@ export function findFreePeriods(
 	} catch {
 		return { periods: [], message: 'Invalid term dates. Reload schedules to try again.' };
 	}
-	const today = todayDate();
-	const earliestToday = now.getHours() * 60 + now.getMinutes() + 1;
+	const today = todayDate('America/New_York');
+	const clock = Object.fromEntries(
+		new Intl.DateTimeFormat('en-US', {
+			timeZone: 'America/New_York',
+			hour: '2-digit',
+			minute: '2-digit',
+			hourCycle: 'h23'
+		})
+			.formatToParts(now)
+			.map((part) => [part.type, part.value])
+	);
+	const earliestToday = Number(clock.hour) * 60 + Number(clock.minute) + 1;
 	for (const date = new Date(from); date <= until; date.setUTCDate(date.getUTCDate() + 1)) {
 		if (date.getUTCDay() === 0 || date.getUTCDay() === 6) continue;
 		const dateString = date.toISOString().slice(0, 10);
@@ -185,6 +195,8 @@ export function scheduleMessage(ui: PanelUi, ownCourses?: Course[]): string | un
 		const status = ui.scheduleStatus[term]?.[id];
 		const person = ui.friends.find((person) => person.id === id);
 		if (!person) return 'Choose people from your current friends.';
+		if (person.expires_at && Date.parse(person.expires_at) <= Math.max(ui.now, Date.now()))
+			return `${person.name}'s friendship has expired. Reload friends.`;
 		if (!status || status === 'loading') return `Loading ${person.name}'s schedule…`;
 		if (status !== 'loaded')
 			return (
@@ -234,9 +246,9 @@ export function meetingMessage(
 	if (!validDate(slot.date) || slot.date.length !== 10) return 'Choose a valid meeting date.';
 	if (start === undefined || end === undefined || start >= end)
 		return 'Choose a valid start time and an end after it.';
-	if (slot.date < todayDate()) return 'Choose today or a future date.';
+	if (slot.date < todayDate('America/New_York')) return 'Choose today or a future date.';
 	const now = new Date(Math.max(ui.now, Date.now()));
-	if (slot.date === todayDate() && start <= now.getHours() * 60 + now.getMinutes())
+	if (Date.parse(calendarDateTime(slot.date, slot.start)) <= now.getTime())
 		return 'This start time has passed. Choose a later time.';
 	const weekday = new Date(slot.date + 'T00:00:00Z').getUTCDay();
 	if (weekday === 0 || weekday === 6) return 'Choose a weekday for this meeting.';

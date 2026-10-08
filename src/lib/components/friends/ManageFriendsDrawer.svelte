@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button, Checkbox, ListItem, TextFieldOutlined, VariableTabs } from 'm3-svelte';
+	import { calendarDateTime, shiftDate, todayDate } from '$lib/calendarDates';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { getPanelUi } from '$lib/panelUi.svelte';
@@ -15,7 +16,18 @@
 	let editingGroup = $state(false);
 	let groupName = $state('');
 	let groupMembers = $state<string[]>([]);
+	let requestExpiry = $state<Record<string, string>>({});
 	const activePerson = $derived(ui.friends.find((person) => person.id === personId));
+	let expiryDate = $derived(
+		activePerson?.expires_at
+			? new Intl.DateTimeFormat('en-CA', {
+					timeZone: 'America/New_York',
+					year: 'numeric',
+					month: '2-digit',
+					day: '2-digit'
+				}).format(new Date(activePerson.expires_at))
+			: ''
+	);
 	const requestCount = $derived(ui.incomingRequests.length + ui.outgoingRequests.length);
 	const inputMessage = $derived(
 		ui.sendFriendIdInput ? requestInputMessage(ui.sendFriendIdInput) : undefined
@@ -58,6 +70,19 @@
 					}
 				: group
 		);
+	}
+
+	async function saveExpiry(id: string, date = expiryDate) {
+		try {
+			const value = date
+				? new Date(Date.parse(calendarDateTime(shiftDate(date, 1), '00:00')) - 1).toISOString()
+				: null;
+			if (value && Date.parse(value) <= Date.now())
+				throw new Error('Choose today or a future expiry date.');
+			await ui.friendActions?.setExpiry(id, value);
+		} catch (error) {
+			ui.friendError = error instanceof Error ? error.message : 'Could not update expiry.';
+		}
 	}
 
 	function planWithPerson(compare = false) {
@@ -131,6 +156,23 @@
 				<Button variant="text" onclick={() => (personId = undefined)}>All people</Button>
 				<h3>{activePerson.name}</h3>
 				<p class="text-sm text-on-surface-variant">Full schedule</p>
+				<div class="preview-form-stack min-w-0 gap-3 grid">
+					<TextFieldOutlined
+						label="Friendship expires (optional)"
+						type="date"
+						min={todayDate('America/New_York')}
+						bind:value={expiryDate}
+					/>
+					<p class="text-sm text-on-surface-variant">
+						Leave empty for no expiry. Dates use Eastern time.
+					</p>
+					<Button
+						variant="text"
+						disabled={ui.actionLoadingId !== ''}
+						onclick={() => saveExpiry(activePerson.id)}>Save expiry</Button
+					>
+				</div>
+
 				<p class="text-xs font-semibold text-primary">Groups</p>
 				<ul class="preview-list p-0 list-none">
 					{#each ui.groups as group (group.id)}
@@ -174,6 +216,12 @@
 						}}
 					/>
 					{#if inputMessage}<p class="text-sm text-error" role="status">{inputMessage}</p>{/if}
+					<TextFieldOutlined
+						label="Friendship expires (optional)"
+						type="date"
+						min={todayDate('America/New_York')}
+						bind:value={ui.sendFriendExpiry}
+					/>
 					<Button
 						iconType="left"
 						disabled={!ui.sendFriendIdInput.trim() || ui.actionLoadingId !== ''}
@@ -205,7 +253,7 @@
 							.includes(search.toLowerCase())) as person (person.id)}
 						<ListItem
 							headline={person.name}
-							supporting="Full schedule"
+							supporting={`Full schedule${person.expires_at ? ` · Expires ${new Date(person.expires_at).toLocaleDateString()}` : ''}`}
 							onclick={() => (personId = person.id)}
 						/>
 					{/each}
@@ -274,6 +322,26 @@
 			{#each ui.incomingRequests as request (request.request_id)}
 				<section class="gap-3 border-outline-variant pb-4 grid border-b">
 					<h4>{request.from.name}</h4>
+					{#if request.expires_at}<p class="text-sm text-on-surface-variant">
+							Expires {new Date(request.expires_at).toLocaleDateString()}
+						</p>{/if}
+
+					<div class="preview-form-stack min-w-0 gap-2 grid">
+						<TextFieldOutlined
+							label={`New expiry for ${request.from.name} (optional)`}
+							type="date"
+							min={todayDate('America/New_York')}
+							value={requestExpiry[request.request_id] ?? ''}
+							onchange={(event) => (requestExpiry[request.request_id] = event.currentTarget.value)}
+						/>
+						<Button
+							variant="text"
+							disabled={ui.actionLoadingId !== ''}
+							onclick={() => saveExpiry(request.from.id, requestExpiry[request.request_id] ?? '')}
+							>Update expiry</Button
+						>
+					</div>
+
 					<div class="gap-2 flex flex-wrap">
 						<Button
 							variant="tonal"
@@ -291,13 +359,34 @@
 			<h3>Outgoing requests</h3>
 			<ul class="preview-list p-0 list-none">
 				{#each ui.outgoingRequests as request (request.request_id)}
-					<ListItem headline={request.to.name} supporting="Pending">
+					<ListItem
+						headline={request.to.name}
+						supporting={request.expires_at
+							? `Pending Â· Expires ${new Date(request.expires_at).toLocaleDateString()}`
+							: 'Pending'}
+					>
 						{#snippet trailing()}<Button
 								variant="text"
 								disabled={ui.actionLoadingId !== ''}
 								onclick={() => ui.friendActions?.cancel(request.request_id)}>Cancel</Button
 							>{/snippet}
 					</ListItem>
+
+					<li class="preview-form-stack min-w-0 gap-2 pb-3 grid">
+						<TextFieldOutlined
+							label={`New expiry for ${request.to.name} (optional)`}
+							type="date"
+							min={todayDate('America/New_York')}
+							value={requestExpiry[request.request_id] ?? ''}
+							onchange={(event) => (requestExpiry[request.request_id] = event.currentTarget.value)}
+						/>
+						<Button
+							variant="text"
+							disabled={ui.actionLoadingId !== ''}
+							onclick={() => saveExpiry(request.to.id, requestExpiry[request.request_id] ?? '')}
+							>Update expiry</Button
+						>
+					</li>
 				{/each}
 			</ul>
 		{/if}

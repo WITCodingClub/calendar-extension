@@ -1,7 +1,7 @@
 import { test, expect } from './extension.fixture';
 import { chooseRadio, fitsViewport, selectFriends, toggle } from './helpers';
 
-test('picker, planning preferences, meeting validation, draft, preview and disabled links', async ({
+test('picker, planning preferences, meeting validation, draft, preview and link form', async ({
 	extension
 }) => {
 	const { page } = extension;
@@ -106,9 +106,9 @@ test('picker, planning preferences, meeting validation, draft, preview and disab
 	await chooseRadio(page, 'Friends');
 	await page.getByRole('button', { name: 'Create meeting link', exact: true }).click();
 	const link = page.getByRole('dialog', { name: 'Create meeting link' });
-	await link.getByLabel('Link name').fill('Test link draft');
+	await link.getByLabel('Meeting name (optional)').fill('Test link draft');
 	await link.getByLabel('Link expires').fill('2026-10-20');
-	await expect(link.getByRole('button', { name: 'Generate link' })).toBeDisabled();
+	await expect(link.getByRole('button', { name: 'Generate link' })).toBeEnabled();
 	for (const width of [320, 480, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		await fitsViewport(page, link);

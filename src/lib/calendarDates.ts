@@ -1,5 +1,18 @@
-export function todayDate(): string {
+export function todayDate(timeZone?: string): string {
 	const date = new Date();
+	if (timeZone) {
+		const parts = Object.fromEntries(
+			new Intl.DateTimeFormat('en-US', {
+				timeZone,
+				year: 'numeric',
+				month: '2-digit',
+				day: '2-digit'
+			})
+				.formatToParts(date)
+				.map((part) => [part.type, part.value])
+		);
+		return `${parts.year}-${parts.month}-${parts.day}`;
+	}
 	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
@@ -34,4 +47,39 @@ export function dateLabel(date: string): string {
 		day: 'numeric',
 		timeZone: 'UTC'
 	});
+}
+
+export function calendarDateTime(
+	date: string,
+	time: string,
+	timeZone = 'America/New_York'
+): string {
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time))
+		throw new Error('Choose a valid date and time.');
+	const target = Date.parse(`${date}T${time}:00Z`);
+	if (!Number.isFinite(target) || new Date(target).toISOString().slice(0, 10) !== date)
+		throw new Error('Choose a valid date.');
+	const formatter = new Intl.DateTimeFormat('en-US', {
+		timeZone,
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit',
+		hourCycle: 'h23'
+	});
+	function wallClock(instant: number) {
+		const parts = Object.fromEntries(
+			formatter.formatToParts(instant).map((part) => [part.type, part.value])
+		);
+		return Date.parse(
+			`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}Z`
+		);
+	}
+	let instant = target;
+	for (let i = 0; i < 3; i++) instant += target - wallClock(instant);
+	if (wallClock(instant) !== target)
+		throw new Error('This time does not exist in the calendar timezone.');
+	return new Date(instant).toISOString();
 }

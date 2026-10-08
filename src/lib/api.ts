@@ -1,9 +1,34 @@
 import { EnvironmentManager } from "./environment";
 import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
-import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
-import { friendList, friendRequests, processedStatus, requestCreated, requestAccepted, mutationResult } from './friendData';
+import type {
+    FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse,
+    FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse,
+    GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse,
+    UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings,
+    FriendRequestInput, FriendExpiryResponse, MeetingLinkInput, MeetingLinkCreateResponse,
+    MeetingLinkResponse, MeetingLinksResponse
+} from './types';
+import {
+    friendList, friendRequests, processedStatus, requestCreated, requestAccepted, mutationResult,
+    friendExpiry, meetingLinks, meetingLink, meetingLinkCreated
+} from './friendData';
 import { validatedTerms, validateCourses } from './friendSchedule';
 import type { PasskeySummary } from "./passkeys";
+
+export class ApiError extends Error {
+    readonly status: number;
+    readonly code?: string;
+
+    constructor(message: string, status: number, body?: unknown) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;
+        if (body && typeof body === 'object') {
+            const fields = body as Record<string, unknown>;
+            if (typeof fields.code === 'string') this.code = fields.code;
+        }
+    }
+}
 
 export class API {
     private static async getBaseUrl(): Promise<string> {
@@ -47,15 +72,33 @@ export class API {
             return response.json();
         }
         let message = `${failureMessage}: ${response.status}`;
+        let body: unknown;
         try {
-            const body = await response.json();
-            if (body?.error) message = String(body.error);
-            else if (body?.message) message = String(body.message);
-            else if (body?.detail) message = String(body.detail);
+            body = await response.json();
+            if (body && typeof body === 'object') {
+                const fields = body as Record<string, unknown>;
+                if (fields.error) message = String(fields.error);
+                else if (fields.message) message = String(fields.message);
+                else if (fields.detail) message = String(fields.detail);
+            }
         } catch {
             /* ignore parse errors */
         }
-        throw new Error(message);
+        throw new ApiError(message, response.status, body);
+    }
+
+    private static async friendApiRequest(path: string, failureMessage: string, method = 'GET', body?: unknown): Promise<unknown> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await this.authedFetch(`${baseUrl}${path}`, {
+            method,
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+            },
+            ...(body === undefined ? {} : { body: JSON.stringify(body) })
+        });
+        return this.readJson<unknown>(response, failureMessage);
     }
 
     public static async checkFeatureFlag(flagName:string) {
@@ -195,7 +238,7 @@ export class API {
     }
 
     public static async createFriendRequest(
-        payload: { friend_id: string } | { friend_email: string }
+        payload: FriendRequestInput
     ): Promise<FriendRequestCreateResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
@@ -284,6 +327,29 @@ export class API {
             body: JSON.stringify({ term_uid: termUid })
         });
         return this.readJson(response, `Failed to fetch the schedule of friend ${friendId}`);
+    }
+
+    public static async setFriendExpiry(friendId: string, expiresAt: string | null): Promise<FriendExpiryResponse> {
+        return friendExpiry(await this.friendApiRequest(
+            `/friends/${encodeURIComponent(friendId)}/expiry`, 'Failed to update friendship expiry',
+            'PATCH', { expires_at: expiresAt }
+        ));
+    }
+
+    public static async getMeetingLinks(): Promise<MeetingLinksResponse> {
+        return meetingLinks(await this.friendApiRequest('/meeting_links', 'Failed to fetch meeting links'));
+    }
+
+    public static async createMeetingLink(payload: MeetingLinkInput): Promise<MeetingLinkCreateResponse> {
+        return meetingLinkCreated(await this.friendApiRequest(
+            '/meeting_links', 'Failed to create meeting link', 'POST', payload
+        ));
+    }
+
+    public static async revokeMeetingLink(linkId: string): Promise<MeetingLinkResponse> {
+        return meetingLink(await this.friendApiRequest(
+            `/meeting_links/${encodeURIComponent(linkId)}`, 'Failed to revoke meeting link', 'DELETE'
+        ));
     }
 
     public static async getIcsUrl(): Promise<{ ics_url: string }> {

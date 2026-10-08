@@ -99,6 +99,8 @@ export function responseFor(method: string, path: string, body: Record<string, u
 				};
 			case '/api/friends':
 				return { friends };
+			case '/api/meeting_links':
+				return { meeting_links: [] };
 			case '/api/friends/requests':
 				return {
 					incoming: [

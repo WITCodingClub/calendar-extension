@@ -1,7 +1,7 @@
 import { getContext, setContext } from 'svelte';
 import { API } from './api';
 import type { PasskeySummary } from './passkeys';
-import type { Course, FriendIdentity, ProcessedEvents, TermResponse } from './types';
+import type { Course, Friend, ProcessedEvents, TermResponse } from './types';
 
 export type ConnectedAccount = {
     id: string;
@@ -43,7 +43,7 @@ export class PanelSession {
 
     // Accepted friends. Friend requests are not kept, because they change when
     // other users act.
-    friends: FriendIdentity[] | undefined;
+    friends: Friend[] | undefined;
     // Mapped courses by term id, then by friend id.
     readonly schedules: Record<string, Record<string, Course[]>> = {};
 

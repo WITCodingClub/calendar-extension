@@ -49,7 +49,6 @@
 		<Button variant="text" onclick={() => ui.friendActions?.retrySchedules()}
 			>Reload schedules</Button
 		>
-		<MeetingLinks />
 	{:else}
 		{#if ui.friendsError}<p class="text-sm text-error" role="alert">{ui.friendsError}</p>
 			<Button variant="text" onclick={() => ui.friendActions?.reload()}>Reload friends</Button>
@@ -75,4 +74,5 @@
 				>{/if}
 		</div>
 	{/if}
+	<MeetingLinks />
 </main>
