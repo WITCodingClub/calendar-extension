@@ -1,5 +1,6 @@
 import { getContext, setContext } from 'svelte';
 import { API } from './api';
+import { PreferenceCache } from './preferenceCache';
 import type { PasskeySummary } from './passkeys';
 import type { Course, FriendIdentity, ProcessedEvents, TermResponse } from './types';
 
@@ -38,6 +39,7 @@ export class PanelSession {
     readonly attemptedTerms = new Set<string>();
     // Terms whose meeting time preferences loaded in this session.
     readonly refreshedTerms = new Set<string>();
+    readonly preferences = new PreferenceCache(() => API.getPreferenceVersion());
 
     settings: SettingsData | undefined;
 
@@ -54,6 +56,8 @@ export class PanelSession {
     invalidateOwnSchedule(term: string): void {
         this.ownScheduleVersions[term] = (this.ownScheduleVersions[term] ?? 0) + 1;
         this.#processed.delete(term);
+        this.preferences.invalidateTerm(term);
+        this.refreshedTerms.delete(term);
     }
 
     loadProcessedEvents(term: string): Promise<ProcessedEvents> {

@@ -393,7 +393,24 @@ export class API {
     }
 
     // Event preferences endpoints
-    public static async getMeetingTimePreference(meetingTimeId: number | string): Promise<any> {
+    public static async getPreferenceVersion(): Promise<string | undefined> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/user/preferences/version`, {
+            method: 'GET',
+            cache: 'no-store',
+            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
+        });
+        if (response.status === 404 || response.status === 405) return undefined;
+        const data = await this.readJson<{ version: unknown }>(response, 'Failed to check preferences');
+        if (typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version)) {
+            throw new Error('Invalid preference version');
+        }
+        return data.version;
+    }
+
+    public static async getMeetingTimePreference(
+        meetingTimeId: number | string
+    ): Promise<GetPreferencesResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
@@ -402,17 +419,16 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        if (!response.ok) {
-            return undefined;
-        }
-        return response.json();
+        return this.readJson(response, 'Failed to load event preferences');
     }
 
     // The same data as getMeetingTimePreference, for many meeting times in one
     // request, keyed by the id that was sent. The backend takes up to 200 ids.
-    // Returns undefined when the request fails, for example on a backend that
-    // does not have this endpoint yet, so the caller can ask for each id instead.
-    public static async getMeetingTimePreferences(meetingTimeIds: Array<number | string>): Promise<Record<string, GetPreferencesResponse> | undefined> {
+    // Only an unsupported endpoint permits fallback. Outages and rate limits
+    // must not multiply one failed batch into a request for every event.
+    public static async getMeetingTimePreferences(
+        meetingTimeIds: Array<number | string>
+    ): Promise<{ preferences: Record<string, GetPreferencesResponse>; version?: string } | undefined> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/meeting_times/preferences`, {
@@ -423,14 +439,24 @@ export class API {
             },
             body: JSON.stringify({ meeting_time_ids: meetingTimeIds.map(String) })
         });
-        if (!response.ok) {
-            return undefined;
+        if (response.status === 404 || response.status === 405) return undefined;
+        const data = await this.readJson<{
+            preferences: Record<string, GetPreferencesResponse>;
+            version?: string;
+        }>(
+            response, 'Failed to load event preferences'
+        );
+        if (data.version !== undefined &&
+            (typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version))) {
+            throw new Error('Invalid preference version');
         }
-        const data = await response.json();
-        return data.preferences;
+        return data;
     }
 
-    public static async updateMeetingTimePreference(meetingTimeId: number | string, preferences: any): Promise<any> {
+    public static async updateMeetingTimePreference(
+        meetingTimeId: number | string,
+        preferences: { event_preference: Partial<GetPreferencesResponse['resolved']> }
+    ): Promise<GetPreferencesResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
