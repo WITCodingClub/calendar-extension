@@ -15,7 +15,7 @@ export class PreferenceCache {
 	#needsRefresh = false;
 	#generation = 0;
 	#termVersions = new Map<string, number>();
-	#terms = new Map<string, Preferences>();
+	#terms = new Map<string, { preferences: Preferences; version?: string }>();
 	#pending = new Map<string, Promise<Preferences | undefined>>();
 	#versionRequest: Promise<void> | undefined;
 	#listeners = new Set<() => void>();
@@ -52,7 +52,11 @@ export class PreferenceCache {
 					this.#supported = false;
 					return;
 				}
-				const changed = this.#version !== version && this.#hasTerms;
+				const changed =
+					(this.#version !== version && this.#hasTerms) ||
+					[...this.#terms.values()].some(
+						(term) => term.version !== undefined && term.version !== version
+					);
 				this.#version = version;
 				if (changed) this.invalidateAll();
 				else if (this.#needsRefresh && this.#pending.size === 0) {
@@ -79,22 +83,24 @@ export class PreferenceCache {
 	}
 
 	get(term: string, id: number | string): GetPreferencesResponse | undefined {
-		if (!this.#active || !this.#supported || this.#version === undefined) return undefined;
-		return this.#terms.get(term)?.get(String(id));
+		const cached = this.#terms.get(term);
+		if (!this.#active || !this.#supported || cached?.version === undefined) return undefined;
+		return cached.preferences.get(String(id));
 	}
 
 	isLoaded(term: string, preferences: Preferences): boolean {
-		return this.#active && this.#terms.get(term) === preferences;
+		return this.#active && this.#terms.get(term)?.preferences === preferences;
 	}
 
 	async loadTerm(
 		term: string,
-		load: () => Promise<Map<number | string, GetPreferencesResponse>>
+		load: () => Promise<{
+			preferences: Map<number | string, GetPreferencesResponse>;
+			version?: string;
+		}>
 	): Promise<Preferences | undefined> {
 		if (this.#version === undefined && this.#supported) {
-			await this.checkVersion().catch(() => {
-				// A failed version read cannot make these preferences cacheable.
-			});
+			await this.checkVersion().catch(() => {});
 		}
 		if (!this.#active) return undefined;
 		this.#hasTerms = true;
@@ -104,8 +110,10 @@ export class PreferenceCache {
 		const request = load()
 			.then((result) => {
 				if (!this.isCurrent(term, snapshot)) return undefined;
-				const preferences = new Map([...result].map(([id, value]) => [String(id), value]));
-				this.#terms.set(term, preferences);
+				const preferences = new Map(
+					[...result.preferences].map(([id, value]) => [String(id), value])
+				);
+				this.#terms.set(term, { preferences, version: result.version });
 				this.#needsRefresh = false;
 				return preferences;
 			})
@@ -121,10 +129,11 @@ export class PreferenceCache {
 	}
 
 	update(term: string, id: number | string, value: GetPreferencesResponse): void {
-		const preferences = new Map(this.#terms.get(term));
+		const cached = this.#terms.get(term);
+		const preferences = new Map(cached?.preferences);
 		this.invalidateTerm(term);
 		preferences.set(String(id), value);
-		if (this.#active) this.#terms.set(term, preferences);
+		if (this.#active) this.#terms.set(term, { preferences, version: cached?.version });
 	}
 
 	invalidateTerm(term: string): void {

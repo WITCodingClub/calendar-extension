@@ -426,7 +426,9 @@ export class API {
     // request, keyed by the id that was sent. The backend takes up to 200 ids.
     // Only an unsupported endpoint permits fallback. Outages and rate limits
     // must not multiply one failed batch into a request for every event.
-    public static async getMeetingTimePreferences(meetingTimeIds: Array<number | string>): Promise<Record<string, GetPreferencesResponse> | undefined> {
+    public static async getMeetingTimePreferences(
+        meetingTimeIds: Array<number | string>
+    ): Promise<{ preferences: Record<string, GetPreferencesResponse>; version?: string } | undefined> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/meeting_times/preferences`, {
@@ -438,10 +440,17 @@ export class API {
             body: JSON.stringify({ meeting_time_ids: meetingTimeIds.map(String) })
         });
         if (response.status === 404 || response.status === 405) return undefined;
-        const data = await this.readJson<{ preferences: Record<string, GetPreferencesResponse> }>(
+        const data = await this.readJson<{
+            preferences: Record<string, GetPreferencesResponse>;
+            version?: string;
+        }>(
             response, 'Failed to load event preferences'
         );
-        return data.preferences;
+        if (data.version !== undefined &&
+            (typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version))) {
+            throw new Error('Invalid preference version');
+        }
+        return data;
     }
 
     public static async updateMeetingTimePreference(

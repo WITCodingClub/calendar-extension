@@ -788,22 +788,25 @@
 	// endpoint yet, it asks for each id on its own, as before.
 	async function fetchPreferencesFor(
 		ids: Array<number | string>
-	): Promise<Map<number | string, GetPreferencesResponse>> {
+	): Promise<{
+		preferences: Map<number | string, GetPreferencesResponse>;
+		version?: string;
+	}> {
 		const map = new SvelteMap<number | string, GetPreferencesResponse>();
 		const chunks: Array<Array<number | string>> = [];
 		for (let i = 0; i < ids.length; i += PREFERENCES_BATCH_SIZE) {
 			chunks.push(ids.slice(i, i + PREFERENCES_BATCH_SIZE));
 		}
 
-		await Promise.all(
+		const versions = await Promise.all(
 			chunks.map(async (chunk) => {
 				const batch = await API.getMeetingTimePreferences(chunk);
 				if (batch) {
 					for (const id of chunk) {
-						const data = batch[String(id)];
+						const data = batch.preferences[String(id)];
 						if (data) map.set(id, data);
 					}
-					return;
+					return batch.version;
 				}
 
 				await Promise.all(
@@ -819,7 +822,11 @@
 			})
 		);
 
-		return map;
+		const version = versions[0];
+		return {
+			preferences: map,
+			version: versions.every((value) => value === version) ? version : undefined
+		};
 	}
 
 	// Returns false when no preferences loaded for a term that has meeting times.
@@ -835,10 +842,7 @@
 			)
 		);
 		try {
-			const map = await session.preferences.loadTerm(term, async () => {
-				const result = await fetchPreferencesFor(ids);
-return result;
-			});
+			const map = await session.preferences.loadTerm(term, () => fetchPreferencesFor(ids));
 			if (
 				!map ||
 				!session.preferences.isLoaded(term, map) ||

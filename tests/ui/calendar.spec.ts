@@ -77,7 +77,7 @@ test('two distinct event dialogs reuse loaded preferences; UI and startup reques
 	console.log('Synthetic request timings:', JSON.stringify(network));
 });
 
-test('five-minute version checks reuse unchanged data and refresh without replacing a draft', async ({
+test('five-minute version checks use batch versions and refresh without replacing a draft', async ({
 	extension
 }) => {
 	const { page, context, open, network } = extension;
@@ -98,7 +98,9 @@ test('five-minute version checks reuse unchanged data and refresh without replac
 				return [id, result];
 			})
 		);
-		await route.fulfill({ json: { preferences, missing: [] } });
+		await route.fulfill({
+			json: { preferences, missing: [], version: batchReads === 1 ? '0'.repeat(64) : version }
+		});
 	});
 	await page.clock.install({ time: new Date(now) });
 	await open();
@@ -115,13 +117,17 @@ test('five-minute version checks reuse unchanged data and refresh without replac
 	expect(versionReads).toBe(1);
 	await page.clock.fastForward(60 * 1000);
 	await expect.poll(() => versionReads).toBe(2);
-	expect(batchReads).toBe(1);
+	await expect.poll(() => batchReads).toBe(2);
+	await expect(dialog.getByLabel('Course Title', { exact: true })).toHaveValue('Algorithms Test');
+	await page.clock.fastForward(5 * 60 * 1000);
+	await expect.poll(() => versionReads).toBe(3);
+	expect(batchReads).toBe(2);
 	await dialog.getByLabel('Course Title', { exact: true }).fill('Unsaved title');
 	version = 'b'.repeat(64);
 	await page.clock.fastForward(5 * 60 * 1000);
 	await expect(page.getByRole('button', { name: /Updated Algorithms/ }).first()).toBeVisible();
-	expect(versionReads).toBe(3);
-	expect(batchReads).toBe(2);
+	expect(versionReads).toBe(4);
+	expect(batchReads).toBe(3);
 	await expect(dialog.getByLabel('Course Title', { exact: true })).toHaveValue('Unsaved title');
 	await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 	await expect(dialog).toBeHidden();
@@ -137,16 +143,16 @@ test('five-minute version checks reuse unchanged data and refresh without replac
 	await chooseRadio(page, 'Friends');
 	await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
 	await page.clock.fastForward(5 * 60 * 1000);
-	await expect.poll(() => versionReads).toBe(4);
+	await expect.poll(() => versionReads).toBe(5);
 	await chooseRadio(page, 'Calendar');
 	await expect(page.getByRole('button', { name: /Updated Algorithms/ }).first()).toBeVisible();
-	expect(batchReads).toBe(2);
+	expect(batchReads).toBe(3);
 	expect(network.filter((row) => row.path === '/api/meeting_times/:event/preference')).toHaveLength(
 		0
 	);
 });
 
-test('older servers keep per-event reads and discard a late response for a different event', async ({
+test('batches without versions keep per-event reads and discard a late response for a different event', async ({
 	extension
 }) => {
 	const { page, context, open } = extension;
@@ -158,7 +164,13 @@ test('older servers keep per-event reads and discard a late response for a diffe
 	});
 	await context.route(origin + '/api/user/preferences/version', async (route) => {
 		versionReads += 1;
-		await route.fulfill({ status: 404, json: { error: 'Not found' } });
+		await route.fulfill({ json: { version: 'a'.repeat(64) } });
+	});
+	await context.route(origin + '/api/meeting_times/preferences', async (route) => {
+		const ids: string[] = route.request().postDataJSON().meeting_time_ids;
+		await route.fulfill({
+			json: { preferences: Object.fromEntries(ids.map((id) => [id, preference(id)])) }
+		});
 	});
 	await context.route(origin + '/api/meeting_times/own-1/preference', async (route) => {
 		firstRead = true;
@@ -187,7 +199,7 @@ test('older servers keep per-event reads and discard a late response for a diffe
 	await expect(dialog.getByLabel('Course Title', { exact: true })).toHaveValue('Systems Test');
 	await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 	await page.clock.fastForward(10 * 60 * 1000);
-	expect(versionReads).toBe(1);
+	await expect.poll(() => versionReads).toBe(2);
 });
 
 test('failed version and preference reads remain retryable at the next interval', async ({
@@ -211,7 +223,9 @@ test('failed version and preference reads remain retryable at the next interval'
 				return [id, result];
 			})
 		);
-		await route.fulfill({ json: { preferences, missing: [] } });
+		await route.fulfill({
+			json: { preferences, missing: [], version: (batchReads >= 3 ? 'b' : 'a').repeat(64) }
+		});
 	});
 	await context.route(origin + '/api/user/preferences/version', async (route) => {
 		versionReads += 1;
