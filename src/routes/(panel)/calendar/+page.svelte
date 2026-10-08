@@ -553,6 +553,7 @@
 				// If CAS redirected us to the login page the user isn't authenticated.
 				const finalTab = await chrome.tabs.get(tabToUse.id!);
 				if (!finalTab.url?.startsWith('https://selfservice.wit.edu/')) {
+					shouldCloseTab = false;
 					throw new Error('Please log in to LeopardWeb (selfservice.wit.edu) and try again.');
 				}
 			}
@@ -1438,27 +1439,7 @@
 			class="gap-6 p-6 bg-surface-container rounded-2xl shadow-md max-w-lg mx-auto flex w-full flex-col items-center"
 		>
 			<div class="gap-1 flex w-full flex-col items-center">
-				<div class="gap-2 flex w-full items-center justify-between">
-					<div class="unpeak">
-						<Button
-							variant="tonal"
-							square
-							onclick={async () => {
-								await goto(resolve('/'));
-							}}
-						>
-							<span class="gap-2 flex flex-row items-center">
-								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-									><path
-										fill="currentColor"
-										d="M9.184 4.457c.3.286.311.76.026 1.06L3.75 11.25H22a.75.75 0 0 1 0 1.5H3.75l5.46 5.733a.75.75 0 1 1-1.086 1.034l-6.667-7a.75.75 0 0 1 0-1.034l6.667-7a.75.75 0 0 1 1.06-.026"
-									/></svg
-								>
-							</span>
-						</Button>
-					</div>
-					<h1 class="text-xl font-bold text-primary mb-1 text-center">Get Your Calendar</h1>
-				</div>
+				<h1 class="text-xl font-bold text-primary mb-1 text-center">Get Your Calendar</h1>
 				<p class="text-md text-secondary text-center">
 					Click the button below to fetch your classes and generate your calendar. If you've linked
 					your Google Calendar, your events will be added there as well!
@@ -1561,25 +1542,23 @@
 					}}
 				/>
 			{/if}
-		{:else}
+		{:else if processedData}
 			{#if !historicSchedule}<WeekNavigation bind:week={ui.week} />{/if}
-			{#if processedData}
-				<CalendarGrid
-					{stackedMeetings}
-					{dayOrder}
-					dates={historicSchedule ? undefined : dates}
-					startHour={calendarStartHour}
-					latestHour={getLatestEndHour(processedData)}
-					{militaryTime}
-					{earliestClassOffsetRem}
-					onselect={(item, day) => {
-						activeCourse = item.course;
-						activeMeeting = item.meeting;
-						activeDay = day;
-						getEventPerfs(item.meeting.id);
-					}}
-				/>
-			{/if}
+			<CalendarGrid
+				{stackedMeetings}
+				{dayOrder}
+				dates={historicSchedule ? undefined : dates}
+				startHour={calendarStartHour}
+				latestHour={getLatestEndHour(processedData)}
+				{militaryTime}
+				{earliestClassOffsetRem}
+				onselect={(item, day) => {
+					activeCourse = item.course;
+					activeMeeting = item.meeting;
+					activeDay = day;
+					getEventPerfs(item.meeting.id);
+				}}
+			/>
 		{/if}
 	{:else if tab === 'settings'}
 		<Settings />
