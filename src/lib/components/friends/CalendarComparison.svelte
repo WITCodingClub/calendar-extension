@@ -73,22 +73,9 @@
 	const visibleSlot = $derived(
 		upcomingSlot && dates.includes(upcomingSlot.date) ? upcomingSlot : undefined
 	);
-	const meetings = $derived([
-		...visiblePeople
-			.filter((person) => person.id !== 'you')
-			.flatMap((person) =>
-				(friendSchedules[person.id] ?? []).flatMap((course) => course.meeting_times ?? [])
-			),
-		...(visiblePeople.some((person) => person.id === 'you')
-			? Object.values(ownEvents?.byDay ?? {})
-					.flat()
-					.map((item) => item.meeting)
-			: [])
-	]);
 	const startHour = $derived(
 		Math.min(
 			8,
-			...meetings.map((meeting) => Math.floor(timeMinutes(meeting.begin_time)! / 60)),
 			...visiblePeople.flatMap((person) =>
 				(busyForRange(ui.busyBlocks, person.id, dates[0], dates[4])?.busy ?? [])
 					.filter((block) => dates.includes(block.date))
@@ -100,7 +87,6 @@
 	const latestHour = $derived(
 		Math.max(
 			17,
-			...meetings.map((meeting) => Math.ceil(endMinutes(meeting.end_time) / 60)),
 			...visiblePeople.flatMap((person) =>
 				(busyForRange(ui.busyBlocks, person.id, dates[0], dates[4])?.busy ?? [])
 					.filter((block) => dates.includes(block.date))

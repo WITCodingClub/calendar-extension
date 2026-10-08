@@ -29,13 +29,16 @@
 	const durations = [15, 30, 45, 60, 90, 120];
 
 	async function reload() {
-		if (!session.active) return;
+		if (!session.active || submitting || revoking) return;
 		const current = ++version;
 		loading = true;
 		error = '';
 		try {
 			const response = await API.getMeetingLinks();
-			if (session.active && current === version) links = response.meeting_links;
+			if (session.active && current === version) {
+				links = response.meeting_links;
+				ui.invalidateMeetings(session);
+			}
 		} catch (failure) {
 			if (session.active && current === version)
 				error = failure instanceof Error ? failure.message : 'Could not load meeting links.';
@@ -96,7 +99,7 @@
 			generatedId = link.id;
 			links = [link, ...links.filter((existing) => existing.id !== link.id)];
 		} catch (failure) {
-			if (failure instanceof ApiError && failure.status >= 400 && failure.status < 500)
+			if (failure instanceof ApiError && [400, 401, 403, 404, 422, 429].includes(failure.status))
 				attempted = false;
 			if (session.active)
 				formError = `${failure instanceof Error ? failure.message : 'Could not generate meeting link.'}${attempted ? ' Check the link list before generating another; this request will not be repeated.' : ''}`;
@@ -235,10 +238,7 @@
 						}
 					}}>{copied ? 'Copied' : 'Copy link'}</Button
 				>
-			{:else}<p class="text-sm text-on-surface-variant">
-					Meeting link creation is not available yet.
-				</p>
-				<Button disabled onclick={() => void generate()}
+			{:else}<Button disabled={submitting || attempted} onclick={() => void generate()}
 					>{submitting ? 'Generating…' : 'Generate link'}</Button
 				>{/if}
 		</div>

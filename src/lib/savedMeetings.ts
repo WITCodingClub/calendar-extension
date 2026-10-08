@@ -15,6 +15,7 @@ export type SavedMeeting = {
 	role: 'owner' | 'invitee';
 	can_edit: boolean;
 	can_delete: boolean;
+	can_leave: boolean;
 	owner: FriendIdentity;
 	friends: FriendIdentity[];
 	guest?: { name: string; email: string } | null;
@@ -41,6 +42,17 @@ export type SavedMeetingsResponse = {
 export type SavedMeetingChanges = Partial<
 	Pick<SavedMeeting, 'title' | 'location' | 'start_time' | 'end_time'>
 >;
+
+export type SavedMeetingInput = {
+	title: string;
+	location?: string | null;
+	start_time: string;
+	end_time: string;
+	friend_ids: string[];
+	frequency?: SavedMeeting['frequency'];
+	invite_friends?: boolean;
+	destinations?: SavedMeeting['destinations'];
+};
 
 function record(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -80,6 +92,8 @@ function meeting(value: unknown): value is SavedMeeting {
 		['owner', 'invitee'].includes(String(value.role)) &&
 		typeof value.can_edit === 'boolean' &&
 		typeof value.can_delete === 'boolean' &&
+		typeof value.can_leave === 'boolean' &&
+		(value.role !== 'owner' || !value.can_leave) &&
 		(value.role === 'owner' || (!value.can_edit && !value.can_delete)) &&
 		person(value.owner) &&
 		Array.isArray(value.friends) &&

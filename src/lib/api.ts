@@ -18,7 +18,7 @@ import type { FriendGroup } from './components/friends/types';
 import { friendGroups, friendGroup } from './friendGroups';
 import {
     savedMeetings, savedMeetingResponse, type SavedMeetingsResponse,
-    type SavedMeetingChanges, type SavedMeeting
+    type SavedMeetingChanges, type SavedMeeting, type SavedMeetingInput
 } from './savedMeetings';
 
 export class ApiError extends Error {
@@ -389,6 +389,29 @@ export class API {
         return savedMeetingResponse(await this.friendApiRequest(
             `/friends/meetings/${encodeURIComponent(id)}`, 'Failed to update meeting', 'PATCH', changes
         ));
+    }
+
+    public static async createSavedMeeting(payload: SavedMeetingInput, idempotencyKey: string): Promise<{ meeting: SavedMeeting }> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/friends/meetings`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${await this.getJwtToken()}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': idempotencyKey
+            },
+            body: JSON.stringify(payload)
+        });
+        return savedMeetingResponse(await this.readJson(response, 'Failed to create meeting'));
+    }
+
+    public static async leaveSavedMeeting(id: string): Promise<void> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/friends/meetings/${encodeURIComponent(id)}/attendance`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
+        });
+        if (!response.ok) await this.readJson(response, 'Failed to leave meeting');
     }
 
     public static async deleteSavedMeeting(id: string): Promise<void> {

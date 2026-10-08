@@ -14,13 +14,15 @@
 		militaryTime,
 		onupdate,
 		ondelete,
+		onleave,
 		onbusy
 	}: {
 		meeting: SavedMeeting;
 		occurrence: SavedMeetingOccurrence;
 		militaryTime: boolean;
 		onupdate: (meeting: SavedMeeting) => Promise<void>;
-		ondelete: () => void;
+		ondelete: (id: string) => void;
+		onleave: (id: string) => void;
 		onbusy: (busy: boolean) => void;
 	} = $props();
 	let editing = $state(false);
@@ -102,14 +104,32 @@
 
 	async function remove() {
 		if (busy || !meeting.can_delete || meeting.role !== 'owner') return;
+		const id = meeting.id;
 		busy = true;
 		onbusy(true);
 		error = '';
 		try {
-			await API.deleteSavedMeeting(meeting.id);
-			ondelete();
+			await API.deleteSavedMeeting(id);
+			ondelete(id);
 		} catch (failure) {
 			error = failure instanceof Error ? failure.message : 'Could not delete the meeting.';
+		} finally {
+			busy = false;
+			onbusy(false);
+		}
+	}
+
+	async function leave() {
+		if (busy || !meeting.can_leave || meeting.role !== 'invitee') return;
+		const id = meeting.id;
+		busy = true;
+		onbusy(true);
+		error = '';
+		try {
+			await API.leaveSavedMeeting(id);
+			onleave(id);
+		} catch (failure) {
+			error = failure instanceof Error ? failure.message : 'Could not leave the meeting.';
 		} finally {
 			busy = false;
 			onbusy(false);
@@ -138,12 +158,14 @@
 	{#if meeting.frequency === 'weekly'}
 		<p class="text-sm">
 			Repeats weekly{meeting.repeat_until ? ` through ${dateLabel(meeting.repeat_until)}` : ''}.
-			Editing or deleting applies to the whole series.
+			{meeting.role === 'invitee'
+				? 'Leaving applies to the whole series.'
+				: 'Editing or deleting applies to the whole series.'}
 		</p>
 	{/if}
 	{#if meeting.role === 'invitee'}
 		<p class="text-sm text-on-surface-variant">
-			You are invited. Respond using your calendar invitation.
+			You are invited. This meeting already counts as busy.
 		</p>
 	{:else}
 		<p class="text-sm text-on-surface-variant">
@@ -259,6 +281,11 @@
 		</div>
 	{:else}
 		<div class="gap-2 flex justify-end">
+			{#if meeting.can_leave && meeting.role === 'invitee'}<Button
+					variant="text"
+					disabled={busy}
+					onclick={leave}>{busy ? 'Leaving…' : 'Leave meeting'}</Button
+				>{/if}
 			{#if meeting.can_edit && meeting.role === 'owner'}<Button
 					variant="tonal"
 					onclick={() => {

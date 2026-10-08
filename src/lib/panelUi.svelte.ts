@@ -1,4 +1,5 @@
 import { getContext, setContext } from 'svelte';
+import { SvelteSet } from 'svelte/reactivity';
 import type {
 	Course,
 	Friend,
@@ -7,6 +8,7 @@ import type {
 	SharingLevel
 } from './types';
 import type { BusyBlocksResponse } from './friendSchedule';
+import type { PanelSession } from './panelSession';
 import { sharingLabel } from './friendData';
 import { schoolDays, weekDates } from './calendarDates';
 import type {
@@ -113,6 +115,7 @@ export class PanelUi {
 	meetingDraft = $state<MeetingDraft>();
 	meetingEditorOpen = $state(false);
 	meetingDetails = $state(false);
+	meetingVersion = $state(0);
 	starts = $state<Record<string, number>>({});
 	preferences = $state<MeetingPreferences>({
 		from: schoolDays()[0],
@@ -123,6 +126,25 @@ export class PanelUi {
 		buffer: '10',
 		betweenClasses: false
 	});
+
+	invalidateMeetings(session: PanelSession): void {
+		session.savedMeetings.clear();
+		session.pendingSavedMeetings.clear();
+		const ids = new SvelteSet([
+			'you',
+			...this.friends.map((friend) => friend.id),
+			...Object.keys(session.busyVersions),
+			...[...session.busyBlocks.keys(), ...session.pendingBusyBlocks.keys()].map(
+				(key) => key.split(':')[0]
+			)
+		]);
+		for (const id of ids) session.invalidateBusyBlocks(id);
+		this.busyBlocks = {};
+		this.busyStatus = {};
+		this.busyErrors = {};
+		++this.busyVersion;
+		++this.meetingVersion;
+	}
 
 	constructor() {
 		if (!browser) return;

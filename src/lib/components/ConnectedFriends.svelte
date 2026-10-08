@@ -86,6 +86,7 @@
 			return false;
 		discardFriend(id);
 		if (error.code === 'NOT_FRIENDS') {
+			ui.invalidateMeetings(session);
 			++friendsVersion;
 			ui.friendsLoading = false;
 			ui.friends = ui.friends.filter((person) => person.id !== id);
@@ -510,6 +511,7 @@
 				++friendsVersion;
 				ui.friendsLoading = false;
 				discardFriend(friendId);
+				ui.invalidateMeetings(session);
 				ui.friends = ui.friends.filter((person) => person.id !== friendId);
 				session.friends = ui.friends;
 				if (ui.selected.includes(friendId))
@@ -694,6 +696,7 @@
 		if (!expired.length) return;
 		untrack(() => {
 			for (const friend of expired) discardFriend(friend.id);
+			ui.invalidateMeetings(session);
 			++friendsVersion;
 			ui.friendsLoading = false;
 			const ids = new Set(expired.map((friend) => friend.id));

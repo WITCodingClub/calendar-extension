@@ -101,7 +101,7 @@
 		return Boolean(
 			selected && currentTerm != null
 				? Number(selected) < Number(currentTerm)
-				: termDates.end && termDates.end < todayDate()
+				: !ui.comparison && termDates.end && termDates.end < todayDate()
 		);
 	});
 	const calendarCourses = $derived([
@@ -113,11 +113,12 @@
 			ui.comparison = false;
 			ui.highlightedSlot = undefined;
 		}
-		if (!selected || !processedData || ui.datedTerm === selected) return;
+		if (!selected || (!processedData && !ui.comparison) || ui.datedTerm === selected) return;
 		ui.datedTerm = selected;
+		const start = ui.comparison ? ui.termBounds[selected]?.start : termDates.start;
 		ui.week = weekDates(
 			ui.highlightedSlot?.date ??
-				(termDates.start && termDates.start > todayDate() ? termDates.start : todayDate())
+				(start && start > todayDate() ? start : ui.comparison ? ui.week : todayDate())
 		)[0];
 	});
 	let activeCourse: Course | undefined = $state(undefined);
@@ -724,7 +725,7 @@
 					else next.push({ termId: tid, responseData: response });
 					return next;
 				});
-			} else {
+			} else if (!ui.comparison) {
 				loading = false;
 				await runScrapeAndProcess(termId);
 			}
@@ -968,6 +969,7 @@
 			if (!actualTermId) {
 				throw new Error('Could not determine which term to load');
 			}
+			if (ui.comparison && actualTermId !== termId) return;
 			if (actualTermId !== termId) {
 				ui.term = actualTermId;
 			}
@@ -1408,7 +1410,7 @@
 	});
 
 	$effect(() => {
-		if (selected && !loading && !session.attemptedTerms.has(selected)) {
+		if (!ui.comparison && selected && !loading && !session.attemptedTerms.has(selected)) {
 			session.attemptedTerms.add(selected);
 			if ($storedProcessedData.some((d) => String(d.termId) === selected)) {
 				syncProcessedEventsForTerm(selected);
@@ -1476,7 +1478,7 @@
 </script>
 
 <div class="min-w-0 gap-3 @container box-border flex h-full w-full flex-col">
-	{#if !processedData && tab === 'a'}
+	{#if !ui.comparison && !processedData && tab === 'a'}
 		<div
 			class="gap-6 p-6 bg-surface-container rounded-2xl shadow-md max-w-lg mx-auto flex w-full flex-col items-center"
 		>

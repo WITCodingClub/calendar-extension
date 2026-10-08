@@ -3,12 +3,9 @@
 	import { Button } from 'm3-svelte';
 	import { API } from '$lib/api';
 	import { getPanelSession } from '$lib/panelSession';
+	import { getPanelUi } from '$lib/panelUi.svelte';
 	import { dateLabel, shiftDate } from '$lib/calendarDates';
-	import {
-		savedMeetingOverlaps,
-		type SavedMeeting,
-		type SavedMeetingsResponse
-	} from '$lib/savedMeetings';
+	import type { SavedMeeting, SavedMeetingsResponse } from '$lib/savedMeetings';
 	import PreviewDialog from './PreviewDialog.svelte';
 	import SavedMeetingDetail from './SavedMeetingDetail.svelte';
 	import { formatTime } from './formatTime';
@@ -24,6 +21,7 @@
 		ondata: (data: SavedMeetingsResponse) => void;
 	} = $props();
 	const session = getPanelSession();
+	const ui = getPanelUi();
 	let data = $state.raw<SavedMeetingsResponse>({ meetings: [], occurrences: [] });
 	let loading = $state(false);
 	let error = $state('');
@@ -49,6 +47,7 @@
 		const end = shiftDate(start, 7);
 		const key = `${start}:${end}`;
 		const version = ++loadVersion;
+		const meetingVersion = ui.meetingVersion;
 		error = '';
 		if (!force && session.savedMeetings.has(key)) {
 			publish(session.savedMeetings.get(key)!);
@@ -58,6 +57,10 @@
 		publish({ meetings: [], occurrences: [] });
 		loading = true;
 		try {
+			if (force) {
+				session.savedMeetings.delete(key);
+				session.pendingSavedMeetings.delete(key);
+			}
 			let request = session.pendingSavedMeetings.get(key);
 			if (!request) {
 				request = API.getSavedMeetings(start, end);
@@ -65,7 +68,11 @@
 				const pending = request;
 				request
 					.then((response) => {
-						if (session.active && session.pendingSavedMeetings.get(key) === pending)
+						if (
+							session.active &&
+							ui.meetingVersion === meetingVersion &&
+							session.pendingSavedMeetings.get(key) === pending
+						)
 							session.savedMeetings.set(key, response);
 					})
 					.finally(() => {
@@ -75,9 +82,20 @@
 					.catch(() => undefined);
 			}
 			const response = await request;
-			if (active && session.active && version === loadVersion) publish(response);
+			if (
+				active &&
+				session.active &&
+				version === loadVersion &&
+				ui.meetingVersion === meetingVersion
+			)
+				publish(response);
 		} catch (failure) {
-			if (active && session.active && version === loadVersion)
+			if (
+				active &&
+				session.active &&
+				version === loadVersion &&
+				ui.meetingVersion === meetingVersion
+			)
 				error = failure instanceof Error ? failure.message : 'Could not load saved meetings.';
 		} finally {
 			if (active && version === loadVersion) loading = false;
@@ -86,71 +104,47 @@
 
 	$effect(() => {
 		const start = week;
+		const version = ui.meetingVersion;
 		untrack(() => {
 			selectedOccurrence = '';
 			void load(start);
 		});
+		void version;
 	});
 
 	async function update(updated: SavedMeeting) {
-		if (!active || !session.active) return;
-		const previous = meeting!;
-		const moved =
-			previous.start_time !== updated.start_time ||
-			previous.end_time !== updated.end_time ||
-			previous.repeat_until !== updated.repeat_until;
-		for (const key of new Set([
-			...session.savedMeetings.keys(),
-			...session.pendingSavedMeetings.keys()
-		])) {
-			const [start, end] = key.split(':');
-			if (!savedMeetingOverlaps(previous, start, end) && !savedMeetingOverlaps(updated, start, end))
-				continue;
-			session.pendingSavedMeetings.delete(key);
-			const cached = session.savedMeetings.get(key);
-			if (moved) session.savedMeetings.delete(key);
-			else if (cached)
-				session.savedMeetings.set(key, {
-					...cached,
-					meetings: cached.meetings.map((item) => (item.id === updated.id ? updated : item))
-				});
-		}
-		if (moved) {
-			selectedOccurrence = '';
-			await load(week, true);
-		} else
+		if (!session.active) return;
+		if (active)
 			publish({
 				...data,
 				meetings: data.meetings.map((item) => (item.id === updated.id ? updated : item))
 			});
+		ui.invalidateMeetings(session);
 	}
 
-	function remove() {
-		if (!active || !session.active) return;
-		const id = meeting!.id;
-		for (const [key, cached] of session.savedMeetings) {
-			session.savedMeetings.set(key, {
-				meetings: cached.meetings.filter((item) => item.id !== id),
-				occurrences: cached.occurrences.filter((item) => item.meeting_id !== id)
+	function remove(id: string) {
+		if (!session.active) return;
+		if (active) {
+			publish({
+				meetings: data.meetings.filter((item) => item.id !== id),
+				occurrences: data.occurrences.filter((item) => item.meeting_id !== id)
 			});
+			selectedOccurrence = '';
 		}
-		for (const key of session.pendingSavedMeetings.keys()) {
-			const [start, end] = key.split(':');
-			if (savedMeetingOverlaps(meeting!, start, end)) session.pendingSavedMeetings.delete(key);
-		}
-		publish({
-			meetings: data.meetings.filter((item) => item.id !== id),
-			occurrences: data.occurrences.filter((item) => item.meeting_id !== id)
-		});
-		selectedOccurrence = '';
+		ui.invalidateMeetings(session);
+	}
+
+	function refresh() {
+		if (loading || busy) return;
+		ui.invalidateMeetings(session);
 	}
 </script>
 
 <section class="gap-2 grid" aria-label="Saved meetings">
 	<h2 class="text-base font-semibold">Saved meetings this week</h2>
+	<Button variant="text" disabled={loading || busy} onclick={refresh}>Refresh meetings</Button>
 	{#if loading}<p class="text-sm text-on-surface-variant" role="status">Loading meetings…</p>
 	{:else if error}<p class="text-sm text-error" role="alert">{error}</p>
-		<Button variant="text" onclick={() => load(week, true)}>Reload meetings</Button>
 	{:else if !data.occurrences.length}<p class="text-sm text-on-surface-variant">
 			No saved meetings this week.
 		</p>
@@ -196,6 +190,7 @@
 				{militaryTime}
 				onupdate={update}
 				ondelete={remove}
+				onleave={remove}
 				onbusy={(value) => (busy = value)}
 			/>
 		{/key}
