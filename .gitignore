@@ -34,3 +34,5 @@ extension-firefox
 
 # Agent files
 /.agents/
+/.claude/
+skills-lock.json
