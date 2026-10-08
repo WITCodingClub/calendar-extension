@@ -3,6 +3,8 @@ import { API } from './api';
 import { PreferenceCache } from './preferenceCache';
 import type { PasskeySummary } from './passkeys';
 import type { Course, Friend, ProcessedEvents, TermResponse } from './types';
+import type { FriendGroup } from './components/friends/types';
+import type { SavedMeetingsResponse } from './savedMeetings';
 
 export type ConnectedAccount = {
     id: string;
@@ -46,6 +48,9 @@ export class PanelSession {
     // Accepted friends. Friend requests are not kept, because they change when
     // other users act.
     friends: Friend[] | undefined;
+    groups: FriendGroup[] | undefined;
+    readonly savedMeetings = new Map<string, SavedMeetingsResponse>();
+    readonly pendingSavedMeetings = new Map<string, Promise<SavedMeetingsResponse>>();
     // Mapped courses by term id, then by friend id.
     readonly schedules: Record<string, Record<string, Course[]>> = {};
 

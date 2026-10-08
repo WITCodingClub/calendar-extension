@@ -41,6 +41,14 @@ export class PanelUi {
 		}))
 	]);
 	groups = $state<FriendGroup[]>([]);
+	groupsLoading = $state(false);
+	groupsError = $state('');
+	groupLoadingId = $state('');
+	groupActions = $state.raw<{
+		reload: () => Promise<void>;
+		save: (name: string, members: string[], id?: string) => Promise<boolean>;
+		remove: (id: string) => Promise<boolean>;
+	}>();
 	friendSchedules = $state<Record<string, Record<string, Course[]>>>({});
 	scheduleStatus = $state<
 		Record<string, Record<string, 'loading' | 'loaded' | 'unprocessed' | 'error'>>
@@ -48,6 +56,7 @@ export class PanelUi {
 	incomingRequests = $state<FriendRequestIncoming[]>([]);
 	outgoingRequests = $state<FriendRequestOutgoing[]>([]);
 	friendError = $state('');
+	friendNotice = $state('');
 	friendsError = $state('');
 	requestsError = $state('');
 	termError = $state('');

@@ -18,6 +18,7 @@
 	let friendsVersion = 0;
 	let requestsVersion = 0;
 	let termsVersion = 0;
+	let groupsVersion = 0;
 	const inFlight = new SvelteMap<string, Promise<void>>();
 	const generations: Record<string, number> = {};
 	const waiting: Array<() => void> = [];
@@ -79,6 +80,7 @@
 				...group,
 				members: group.members.filter((id) => ids.has(id))
 			}));
+			if (session.groups) session.groups = ui.groups;
 			if (removed)
 				report('A selected friend is no longer available and was removed from planning.');
 		} catch (error) {
@@ -122,6 +124,53 @@
 
 	async function loadFriendsAndRequests(useCachedFriends = false) {
 		await Promise.all([loadFriends(useCachedFriends), loadRequests()]);
+	}
+
+	async function loadGroups(useCachedGroups = false) {
+		if (!session.active || ui.groupLoadingId) return;
+		const version = ++groupsVersion;
+		const fresh = () => session.active && version === groupsVersion;
+		const cached = useCachedGroups ? session.groups : undefined;
+		ui.groupsLoading = !cached;
+		ui.groupsError = '';
+		try {
+			const groups = cached ?? (await API.getFriendGroups());
+			if (!fresh()) return;
+			const ids = session.friends && new Set(session.friends.map((friend) => friend.id));
+			ui.groups = groups.map((group) => ({
+				...group,
+				members: ids ? group.members.filter((id) => ids.has(id)) : group.members
+			}));
+			session.groups = ui.groups;
+		} catch (error) {
+			console.error('Failed to load friend groups', error);
+			if (!fresh()) return;
+			ui.groupsError = errorMessage('Could not load groups', error, 'Reload groups to try again.');
+		} finally {
+			if (fresh()) ui.groupsLoading = false;
+		}
+	}
+
+	async function changeGroup(id: string, action: () => Promise<void>): Promise<boolean> {
+		if (!session.active || ui.groupLoadingId || ui.groupsLoading) return false;
+		++groupsVersion;
+		ui.groupLoadingId = id;
+		ui.groupsError = '';
+		try {
+			await action();
+			return session.active;
+		} catch (error) {
+			console.error('Failed to save friend groups', error);
+			if (session.active)
+				ui.groupsError = errorMessage(
+					'Could not save group',
+					error,
+					'Your edits are kept. Try again.'
+				);
+			return false;
+		} finally {
+			if (session.active) ui.groupLoadingId = '';
+		}
 	}
 
 	function loadSchedule(term: string, id: string): Promise<void> {
@@ -246,6 +295,7 @@
 		if (!session.active || ui.actionLoadingId) return;
 		ui.actionLoadingId = id;
 		ui.friendError = '';
+		ui.friendNotice = '';
 		try {
 			const result = await action();
 			if (!session.active) return;
@@ -337,6 +387,7 @@
 					...group,
 					members: group.members.filter((id) => id !== friendId)
 				}));
+				if (session.groups) session.groups = ui.groups;
 			}
 		);
 	}
@@ -380,7 +431,28 @@
 	onMount(() => {
 		void loadTerms();
 		void loadFriendsAndRequests(true);
+		void loadGroups(true);
 	});
+
+	ui.groupActions = {
+		reload: () => loadGroups(),
+		save: (name, members, id) =>
+			changeGroup(id ?? 'new-group', async () => {
+				const group = await API.saveFriendGroup(name, members, id);
+				if (!session.active) return;
+				ui.groups = id
+					? ui.groups.map((existing) => (existing.id === id ? group : existing))
+					: [...ui.groups, group];
+				session.groups = ui.groups;
+			}),
+		remove: (id) =>
+			changeGroup(id, async () => {
+				await API.deleteFriendGroup(id);
+				if (!session.active) return;
+				ui.groups = ui.groups.filter((group) => group.id !== id);
+				session.groups = ui.groups;
+			})
+	};
 
 	ui.friendActions = {
 		reload: () => loadFriendsAndRequests(),
@@ -431,6 +503,12 @@
 					ui.outgoingRequests = ui.outgoingRequests.map((request) =>
 						request.to.id === id ? { ...request, expires_at: result.expires_at } : request
 					);
+					ui.friendNotice =
+						result.expiry_change === 'proposed'
+							? 'Proposal sent by email. Your friend must approve it in the web dashboard before the expiry changes.'
+							: result.expiry_change === 'shortened'
+								? 'The earlier expiry applies now.'
+								: 'The expiry is unchanged.';
 				}
 			)
 	};
@@ -460,6 +538,7 @@
 				...group,
 				members: group.members.filter((id) => !ids.has(id))
 			}));
+			if (session.groups) session.groups = ui.groups;
 		});
 	});
 	$effect(() => {

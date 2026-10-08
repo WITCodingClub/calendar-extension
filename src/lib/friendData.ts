@@ -159,6 +159,7 @@ export function friendExpiry(value: unknown): FriendExpiryResponse {
 			text(value.friendship_id) &&
 			(value.status === 'pending' || value.status === 'accepted') &&
 			(value.expires_at === null || timestamp(value.expires_at)) &&
+			['shortened', 'proposed', 'unchanged'].includes(value.expiry_change as string) &&
 			identity(value.friend),
 		'friendship expiry'
 	);

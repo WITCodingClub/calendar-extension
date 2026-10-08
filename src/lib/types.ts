@@ -83,6 +83,7 @@ interface FriendExpiryResponse {
     friendship_id: string;
     status: 'pending' | 'accepted';
     expires_at: string | null;
+    expiry_change: 'shortened' | 'proposed' | 'unchanged';
     friend: FriendIdentity;
 }
 

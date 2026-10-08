@@ -10,6 +10,9 @@
 	import { formatTime } from './formatTime';
 	import { getPanelUi } from '$lib/panelUi.svelte';
 	const ui = getPanelUi();
+	function endMinutes(value: string): number {
+		return value === '24:00' ? 1440 : timeMinutes(value)!;
+	}
 
 	let {
 		participants,
@@ -80,7 +83,7 @@
 	const latestHour = $derived(
 		Math.max(
 			17,
-			...meetings.map((meeting) => Math.ceil(timeMinutes(meeting.end_time)! / 60)),
+			...meetings.map((meeting) => Math.ceil(endMinutes(meeting.end_time) / 60)),
 			...(visibleSlot ? [Math.ceil(timeMinutes(visibleSlot.end)! / 60)] : [])
 		)
 	);
@@ -130,7 +133,7 @@
 			course,
 			meeting: course.meeting_times[0],
 			startOffset: (timeMinutes(start)! / 60 - startHour) * 8,
-			width: ((timeMinutes(end)! - timeMinutes(start)!) / 60) * 8,
+			width: ((endMinutes(end) - timeMinutes(start)!) / 60) * 8,
 			bgColor: '#616161',
 			textColor: '#ffffff',
 			stackIndex: 0,
@@ -163,7 +166,7 @@
 							ownerId: person.id,
 							ownerLabel: person.name,
 							startOffset: (timeMinutes(meeting.begin_time)! / 60 - startHour) * 8,
-							width: ((timeMinutes(meeting.end_time)! - timeMinutes(meeting.begin_time)!) / 60) * 8,
+							width: ((endMinutes(meeting.end_time) - timeMinutes(meeting.begin_time)!) / 60) * 8,
 							bgColor: ownerColor(person.id),
 							textColor: '#ffffff',
 							stackIndex: 0,
@@ -218,7 +221,7 @@
 				events = mergeBusy(
 					events.map((item) => ({
 						start: timeMinutes(item.meeting.begin_time)!,
-						end: timeMinutes(item.meeting.end_time)!
+						end: endMinutes(item.meeting.end_time)
 					}))
 				).map((period) =>
 					makeEvent(

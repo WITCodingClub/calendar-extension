@@ -39,6 +39,8 @@
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import WeekNavigation from '$lib/components/WeekNavigation.svelte';
 	import CalendarComparison from '$lib/components/friends/CalendarComparison.svelte';
+	import SavedMeetings from '$lib/components/friends/SavedMeetings.svelte';
+	import { savedMeetingCourses, type SavedMeetingsResponse } from '$lib/savedMeetings';
 	import ParticipantPicker from '$lib/components/friends/ParticipantPicker.svelte';
 	import { getPanelUi } from '$lib/panelUi.svelte';
 	import { scheduleMessage } from '$lib/components/friends/availability';
@@ -73,6 +75,8 @@
 	);
 	let jwt_token: string | undefined = $state(undefined);
 	let processedData: Course[] | undefined = $derived(responseData?.classes);
+	let savedData = $state.raw<SavedMeetingsResponse>({ meetings: [], occurrences: [] });
+	let selectedSavedOccurrence = $state('');
 	const comparisonMessage = $derived(scheduleMessage(ui, processedData));
 	let terms = $state<TermResponse | undefined>(undefined);
 	const termDates = $derived.by(() => {
@@ -93,6 +97,10 @@
 				(selected && terms?.current_term && Number(selected) < terms.current_term.id)
 		)
 	);
+	const calendarCourses = $derived([
+		...(processedData ?? []),
+		...(historicSchedule ? [] : savedMeetingCourses(savedData, dates))
+	]);
 	$effect(() => {
 		if (historicSchedule) {
 			ui.comparison = false;
@@ -383,20 +391,19 @@
 	const calendarStartHour = $derived(
 		Math.min(
 			8,
-			...(processedData ?? []).flatMap((course) =>
+			...calendarCourses.flatMap((course) =>
 				course.meeting_times.map((meeting) => Number(meeting.begin_time.split(':')[0]))
 			)
 		)
 	);
 	let stackedMeetings = $derived.by(() => {
-		if (!processedData) return { byDay: {}, maxStacksByDay: {} };
 		const byDay: Record<string, PositionedMeeting[]> = {};
 		const maxStacksByDay: Record<string, number> = {};
 		for (const { key } of dayOrder) {
 			byDay[key] = [];
 			maxStacksByDay[key] = 1;
 		}
-		for (const course of processedData) {
+		for (const course of calendarCourses) {
 			if (!course) continue;
 			const isLab = (course.schedule_type ?? '').toLowerCase() === 'laboratory';
 			const bgColorBase = isLab ? labColor : lectureColor;
@@ -469,6 +476,19 @@
 		}
 		return { byDay, maxStacksByDay };
 	});
+	function selectCalendarEvent(item: { course: Course; meeting: MeetingTime }, day: DayItem) {
+		const occurrence = savedData.occurrences.find(
+			(occurrence) => occurrence.id === item.meeting.id
+		);
+		if (occurrence) {
+			selectedSavedOccurrence = occurrence.id;
+			return;
+		}
+		activeCourse = item.course;
+		activeMeeting = item.meeting;
+		activeDay = day;
+		getEventPerfs(item.meeting.id);
+	}
 
 	let earliestClassOffsetRem = $derived.by(() => {
 		let min = Infinity;
@@ -786,9 +806,7 @@
 	// Asks for the preferences of every meeting time in one request per 200 ids,
 	// instead of one request per meeting time. If the backend has no batch
 	// endpoint yet, it asks for each id on its own, as before.
-	async function fetchPreferencesFor(
-		ids: Array<number | string>
-	): Promise<{
+	async function fetchPreferencesFor(ids: Array<number | string>): Promise<{
 		preferences: Map<number | string, GetPreferencesResponse>;
 		version?: string;
 	}> {
@@ -1528,14 +1546,9 @@
 					date={ui.week}
 					bind:week={ui.week}
 					slot={ui.highlightedSlot}
-					ownEvents={processedData ? stackedMeetings : undefined}
+					ownEvents={stackedMeetings}
 					friendSchedules={ui.term ? (ui.friendSchedules[ui.term] ?? {}) : {}}
-					onownselect={(item, day) => {
-						activeCourse = item.course;
-						activeMeeting = item.meeting;
-						activeDay = day;
-						getEventPerfs(item.meeting.id);
-					}}
+					onownselect={selectCalendarEvent}
 					onedit={() => {
 						ui.meetingDetails = true;
 						ui.meetingEditorOpen = true;
@@ -1546,22 +1559,27 @@
 					}}
 				/>
 			{/if}
-		{:else if processedData}
+		{:else}
 			{#if !historicSchedule}<WeekNavigation bind:week={ui.week} />{/if}
-			<CalendarGrid
-				{stackedMeetings}
-				{dayOrder}
-				dates={historicSchedule ? undefined : dates}
-				startHour={calendarStartHour}
-				latestHour={getLatestEndHour(processedData)}
+			{#if processedData || savedData.occurrences.length}
+				<CalendarGrid
+					{stackedMeetings}
+					{dayOrder}
+					dates={historicSchedule ? undefined : dates}
+					startHour={calendarStartHour}
+					latestHour={getLatestEndHour(calendarCourses)}
+					{militaryTime}
+					{earliestClassOffsetRem}
+					onselect={selectCalendarEvent}
+				/>
+			{/if}
+		{/if}
+		{#if jwt_token}
+			<SavedMeetings
+				week={ui.week}
 				{militaryTime}
-				{earliestClassOffsetRem}
-				onselect={(item, day) => {
-					activeCourse = item.course;
-					activeMeeting = item.meeting;
-					activeDay = day;
-					getEventPerfs(item.meeting.id);
-				}}
+				bind:selectedOccurrence={selectedSavedOccurrence}
+				ondata={(data) => (savedData = data)}
 			/>
 		{/if}
 	{:else if tab === 'settings'}

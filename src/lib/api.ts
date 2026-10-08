@@ -14,6 +14,12 @@ import {
 } from './friendData';
 import { validatedTerms, validateCourses } from './friendSchedule';
 import type { PasskeySummary } from "./passkeys";
+import type { FriendGroup } from './components/friends/types';
+import { friendGroups, friendGroup } from './friendGroups';
+import {
+    savedMeetings, savedMeetingResponse, type SavedMeetingsResponse,
+    type SavedMeetingChanges, type SavedMeeting
+} from './savedMeetings';
 
 export class ApiError extends Error {
     readonly status: number;
@@ -338,6 +344,43 @@ export class API {
 
     public static async getMeetingLinks(): Promise<MeetingLinksResponse> {
         return meetingLinks(await this.friendApiRequest('/meeting_links', 'Failed to fetch meeting links'));
+    }
+
+    public static async getFriendGroups(): Promise<FriendGroup[]> {
+        return friendGroups(await this.friendApiRequest('/friends/groups', 'Failed to fetch groups'));
+    }
+
+    public static async saveFriendGroup(name: string, memberIds: string[], groupId?: string): Promise<FriendGroup> {
+        return friendGroup(await this.friendApiRequest(
+            groupId ? `/friends/groups/${encodeURIComponent(groupId)}` : '/friends/groups',
+            'Failed to save group', groupId ? 'PATCH' : 'POST', { name, member_ids: memberIds }
+        ));
+    }
+
+    public static async deleteFriendGroup(id: string): Promise<OkResponse> {
+        return mutationResult(await this.friendApiRequest(
+            `/friends/groups/${encodeURIComponent(id)}`, 'Failed to delete group', 'DELETE'
+        ) as OkResponse);
+    }
+
+    public static async getSavedMeetings(start: string, end: string): Promise<SavedMeetingsResponse> {
+        const range = new URLSearchParams({ start, end });
+        return savedMeetings(await this.friendApiRequest(`/friends/meetings?${range}`, 'Failed to fetch saved meetings'));
+    }
+
+    public static async updateSavedMeeting(id: string, changes: SavedMeetingChanges): Promise<{ meeting: SavedMeeting }> {
+        return savedMeetingResponse(await this.friendApiRequest(
+            `/friends/meetings/${encodeURIComponent(id)}`, 'Failed to update meeting', 'PATCH', changes
+        ));
+    }
+
+    public static async deleteSavedMeeting(id: string): Promise<void> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/friends/meetings/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
+        });
+        if (!response.ok) await this.readJson(response, 'Failed to delete meeting');
     }
 
     public static async createMeetingLink(payload: MeetingLinkInput): Promise<MeetingLinkCreateResponse> {

@@ -44,7 +44,7 @@
 	const stackGapPct = 2;
 	function formatHourLabel(hour: number): string {
 		if (militaryTime) return `${hour.toString().padStart(2, '0')}:00`;
-		const period = hour >= 12 ? 'PM' : 'AM';
+		const period = hour % 24 >= 12 ? 'PM' : 'AM';
 		const h12 = hour % 12 || 12;
 		return `${h12}:00 ${period}`;
 	}
@@ -52,7 +52,7 @@
 	function convertTo12Hour(time24: string): string {
 		if (militaryTime) return time24;
 		const [hours, minutes] = time24.split(':').map(Number);
-		const period = hours >= 12 ? 'PM' : 'AM';
+		const period = hours % 24 >= 12 ? 'PM' : 'AM';
 		const hours12 = hours % 12 || 12;
 		return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
 	}

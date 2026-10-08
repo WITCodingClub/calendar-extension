@@ -44,7 +44,8 @@
 								<Checkbox
 									><input
 										type="checkbox"
-										checked={count === group.members.length}
+										checked={group.members.length > 0 && count === group.members.length}
+										disabled={!group.members.length}
 										indeterminate={count > 0 && count < group.members.length}
 										onchange={(event) => toggleGroup(group.members, event.currentTarget.checked)}
 									/></Checkbox
@@ -54,6 +55,17 @@
 					</ListItem>
 				{/each}
 			</ul>
+			{#if ui.groupsLoading}<p class="text-sm text-on-surface-variant" role="status">
+					Loading groups…
+				</p>{/if}
+			{#if ui.groupsError}
+				<p class="text-sm text-error" role="alert">{ui.groupsError}</p>
+				<Button
+					variant="text"
+					disabled={ui.groupsLoading || !!ui.groupLoadingId}
+					onclick={() => ui.groupActions?.reload()}>Reload groups</Button
+				>
+			{/if}
 			<p class="mt-3 text-xs font-semibold text-primary">Participants</p>
 			<ul class="preview-list my-2 p-0 flex list-none flex-col">
 				{#each ui.people.filter((person) => person.name

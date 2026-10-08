@@ -34,12 +34,16 @@
 	);
 
 	$effect(() => {
-		if (!open) ui.friendError = '';
+		if (!open) {
+			ui.friendError = '';
+			ui.friendNotice = '';
+		}
 		if (open && !dialog.open) dialog.showModal();
 		else if (!open && dialog.open) dialog.close();
 	});
 
 	function editGroup(id?: string) {
+		if (ui.groupLoadingId) return;
 		const group = ui.groups.find((group) => group.id === id);
 		groupId = id;
 		groupName = group?.name ?? '';
@@ -48,31 +52,35 @@
 		editingGroup = true;
 	}
 
-	function saveGroup() {
+	async function saveGroup() {
 		const name = groupName.trim();
-		if (!name) return;
-		const group = { id: groupId ?? crypto.randomUUID(), name, members: [...groupMembers] };
-		ui.groups = groupId
-			? ui.groups.map((item) => (item.id === groupId ? group : item))
-			: [...ui.groups, group];
+		if (!name || ui.groupLoadingId) return;
+		if (!(await ui.groupActions?.save(name, [...groupMembers], groupId))) return;
 		editingGroup = false;
 		groupId = undefined;
 	}
 
-	function toggleMember(id: string, checked: boolean) {
-		ui.groups = ui.groups.map((group) =>
-			group.id === id
-				? {
-						...group,
-						members: checked
-							? [...new Set([...group.members, personId!])]
-							: group.members.filter((member) => member !== personId)
-					}
-				: group
-		);
+	async function deleteGroup() {
+		if (!groupId || ui.groupLoadingId) return;
+		if (!(await ui.groupActions?.remove(groupId))) return;
+		editingGroup = false;
+		groupId = undefined;
+	}
+
+	async function toggleMember(id: string, input: HTMLInputElement) {
+		const group = ui.groups.find((group) => group.id === id);
+		if (!group || !personId) return;
+		const checked = input.checked;
+		input.checked = group.members.includes(personId);
+		if (ui.groupLoadingId) return;
+		const members = checked
+			? [...new Set([...group.members, personId])]
+			: group.members.filter((member) => member !== personId);
+		await ui.groupActions?.save(group.name, members, id);
 	}
 
 	async function saveExpiry(id: string, date = expiryDate) {
+		ui.friendNotice = '';
 		try {
 			const value = date
 				? new Date(Date.parse(calendarDateTime(shiftDate(date, 1), '00:00')) - 1).toISOString()
@@ -142,6 +150,16 @@
 		]}
 	/>
 	<div class="min-h-0 p-4 [&>*+*]:mt-4 flex-1 overflow-y-auto overscroll-contain">
+		{#if ui.groupsError && (tab === 'groups' || activePerson)}
+			<div class="rounded-xl bg-error-container p-3 text-sm text-on-error-container" role="alert">
+				<p>{ui.groupsError}</p>
+				<Button
+					variant="text"
+					disabled={ui.groupsLoading || !!ui.groupLoadingId}
+					onclick={() => ui.groupActions?.reload()}>Reload groups</Button
+				>
+			</div>
+		{/if}
 		{#if ui.friendError || ui.friendsError || ui.requestsError}<div
 				class="rounded-xl bg-error-container p-3 text-sm text-on-error-container"
 				role="alert"
@@ -151,11 +169,18 @@
 				{/each}
 				<Button variant="text" onclick={() => ui.friendActions?.reload()}>Try again</Button>
 			</div>{/if}
+		{#if ui.friendNotice}<p class="text-sm text-on-surface-variant" role="status">
+				{ui.friendNotice}
+			</p>{/if}
 		{#if tab === 'people'}
 			{#if activePerson}
 				<Button variant="text" onclick={() => (personId = undefined)}>All people</Button>
 				<h3>{activePerson.name}</h3>
-				<p class="text-sm text-on-surface-variant">Full schedule</p>
+				<p class="text-sm text-on-surface-variant">
+					{activePerson.expires_at
+						? `Expires ${new Date(activePerson.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}`
+						: 'No expiry'}
+				</p>
 				<div class="preview-form-stack min-w-0 gap-3 grid">
 					<TextFieldOutlined
 						label="Friendship expires (optional)"
@@ -164,12 +189,13 @@
 						bind:value={expiryDate}
 					/>
 					<p class="text-sm text-on-surface-variant">
-						Leave empty for no expiry. Dates use Eastern time.
+						Earlier dates apply now. Later dates or no expiry require your friend's approval in the
+						web dashboard. Leave empty to propose no expiry. Dates use Eastern time.
 					</p>
 					<Button
 						variant="text"
 						disabled={ui.actionLoadingId !== ''}
-						onclick={() => saveExpiry(activePerson.id)}>Save expiry</Button
+						onclick={() => saveExpiry(activePerson.id)}>Set or propose expiry</Button
 					>
 				</div>
 
@@ -181,7 +207,8 @@
 									><input
 										type="checkbox"
 										checked={group.members.includes(activePerson.id)}
-										onchange={(event) => toggleMember(group.id, event.currentTarget.checked)}
+										disabled={ui.groupsLoading || !!ui.groupLoadingId}
+										onchange={(event) => toggleMember(group.id, event.currentTarget)}
 									/></Checkbox
 								>{/snippet}
 						</ListItem>
@@ -260,13 +287,25 @@
 				</ul>
 			{/if}
 		{:else if tab === 'groups'}
+			{#if ui.groupsLoading}<p class="text-sm text-on-surface-variant" role="status">
+					Loading groups…
+				</p>{/if}
 			{#if editingGroup}
 				<div class="gap-3 flex items-center justify-between">
 					<h3>{groupId ? 'Edit group' : 'Create group'}</h3>
-					<Button variant="text" onclick={() => (editingGroup = false)}>All groups</Button>
+					<Button
+						variant="text"
+						disabled={!!ui.groupLoadingId}
+						onclick={() => (editingGroup = false)}>All groups</Button
+					>
 				</div>
 				<div class="preview-form-stack min-w-0 gap-4 grid">
-					<TextFieldOutlined label="Group name" bind:value={groupName} />
+					<TextFieldOutlined
+						label="Group name"
+						maxlength={50}
+						disabled={!!ui.groupLoadingId}
+						bind:value={groupName}
+					/>
 					<TextFieldOutlined label="Search members" type="search" bind:value={search} />
 				</div>
 				<ul class="preview-list p-0 list-none">
@@ -275,32 +314,40 @@
 							.includes(search.toLowerCase())) as person (person.id)}
 						<ListItem label headline={person.name}
 							>{#snippet leading()}<Checkbox
-									><input type="checkbox" bind:group={groupMembers} value={person.id} /></Checkbox
+									><input
+										type="checkbox"
+										disabled={!!ui.groupLoadingId}
+										bind:group={groupMembers}
+										value={person.id}
+									/></Checkbox
 								>{/snippet}</ListItem
 						>
 					{/each}
 				</ul>
-				<p class="text-sm text-on-surface-variant">Groups stay here until you close the panel.</p>
+				<p class="text-sm text-on-surface-variant">Only you can see your groups.</p>
 				<div class="gap-2 flex flex-wrap">
-					<Button disabled={!groupName.trim()} onclick={saveGroup}>Save group</Button>
+					<Button
+						disabled={!groupName.trim() || ui.groupsLoading || !!ui.groupLoadingId}
+						onclick={saveGroup}>{ui.groupLoadingId ? 'Saving…' : 'Save group'}</Button
+					>
 					{#if groupId}<Button
 							variant="text"
 							iconType="left"
-							onclick={() => {
-								ui.groups = ui.groups.filter((group) => group.id !== groupId);
-								editingGroup = false;
-								groupId = undefined;
-							}}>{@render removeIcon()}Delete group</Button
+							disabled={!!ui.groupLoadingId}
+							onclick={deleteGroup}>{@render removeIcon()}Delete group</Button
 						>{/if}
 				</div>
 			{:else}
 				<div class="gap-3 flex flex-wrap items-center justify-between">
 					<h3>Private groups</h3>
-					<Button variant="tonal" iconType="left" onclick={() => editGroup()}
-						>{@render addIcon()}Create group</Button
+					<Button
+						variant="tonal"
+						iconType="left"
+						disabled={ui.groupsLoading || !!ui.groupLoadingId}
+						onclick={() => editGroup()}>{@render addIcon()}Create group</Button
 					>
 				</div>
-				<p class="text-sm text-on-surface-variant">Groups stay here until you close the panel.</p>
+				<p class="text-sm text-on-surface-variant">Only you can see your groups.</p>
 				<ul class="preview-list p-0 list-none">
 					{#each ui.groups as group (group.id)}
 						<ListItem
@@ -312,6 +359,10 @@
 				</ul>
 			{/if}
 		{:else}
+			<p class="text-sm text-on-surface-variant">
+				Earlier dates apply now. Later dates or no expiry require the other person's approval in the
+				web dashboard. Leave empty to propose no expiry. Dates use Eastern time.
+			</p>
 			{#if ui.requestsLoading}<p class="text-sm text-on-surface-variant" role="status">
 					Loading requests…
 				</p>
@@ -340,7 +391,7 @@
 							variant="text"
 							disabled={ui.actionLoadingId !== ''}
 							onclick={() => saveExpiry(request.from.id, requestExpiry[request.request_id] ?? '')}
-							>Update expiry</Button
+							>Set or propose expiry</Button
 						>
 					</div>
 
@@ -386,7 +437,7 @@
 							variant="text"
 							disabled={ui.actionLoadingId !== ''}
 							onclick={() => saveExpiry(request.to.id, requestExpiry[request.request_id] ?? '')}
-							>Update expiry</Button
+							>Set or propose expiry</Button
 						>
 					</li>
 				{/each}
