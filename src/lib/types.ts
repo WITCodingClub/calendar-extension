@@ -1,363 +1,416 @@
 interface Building {
-    name: string;
-    abbreviation: string;
-    pub_id?: string;
+	name: string;
+	abbreviation: string;
+	pub_id?: string;
 }
 
 interface Course {
-    title: string;
-    prefix: string;
-    course_number: number;
-    schedule_type: string;
-    term: Term;
-    professor: Professor | null;
-    meeting_times: MeetingTime[];
+	title: string;
+	prefix: string;
+	course_number: number;
+	schedule_type: string;
+	term: Term;
+	professor: Professor | null;
+	meeting_times: MeetingTime[];
 }
 
 const FEATURE_FLAGS = [
-    "debugMode",
-    "envSwitcher",
-    "finalsRetroactive",
-    "bypassRateLimits"
+	'debugMode',
+	'envSwitcher',
+	'finalsRetroactive',
+	'bypassRateLimits'
 ] as const;
 
 interface FeatureFlagEnabled {
-    feature_name: string;
-    is_enabled: boolean;
+	feature_name: string;
+	is_enabled: boolean;
 }
 
 interface FeatureFlagsResponse {
-    feature_flags: Record<string, boolean>;
+	feature_flags: Record<string, boolean>;
 }
 
 interface Location {
-    building: Building | null;
-    rooms: string[];
+	building: Building | null;
+	rooms: string[];
 }
 
 interface MeetingTime {
-    id: number | string;  // Can be internal ID or public_id
-    begin_time: string;
-    end_time: string;
-    start_date: string | null;
-    end_date: string | null;
-    location: Location;
-    monday: boolean;
-    tuesday: boolean;
-    wednesday: boolean;
-    thursday: boolean;
-    friday: boolean;
-    saturday: boolean;
-    sunday: boolean;
-    color?: string;
-    title_overrides?: Partial<Record<'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday', string>>;
-    calendar_config?: CalendarConfig;
+	id: number | string; // Can be internal ID or public_id
+	begin_time: string;
+	end_time: string;
+	start_date: string | null;
+	end_date: string | null;
+	location: Location;
+	monday: boolean;
+	tuesday: boolean;
+	wednesday: boolean;
+	thursday: boolean;
+	friday: boolean;
+	saturday: boolean;
+	sunday: boolean;
+	color?: string;
+	title_overrides?: Partial<
+		Record<
+			'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday',
+			string
+		>
+	>;
+	calendar_config?: CalendarConfig;
 }
 
 interface CalendarConfig {
-    title: string;
-    description?: string;
-    color_id?: string;
-    reminder_settings?: ReminderSettings[];
-    visibility?: string;
+	title: string;
+	description?: string;
+	color_id?: string;
+	reminder_settings?: ReminderSettings[];
+	visibility?: string;
 }
 
 interface isProcessed {
-    processed: boolean;
-    status?: 'not_started' | 'pending' | 'processing' | 'processed' | 'failed';
-    error_code?: string | null;
+	processed: boolean;
+	status?: 'not_started' | 'pending' | 'processing' | 'processed' | 'failed';
+	error_code?: string | null;
 }
 
 interface FriendIdentity {
-    id: string;
-    name: string;
+	id: string;
+	name: string;
 }
 
 type SharingLevel = 'full' | 'availability_only';
 
 interface FriendVisibility {
-    mine: SharingLevel;
-    theirs: SharingLevel;
+	mine: SharingLevel;
+	theirs: SharingLevel;
 }
 
 interface FriendVisibilityResponse extends FriendVisibility {
-    friend_id: string;
+	friend_id: string;
 }
 
 interface Friend extends FriendIdentity {
-    expires_at?: string | null;
-    visibility?: FriendVisibility | null;
+	expires_at?: string | null;
+	visibility?: FriendVisibility | null;
 }
 
 type FriendRequestInput = ({ friend_id: string } | { friend_email: string }) & {
-    expires_at?: string | null;
-    visibility?: SharingLevel;
+	expires_at?: string | null;
+	visibility?: SharingLevel;
 };
 
 interface FriendExpiryResponse {
-    friendship_id: string;
-    status: 'pending' | 'accepted';
-    expires_at: string | null;
-    expiry_change: 'shortened' | 'proposed' | 'unchanged';
-    friend: FriendIdentity;
+	friendship_id: string;
+	status: 'pending' | 'accepted';
+	expires_at: string | null;
+	expiry_change: 'shortened' | 'proposed' | 'unchanged';
+	friend: FriendIdentity;
 }
 
 type MeetingLinkDuration = 15 | 30 | 45 | 60 | 90 | 120;
 interface MeetingLinkInput {
-    starts_on: string;
-    ends_on: string;
-    duration_minutes: MeetingLinkDuration;
-    title?: string;
-    expires_at?: string;
+	starts_on: string;
+	ends_on: string;
+	duration_minutes: MeetingLinkDuration;
+	title?: string;
+	expires_at?: string;
 }
 
 interface MeetingLink {
-    id: string;
-    title: string | null;
-    starts_on: string;
-    ends_on: string;
-    duration_minutes: MeetingLinkDuration;
-    expires_at: string;
-    status: 'active' | 'used' | 'revoked' | 'expired';
-    created_at: string;
-    booking: {
-        meeting_id: string;
-        start_time: string;
-        end_time: string;
-        guest_name: string | null;
-        guest_email: string | null;
-    } | null;
+	id: string;
+	title: string | null;
+	starts_on: string;
+	ends_on: string;
+	duration_minutes: MeetingLinkDuration;
+	expires_at: string;
+	status: 'active' | 'used' | 'revoked' | 'expired';
+	created_at: string;
+	booking: {
+		meeting_id: string;
+		start_time: string;
+		end_time: string;
+		guest_name: string | null;
+		guest_email: string | null;
+	} | null;
 }
 
-interface MeetingLinkCreateResponse { meeting_link: MeetingLink & { url: string } }
-interface MeetingLinkResponse { meeting_link: MeetingLink }
-interface MeetingLinksResponse { meeting_links: MeetingLink[] }
+interface MeetingLinkCreateResponse {
+	meeting_link: MeetingLink & { url: string };
+}
+interface MeetingLinkResponse {
+	meeting_link: MeetingLink;
+}
+interface MeetingLinksResponse {
+	meeting_links: MeetingLink[];
+}
 
 interface FriendRequestIncoming {
-    request_id: string;
-    from: FriendIdentity;
-    created_at: string;
-    expires_at?: string | null;
+	request_id: string;
+	from: FriendIdentity;
+	created_at: string;
+	expires_at?: string | null;
 }
 
 interface FriendRequestOutgoing {
-    request_id: string;
-    to: FriendIdentity;
-    created_at: string;
-    expires_at?: string | null;
+	request_id: string;
+	to: FriendIdentity;
+	created_at: string;
+	expires_at?: string | null;
 }
 
 interface FriendListResponse {
-    friends: Friend[];
+	friends: Friend[];
 }
 
 interface FriendRequestsResponse {
-    incoming: FriendRequestIncoming[];
-    outgoing: FriendRequestOutgoing[];
+	incoming: FriendRequestIncoming[];
+	outgoing: FriendRequestOutgoing[];
 }
 
 interface FriendRequestCreateResponse {
-    request_id: string;
-    expires_at?: string | null;
+	request_id: string;
+	expires_at?: string | null;
 }
 
 interface FriendRequestAcceptResponse {
-    friendship_id: string;
-    friend: FriendIdentity;
-    expires_at?: string | null;
+	friendship_id: string;
+	friend: FriendIdentity;
+	expires_at?: string | null;
 }
 
 interface OkResponse {
-    ok: boolean;
+	ok: boolean;
 }
 
 interface FriendProcessedEventsResponse {
-    processed_courses: any[];
+	processed_courses: any[];
 }
 
 interface Professor {
-    first_name: string;
-    last_name: string;
-    email: string;
-    rmp_id?: string;
-    pub_id?: string;
+	first_name: string;
+	last_name: string;
+	email: string;
+	rmp_id?: string;
+	pub_id?: string;
 }
 
 interface ResponseData {
-    ics_url: string;
-    classes: Course[];
+	ics_url: string;
+	classes: Course[];
 }
 
 interface ProcessedEvents {
-    classes: Course[];
+	classes: Course[];
 }
 
 interface Term {
-    uid: number;
-    season: string;
-    year: number;
-    pub_id?: string;
+	uid: number;
+	season: string;
+	year: number;
+	pub_id?: string;
 }
 
 interface UserSettings {
-    military_time: boolean;
-    default_color_lecture: string;
-    default_color_lab: string;
-    advanced_editing: boolean;
-    sync_university_events: boolean;
-    university_event_categories: string[];
-    available_university_event_categories?: UniversityEventCategory[];
-    show_historic_terms: boolean;
-    enrolled_terms?: Array<{ id: string; name: string }>;
+	military_time: boolean;
+	default_color_lecture: string;
+	default_color_lab: string;
+	advanced_editing: boolean;
+	sync_university_events: boolean;
+	university_event_categories: string[];
+	available_university_event_categories?: UniversityEventCategory[];
+	show_historic_terms: boolean;
+	enrolled_terms?: Array<{ id: string; name: string }>;
 }
 
 interface UniversityEventCategory {
-    id: string;
-    name: string;
-    description: string;
+	id: string;
+	name: string;
+	description: string;
 }
 
 interface UniversityEventCategoryWithCount {
-    id: string;
-    name: string;
-    count: number;
+	id: string;
+	name: string;
+	count: number;
 }
 
 interface UniversityCalendarEvent {
-    id: string;
-    summary: string;
-    description?: string;
-    location?: string;
-    start_time: string;
-    end_time: string;
-    all_day: boolean;
-    category: string;
-    organization?: string;
-    academic_term?: string;
-    term_id?: string;
-    excludes_classes: boolean;
-    formatted_date: string;
-    created_at: string;
-    updated_at: string;
+	id: string;
+	summary: string;
+	description?: string;
+	location?: string;
+	start_time: string;
+	end_time: string;
+	all_day: boolean;
+	category: string;
+	organization?: string;
+	academic_term?: string;
+	term_id?: string;
+	excludes_classes: boolean;
+	formatted_date: string;
+	created_at: string;
+	updated_at: string;
 }
 
 interface CurrentTerm {
-    name: string;
-    id: number;
-    pub_id?: string;
-    start_date?: string | null;
-    end_date?: string | null;
+	name: string;
+	id: number;
+	pub_id?: string;
+	start_date?: string | null;
+	end_date?: string | null;
 }
 
 interface NextTerm {
-    name: string;
-    id: number;
-    pub_id?: string;
-    start_date?: string | null;
-    end_date?: string | null;
+	name: string;
+	id: number;
+	pub_id?: string;
+	start_date?: string | null;
+	end_date?: string | null;
 }
 
 // A term as GET /api/v1/catalog/terms/current and /next return it.
 interface CatalogTerm {
-    uid: number;
-    name: string;
-    season: string;
-    year: number;
-    start_date?: string;
-    end_date?: string;
-    section_count?: number;
+	uid: number;
+	name: string;
+	season: string;
+	year: number;
+	start_date?: string;
+	end_date?: string;
+	section_count?: number;
 }
 
 interface TermResponse {
-    current_term: CurrentTerm | null;
-    next_term: NextTerm | null;
+	current_term: CurrentTerm | null;
+	next_term: NextTerm | null;
 }
 
 interface DayItem {
-    key: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-    label: string;
-    abbr: string;
-    order: number;
+	key: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+	label: string;
+	abbr: string;
+	order: number;
 }
 
 interface EventPreferences {
-    title_template: string;
-    description_template: string;
-    reminder_settings: ReminderSettings[];
-    color_id: string;
-    visibility: string;
+	title_template: string;
+	description_template: string;
+	reminder_settings: ReminderSettings[];
+	color_id: string;
+	visibility: string;
 }
 
 interface TemplateVariables {
-    title: string;
-    course_code: string;
-    subject: string;
-    course_number: string;
-    section_number: string;
-    crn: string;
-    room: string;
-    building: string;
-    location: string;
-    faculty: string;
-    faculty_email: string;
-    all_faculty: string;
-    start_time: string;
-    end_time: string;
-    day: string;
-    day_abbr: string;
-    term: string;
-    schedule_type: string;
-    schedule_type_short?: string;
+	title: string;
+	course_code: string;
+	subject: string;
+	course_number: string;
+	section_number: string;
+	crn: string;
+	room: string;
+	building: string;
+	location: string;
+	faculty: string;
+	faculty_email: string;
+	all_faculty: string;
+	start_time: string;
+	end_time: string;
+	day: string;
+	day_abbr: string;
+	term: string;
+	schedule_type: string;
+	schedule_type_short?: string;
 }
 
 interface ResolvedData {
-    title_template: string;
-    description_template: string;
-    location_template: string;
-    reminder_settings: ReminderSettings[];
-    color_id: string;
-    visibility: string;
+	title_template: string;
+	description_template: string;
+	location_template: string;
+	reminder_settings: ReminderSettings[];
+	color_id: string;
+	visibility: string;
 }
 
 interface Preview {
-    title: string;
-    description: string;
-    location: string;
+	title: string;
+	description: string;
+	location: string;
 }
 
 interface GetPreferencesResponse {
 	notifications_disabled: boolean;
-    individual_preference: EventPreferences;
-    preview: Preview;
-    templates: TemplateVariables;
-    resolved: ResolvedData;
+	individual_preference: EventPreferences;
+	preview: Preview;
+	templates: TemplateVariables;
+	resolved: ResolvedData;
 }
 
 interface ReminderSettings {
-    time: number;
-    method: string;
-    type: NotificationType;
+	time: number;
+	method: string;
+	type: NotificationType;
 }
 
-type NotificationType = "minutes" | "hours" | "days";
-type NotificationMethod = "email" | "notification";
+type NotificationType = 'minutes' | 'hours' | 'days';
+type NotificationMethod = 'email' | 'notification';
 
 interface NotificationSetting {
-    time: string;
-    type: NotificationType;
-    method: NotificationMethod;
+	time: string;
+	type: NotificationType;
+	method: NotificationMethod;
 }
 
 export {
-    type Friend, type FriendRequestInput, type FriendExpiryResponse,
-    type SharingLevel, type FriendVisibility, type FriendVisibilityResponse,
-    type MeetingLinkDuration, type MeetingLinkInput, type MeetingLink,
-    type MeetingLinkCreateResponse, type MeetingLinkResponse, type MeetingLinksResponse,
-    FEATURE_FLAGS,
-    type Building,
-    type CalendarConfig, type Course, type CurrentTerm, type DayItem,
-    type EventPreferences, type FeatureFlagsResponse, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location, type CatalogTerm,
-    type MeetingTime, type NextTerm, type NotificationMethod, type NotificationSetting, type NotificationType, type OkResponse, type Preview, type ProcessedEvents, type Professor, type ReminderSettings, type ResolvedData, type ResponseData, type TemplateVariables, type Term, type TermResponse, type UniversityCalendarEvent, type UniversityEventCategory, type UniversityEventCategoryWithCount, type UserSettings
+	type Friend,
+	type FriendRequestInput,
+	type FriendExpiryResponse,
+	type SharingLevel,
+	type FriendVisibility,
+	type FriendVisibilityResponse,
+	type MeetingLinkDuration,
+	type MeetingLinkInput,
+	type MeetingLink,
+	type MeetingLinkCreateResponse,
+	type MeetingLinkResponse,
+	type MeetingLinksResponse,
+	FEATURE_FLAGS,
+	type Building,
+	type CalendarConfig,
+	type Course,
+	type CurrentTerm,
+	type DayItem,
+	type EventPreferences,
+	type FeatureFlagsResponse,
+	type FriendIdentity,
+	type FriendListResponse,
+	type FriendProcessedEventsResponse,
+	type FriendRequestAcceptResponse,
+	type FriendRequestCreateResponse,
+	type FriendRequestIncoming,
+	type FriendRequestOutgoing,
+	type FriendRequestsResponse,
+	type GetPreferencesResponse,
+	type isProcessed,
+	type Location,
+	type CatalogTerm,
+	type MeetingTime,
+	type NextTerm,
+	type NotificationMethod,
+	type NotificationSetting,
+	type NotificationType,
+	type OkResponse,
+	type Preview,
+	type ProcessedEvents,
+	type Professor,
+	type ReminderSettings,
+	type ResolvedData,
+	type ResponseData,
+	type TemplateVariables,
+	type Term,
+	type TermResponse,
+	type UniversityCalendarEvent,
+	type UniversityEventCategory,
+	type UniversityEventCategoryWithCount,
+	type UserSettings
 };
 
 export type ProcessingTerm = {

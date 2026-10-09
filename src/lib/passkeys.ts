@@ -35,110 +35,112 @@ import { EnvironmentManager } from './environment';
  */
 
 export interface PasskeySummary {
-    id: string;
-    nickname: string;
-    created_at: string;
-    last_used_at: string | null;
+	id: string;
+	nickname: string;
+	created_at: string;
+	last_used_at: string | null;
 }
 
 export async function passkeysSupported(): Promise<boolean> {
-    return typeof chrome !== 'undefined'
-        && !!chrome.windows?.create
-        && !!chrome.tabs?.onUpdated
-        && !!chrome.identity?.getRedirectURL;
+	return (
+		typeof chrome !== 'undefined' &&
+		!!chrome.windows?.create &&
+		!!chrome.tabs?.onUpdated &&
+		!!chrome.identity?.getRedirectURL
+	);
 }
 
 async function openPasskeyPage(params: {
-    mode: 'authenticate' | 'register';
-    nickname?: string;
-    handoff?: string;
+	mode: 'authenticate' | 'register';
+	nickname?: string;
+	handoff?: string;
 }): Promise<URLSearchParams | null> {
-    const site = await EnvironmentManager.getBaseUrl();
-    const redirectUri = chrome.identity.getRedirectURL();
-    const url = new URL(`${site}/passkey`);
-    url.searchParams.set('mode', params.mode);
-    url.searchParams.set('redirect_uri', redirectUri);
-    if (params.nickname) {
-        url.searchParams.set('nickname', params.nickname);
-    }
-    if (params.handoff) {
-        url.searchParams.set('handoff', params.handoff);
-    }
+	const site = await EnvironmentManager.getBaseUrl();
+	const redirectUri = chrome.identity.getRedirectURL();
+	const url = new URL(`${site}/passkey`);
+	url.searchParams.set('mode', params.mode);
+	url.searchParams.set('redirect_uri', redirectUri);
+	if (params.nickname) {
+		url.searchParams.set('nickname', params.nickname);
+	}
+	if (params.handoff) {
+		url.searchParams.set('handoff', params.handoff);
+	}
 
-    try {
-        return await openCenteredAuthWindow(url.toString());
-    } catch {
-        return null;
-    }
+	try {
+		return await openCenteredAuthWindow(url.toString());
+	} catch {
+		return null;
+	}
 }
 
 export async function registerPasskey(nickname?: string): Promise<boolean> {
-    const token = await API.getJwtToken();
-    if (!token) {
-        throw new Error('Sign in before adding a passkey');
-    }
+	const token = await API.getJwtToken();
+	if (!token) {
+		throw new Error('Sign in before adding a passkey');
+	}
 
-    // The page holds no session, so trade our JWT for a grant that can do one
-    // thing, once, for two minutes.
-    const { code } = await API.createPasskeyHandoff();
+	// The page holds no session, so trade our JWT for a grant that can do one
+	// thing, once, for two minutes.
+	const { code } = await API.createPasskeyHandoff();
 
-    const params = await openPasskeyPage({ mode: 'register', nickname, handoff: code });
-    if (!params) {
-        return false;
-    }
+	const params = await openPasskeyPage({ mode: 'register', nickname, handoff: code });
+	if (!params) {
+		return false;
+	}
 
-    const error = params.get('error');
-    if (error === 'cancelled') {
-        return false;
-    }
-    if (error) {
-        throw new Error(error);
-    }
-    if (params.get('ok') !== '1') {
-        throw new Error('No passkey was created');
-    }
+	const error = params.get('error');
+	if (error === 'cancelled') {
+		return false;
+	}
+	if (error) {
+		throw new Error(error);
+	}
+	if (params.get('ok') !== '1') {
+		throw new Error('No passkey was created');
+	}
 
-    return true;
+	return true;
 }
 
 export async function signInWithPasskey(): Promise<boolean> {
-    const params = await openPasskeyPage({ mode: 'authenticate' });
-    // Match Google auth: closed window / cancelled / missing code all fail
-    // loudly so the sign-in page can show a snackbar. Quiet returns hide the
-    // usual "no passkey on this device" case, which the site reports as
-    // error=cancelled.
-    if (!params) {
-        throw new Error('Passkey sign-in was closed before it finished');
-    }
+	const params = await openPasskeyPage({ mode: 'authenticate' });
+	// Match Google auth: closed window / cancelled / missing code all fail
+	// loudly so the sign-in page can show a snackbar. Quiet returns hide the
+	// usual "no passkey on this device" case, which the site reports as
+	// error=cancelled.
+	if (!params) {
+		throw new Error('Passkey sign-in was closed before it finished');
+	}
 
-    const error = params.get('error');
-    if (error) {
-        throw new Error(
-            error === 'cancelled'
-                ? 'Passkey sign-in was cancelled or no passkey is available on this device'
-                : error
-        );
-    }
+	const error = params.get('error');
+	if (error) {
+		throw new Error(
+			error === 'cancelled'
+				? 'Passkey sign-in was cancelled or no passkey is available on this device'
+				: error
+		);
+	}
 
-    const code = params.get('code');
-    if (!code) {
-        throw new Error('No passkey sign-in code returned');
-    }
+	const code = params.get('code');
+	if (!code) {
+		throw new Error('No passkey sign-in code returned');
+	}
 
-    const data = await API.exchangePasskeyCode(code);
-    if (!data.jwt) {
-        throw new Error('Passkey sign-in did not return a session');
-    }
+	const data = await API.exchangePasskeyCode(code);
+	if (!data.jwt) {
+		throw new Error('Passkey sign-in did not return a session');
+	}
 
-    await persistSession(data.jwt);
-    return true;
+	await persistSession(data.jwt);
+	return true;
 }
 
 export async function listPasskeys(): Promise<PasskeySummary[]> {
-    const data = await API.listPasskeys();
-    return data.passkeys;
+	const data = await API.listPasskeys();
+	return data.passkeys;
 }
 
 export async function removePasskey(passkeyId: string): Promise<void> {
-    await API.deletePasskey(passkeyId);
+	await API.deletePasskey(passkeyId);
 }

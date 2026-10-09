@@ -27,7 +27,8 @@ const initialEnrolledTerms = (() => {
 	}
 })();
 
-export const processedData = writable<Array<{ termId: string; responseData: ResponseData }>>(initialProcessedData);
+export const processedData =
+	writable<Array<{ termId: string; responseData: ResponseData }>>(initialProcessedData);
 export const enrolledTerms = writable<Array<{ id: string; name: string }>>(initialEnrolledTerms);
 export const userSettings = writable<UserSettings | undefined>(undefined);
 export const icsUrl = writable<string | undefined>(undefined);

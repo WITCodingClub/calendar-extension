@@ -11,19 +11,19 @@ import { EnvironmentManager } from './environment';
  * backend ignores a name that is not on its list.
  */
 export const TELEMETRY_EVENTS = [
-    'sign_in_google_succeeded',
-    'sign_in_google_failed',
-    'sign_in_wrong_account',
-    'sign_in_passkey_succeeded',
-    'sign_in_passkey_failed',
-    'passkey_created',
-    'passkey_setup_skipped',
-    'calendar_choice_google',
-    'calendar_choice_other',
-    'google_calendar_connected',
-    'schedule_import_succeeded',
-    'schedule_import_failed',
-    'calendar_link_copied'
+	'sign_in_google_succeeded',
+	'sign_in_google_failed',
+	'sign_in_wrong_account',
+	'sign_in_passkey_succeeded',
+	'sign_in_passkey_failed',
+	'passkey_created',
+	'passkey_setup_skipped',
+	'calendar_choice_google',
+	'calendar_choice_other',
+	'google_calendar_connected',
+	'schedule_import_succeeded',
+	'schedule_import_failed',
+	'calendar_link_copied'
 ] as const;
 
 export type TelemetryEvent = (typeof TELEMETRY_EVENTS)[number];
@@ -43,24 +43,24 @@ const FIREFOX_DATA_PERMISSION = 'technicalAndInteraction';
 type DataCollectionPermissions = chrome.permissions.Permissions & { data_collection?: string[] };
 
 export function detectBrowser(userAgent: string = navigator.userAgent): Browser {
-    if (userAgent.includes('Firefox/')) return 'firefox';
-    if (userAgent.includes('Edg/')) return 'edge';
-    return 'chrome';
+	if (userAgent.includes('Firefox/')) return 'firefox';
+	if (userAgent.includes('Edg/')) return 'edge';
+	return 'chrome';
 }
 
 /** Off until the student turns it on, in every browser. */
 export async function usageStatsEnabled(): Promise<boolean> {
-    try {
-        if (detectBrowser() === 'firefox') {
-            const permissions = (await chrome.permissions.getAll()) as DataCollectionPermissions;
-            return permissions.data_collection?.includes(FIREFOX_DATA_PERMISSION) ?? false;
-        }
+	try {
+		if (detectBrowser() === 'firefox') {
+			const permissions = (await chrome.permissions.getAll()) as DataCollectionPermissions;
+			return permissions.data_collection?.includes(FIREFOX_DATA_PERMISSION) ?? false;
+		}
 
-        const stored = await chrome.storage.local.get(PREFERENCE_KEY);
-        return stored[PREFERENCE_KEY] === true;
-    } catch {
-        return false;
-    }
+		const stored = await chrome.storage.local.get(PREFERENCE_KEY);
+		return stored[PREFERENCE_KEY] === true;
+	} catch {
+		return false;
+	}
 }
 
 /**
@@ -69,20 +69,22 @@ export async function usageStatsEnabled(): Promise<boolean> {
  * see the click, and an await before the request loses it.
  */
 export async function setUsageStatsEnabled(enabled: boolean): Promise<boolean> {
-    if (detectBrowser() === 'firefox') {
-        const permission = { data_collection: [FIREFOX_DATA_PERMISSION] } as chrome.permissions.Permissions;
-        if (enabled) {
-            const granted = await chrome.permissions.request(permission);
-            await chrome.storage.local.set({ [ASKED_KEY]: true });
-            return granted;
-        }
-        await chrome.permissions.remove(permission);
-        await chrome.storage.local.set({ [ASKED_KEY]: true });
-        return usageStatsEnabled();
-    }
+	if (detectBrowser() === 'firefox') {
+		const permission = {
+			data_collection: [FIREFOX_DATA_PERMISSION]
+		} as chrome.permissions.Permissions;
+		if (enabled) {
+			const granted = await chrome.permissions.request(permission);
+			await chrome.storage.local.set({ [ASKED_KEY]: true });
+			return granted;
+		}
+		await chrome.permissions.remove(permission);
+		await chrome.storage.local.set({ [ASKED_KEY]: true });
+		return usageStatsEnabled();
+	}
 
-    await chrome.storage.local.set({ [PREFERENCE_KEY]: enabled, [ASKED_KEY]: true });
-    return enabled;
+	await chrome.storage.local.set({ [PREFERENCE_KEY]: enabled, [ASKED_KEY]: true });
+	return enabled;
 }
 
 /**
@@ -91,12 +93,12 @@ export async function setUsageStatsEnabled(enabled: boolean): Promise<boolean> {
  * as asked.
  */
 export async function usageStatsAsked(): Promise<boolean> {
-    try {
-        const stored = await chrome.storage.local.get(ASKED_KEY);
-        return stored[ASKED_KEY] === true || (await usageStatsEnabled());
-    } catch {
-        return true;
-    }
+	try {
+		const stored = await chrome.storage.local.get(ASKED_KEY);
+		return stored[ASKED_KEY] === true || (await usageStatsEnabled());
+	} catch {
+		return true;
+	}
 }
 
 /**
@@ -105,21 +107,21 @@ export async function usageStatsAsked(): Promise<boolean> {
  * closes first.
  */
 export async function track(event: TelemetryEvent): Promise<void> {
-    try {
-        if (!(await usageStatsEnabled())) return;
+	try {
+		if (!(await usageStatsEnabled())) return;
 
-        const baseUrl = await EnvironmentManager.getBaseUrl();
-        await fetch(`${baseUrl}/api/extension_events`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                events: [event],
-                version: chrome.runtime.getManifest().version,
-                browser: detectBrowser()
-            }),
-            keepalive: true
-        });
-    } catch {
-        // Usage counts are best effort.
-    }
+		const baseUrl = await EnvironmentManager.getBaseUrl();
+		await fetch(`${baseUrl}/api/extension_events`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				events: [event],
+				version: chrome.runtime.getManifest().version,
+				browser: detectBrowser()
+			}),
+			keepalive: true
+		});
+	} catch {
+		// Usage counts are best effort.
+	}
 }

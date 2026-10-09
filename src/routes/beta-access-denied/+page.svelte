@@ -9,15 +9,14 @@
 		chrome.storage.local.remove('beta_access');
 		await goto('/loading');
 	}
-
 </script>
 
-<div class="flex justify-center items-center min-h-screen bg-surface p-6">
-	<div class="max-w-md w-full bg-surface-container rounded-2xl p-8 shadow-lg text-center">
+<div class="bg-surface p-6 flex min-h-screen items-center justify-center">
+	<div class="max-w-md bg-surface-container rounded-2xl p-8 shadow-lg w-full text-center">
 		<!-- Icon -->
 		<div class="mb-6">
 			<svg
-				class="w-20 h-20 mx-auto text-error"
+				class="w-20 h-20 text-error mx-auto"
 				fill="none"
 				stroke="currentColor"
 				viewBox="0 0 24 24"
@@ -36,9 +35,7 @@
 		<h1 class="text-3xl font-bold text-on-surface mb-4">Beta Access Required</h1>
 
 		<!-- Message -->
-		<p class="text-lg text-on-surface-variant mb-3">
-			This feature is currently in beta testing.
-		</p>
+		<p class="text-lg text-on-surface-variant mb-3">This feature is currently in beta testing.</p>
 		<p class="text-base text-on-surface-variant mb-6">
 			Please contact support if you believe you should have access.
 		</p>
@@ -46,11 +43,13 @@
 		<!-- Contact Info -->
 		<div class="bg-secondary-container rounded-lg p-4 mb-6">
 			<p class="text-sm text-on-secondary-container mb-1 font-semibold">Contact Support (Jasper)</p>
-			<a class="text-sm text-on-secondary-container " href="mailto:mayonej@wit.edu">mayonej@wit.edu</a>
+			<a class="text-sm text-on-secondary-container" href="mailto:mayonej@wit.edu"
+				>mayonej@wit.edu</a
+			>
 		</div>
 
 		<!-- Actions -->
-		<div class="flex flex-col gap-3">
+		<div class="gap-3 flex flex-col">
 			<Button variant="filled" onclick={handleRetry} disabled={isRetrying}>
 				{isRetrying ? 'Retrying...' : 'Retry'}
 			</Button>

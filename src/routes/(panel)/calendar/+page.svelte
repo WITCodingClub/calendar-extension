@@ -681,42 +681,68 @@
 
 			const response = await API.processCourses(coursesArray);
 			if (!session.active) return;
-			const remaining = termOptions.filter((term) => term.id !== usedTermId && /^\d+$/.test(term.id));
+			const remaining = termOptions.filter(
+				(term) => term.id !== usedTermId && /^\d+$/.test(term.id)
+			);
 			if (remaining.length) {
 				const importTabId = tabToUse.id;
 				const closeImportTab = shouldCloseTab;
 				shouldCloseTab = false;
-				void session.termProcessing.start(remaining.map((term) => term.id), async (term) => {
-					const results = await chrome.scripting.executeScript({
-						target: { tabId: importTabId },
-						world: 'MAIN',
-						func: async (term: string) => {
-							try {
-								const token = document.querySelector('meta[name="synchronizerToken"]')?.getAttribute('content');
-								const response = await fetch(`/StudentRegistrationSsb/ssb/registrationHistory/reset?term=${encodeURIComponent(term)}`, {
-									credentials: 'include',
-									headers: {
-										Accept: 'application/json',
-										'X-Requested-With': 'XMLHttpRequest',
-										...(token ? { 'X-Synchronizer-Token': token } : {})
+				void session.termProcessing
+					.start(
+						remaining.map((term) => term.id),
+						async (term) => {
+							const results = await chrome.scripting.executeScript({
+								target: { tabId: importTabId },
+								world: 'MAIN',
+								func: async (term: string) => {
+									try {
+										const token = document
+											.querySelector('meta[name="synchronizerToken"]')
+											?.getAttribute('content');
+										const response = await fetch(
+											`/StudentRegistrationSsb/ssb/registrationHistory/reset?term=${encodeURIComponent(term)}`,
+											{
+												credentials: 'include',
+												headers: {
+													Accept: 'application/json',
+													'X-Requested-With': 'XMLHttpRequest',
+													...(token ? { 'X-Synchronizer-Token': token } : {})
+												}
+											}
+										);
+										if (!response.ok) throw new Error(`LeopardWeb returned ${response.status}`);
+										const data = await response.json();
+										if (!Array.isArray(data?.data?.registrations))
+											throw new Error('Unexpected response from LeopardWeb');
+										return {
+											courses: data.data.registrations.map(
+												(reg: {
+													courseReferenceNumber: string;
+													term: string;
+													courseNumber: string;
+												}) => ({
+													crn: reg.courseReferenceNumber,
+													term: reg.term,
+													courseNumber: reg.courseNumber
+												})
+											)
+										};
+									} catch (error) {
+										return { error: error instanceof Error ? error.message : String(error) };
 									}
-								});
-								if (!response.ok) throw new Error(`LeopardWeb returned ${response.status}`);
-								const data = await response.json();
-								if (!Array.isArray(data?.data?.registrations)) throw new Error('Unexpected response from LeopardWeb');
-								return { courses: data.data.registrations.map((reg: { courseReferenceNumber: string; term: string; courseNumber: string }) => ({ crn: reg.courseReferenceNumber, term: reg.term, courseNumber: reg.courseNumber })) };
-							} catch (error) {
-								return { error: error instanceof Error ? error.message : String(error) };
-							}
-						},
-						args: [term]
+								},
+								args: [term]
+							});
+							const result = results[0]?.result;
+							if (!result || 'error' in result)
+								throw new Error(result?.error || 'Unexpected response from LeopardWeb');
+							return result.courses;
+						}
+					)
+					.finally(async () => {
+						if (closeImportTab) await chrome.tabs.remove(importTabId).catch(() => {});
 					});
-					const result = results[0]?.result;
-					if (!result || 'error' in result) throw new Error(result?.error || 'Unexpected response from LeopardWeb');
-					return result.courses;
-				}).finally(async () => {
-					if (closeImportTab) await chrome.tabs.remove(importTabId).catch(() => {});
-				});
 			}
 
 			if (typeof response === 'string') {

@@ -32,40 +32,40 @@ import { EnvironmentManager } from './environment';
 export const WIT_HOSTED_DOMAIN = 'wit.edu';
 
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
-const SCOPES = [ 'email', 'profile' ];
+const SCOPES = ['email', 'profile'];
 
 export function bytesToBase64Url(data: ArrayBuffer | Uint8Array): string {
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+	const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+	let binary = '';
+	for (let i = 0; i < bytes.length; i++) {
+		binary += String.fromCharCode(bytes[i]);
+	}
+	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 export function base64UrlToBytes(value: string): ArrayBuffer {
-    const padded = value.replace(/-/g, '+').replace(/_/g, '/');
-    const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '='));
-    const buffer = new ArrayBuffer(binary.length);
-    const bytes = new Uint8Array(buffer);
-    for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-    }
-    return buffer;
+	const padded = value.replace(/-/g, '+').replace(/_/g, '/');
+	const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '='));
+	const buffer = new ArrayBuffer(binary.length);
+	const bytes = new Uint8Array(buffer);
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+	return buffer;
 }
 
 /** A fresh PKCE verifier and its S256 challenge. */
 async function createPkcePair(): Promise<{ verifier: string; challenge: string }> {
-    const verifier = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-    return { verifier, challenge: bytesToBase64Url(new Uint8Array(digest)) };
+	const verifier = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+	return { verifier, challenge: bytesToBase64Url(new Uint8Array(digest)) };
 }
 
 /** What the backend needs to finish the exchange. */
 export interface WitGoogleAuthCode {
-    code: string;
-    codeVerifier: string;
-    redirectUri: string;
+	code: string;
+	codeVerifier: string;
+	redirectUri: string;
 }
 
 /**
@@ -74,41 +74,41 @@ export interface WitGoogleAuthCode {
  *   and reads the address from the verified token instead.
  */
 export async function getWitGoogleAuthCode(loginHint?: string): Promise<WitGoogleAuthCode> {
-    const clientId = await EnvironmentManager.getGoogleClientId();
-    const redirectUri = chrome.identity.getRedirectURL();
-    const { verifier, challenge } = await createPkcePair();
+	const clientId = await EnvironmentManager.getGoogleClientId();
+	const redirectUri = chrome.identity.getRedirectURL();
+	const { verifier, challenge } = await createPkcePair();
 
-    const url = new URL(AUTH_ENDPOINT);
-    url.searchParams.set('client_id', clientId);
-    url.searchParams.set('response_type', 'code');
-    url.searchParams.set('redirect_uri', redirectUri);
-    url.searchParams.set('scope', SCOPES.join(' '));
-    url.searchParams.set('code_challenge', challenge);
-    url.searchParams.set('code_challenge_method', 'S256');
-    url.searchParams.set('hd', WIT_HOSTED_DOMAIN);
-    // Always show the chooser. Without it Google reuses the last account, which
-    // is how a student ends up onboarding with the wrong one.
-    url.searchParams.set('prompt', 'select_account');
+	const url = new URL(AUTH_ENDPOINT);
+	url.searchParams.set('client_id', clientId);
+	url.searchParams.set('response_type', 'code');
+	url.searchParams.set('redirect_uri', redirectUri);
+	url.searchParams.set('scope', SCOPES.join(' '));
+	url.searchParams.set('code_challenge', challenge);
+	url.searchParams.set('code_challenge_method', 'S256');
+	url.searchParams.set('hd', WIT_HOSTED_DOMAIN);
+	// Always show the chooser. Without it Google reuses the last account, which
+	// is how a student ends up onboarding with the wrong one.
+	url.searchParams.set('prompt', 'select_account');
 
-    if (loginHint) {
-        url.searchParams.set('login_hint', loginHint);
-    }
+	if (loginHint) {
+		url.searchParams.set('login_hint', loginHint);
+	}
 
-    const params = await openCenteredAuthWindow(url.toString());
+	const params = await openCenteredAuthWindow(url.toString());
 
-    if (!params) {
-        throw new Error('Google sign-in was closed before it finished');
-    }
+	if (!params) {
+		throw new Error('Google sign-in was closed before it finished');
+	}
 
-    const error = params.get('error');
-    if (error) {
-        throw new Error(`Google rejected the sign-in: ${error}`);
-    }
+	const error = params.get('error');
+	if (error) {
+		throw new Error(`Google rejected the sign-in: ${error}`);
+	}
 
-    const code = params.get('code');
-    if (!code) {
-        throw new Error('Google did not return an authorization code');
-    }
+	const code = params.get('code');
+	if (!code) {
+		throw new Error('Google did not return an authorization code');
+	}
 
-    return { code, codeVerifier: verifier, redirectUri };
+	return { code, codeVerifier: verifier, redirectUri };
 }

@@ -1,889 +1,1104 @@
-import { EnvironmentManager } from "./environment";
-import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
+import { EnvironmentManager } from './environment';
+import { AuthError, handleUnauthorized, isUsableJwt } from './auth';
 import type {
-    CatalogTerm, CurrentTerm, ProcessingTerm, BatchProcessingResponse, FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse,
-    FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse,
-    GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse,
-    UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings,
-    FriendRequestInput, FriendExpiryResponse, MeetingLinkInput, MeetingLinkCreateResponse,
-    MeetingLinkResponse, MeetingLinksResponse, SharingLevel, FriendVisibilityResponse
+	CatalogTerm,
+	CurrentTerm,
+	ProcessingTerm,
+	BatchProcessingResponse,
+	FeatureFlagsResponse,
+	FriendListResponse,
+	FriendProcessedEventsResponse,
+	FriendRequestAcceptResponse,
+	FriendRequestCreateResponse,
+	FriendRequestsResponse,
+	GetPreferencesResponse,
+	isProcessed,
+	OkResponse,
+	ProcessedEvents,
+	TermResponse,
+	UniversityCalendarEvent,
+	UniversityEventCategoryWithCount,
+	UserSettings,
+	FriendRequestInput,
+	FriendExpiryResponse,
+	MeetingLinkInput,
+	MeetingLinkCreateResponse,
+	MeetingLinkResponse,
+	MeetingLinksResponse,
+	SharingLevel,
+	FriendVisibilityResponse
 } from './types';
 import {
-    friendList, friendRequests, processedStatus, requestCreated, requestAccepted, mutationResult,
-    friendExpiry, meetingLinks, meetingLink, meetingLinkCreated, friendVisibility
+	friendList,
+	friendRequests,
+	processedStatus,
+	requestCreated,
+	requestAccepted,
+	mutationResult,
+	friendExpiry,
+	meetingLinks,
+	meetingLink,
+	meetingLinkCreated,
+	friendVisibility
 } from './friendData';
-import { validatedTerms, validateCourses, busyBlocks, type BusyBlocksResponse } from './friendSchedule';
-import type { PasskeySummary } from "./passkeys";
+import {
+	validatedTerms,
+	validateCourses,
+	busyBlocks,
+	type BusyBlocksResponse
+} from './friendSchedule';
+import type { PasskeySummary } from './passkeys';
 import type { FriendGroup } from './components/friends/types';
 import { friendGroups, friendGroup } from './friendGroups';
 import {
-    savedMeetings, savedMeetingResponse, type SavedMeetingsResponse,
-    type SavedMeetingChanges, type SavedMeeting, type SavedMeetingInput
+	savedMeetings,
+	savedMeetingResponse,
+	type SavedMeetingsResponse,
+	type SavedMeetingChanges,
+	type SavedMeeting,
+	type SavedMeetingInput
 } from './savedMeetings';
 
 export class ApiError extends Error {
-    readonly status: number;
-    readonly code?: string;
+	readonly status: number;
+	readonly code?: string;
 
-    constructor(message: string, status: number, body?: unknown) {
-        super(message);
-        this.name = 'ApiError';
-        this.status = status;
-        if (body && typeof body === 'object') {
-            const fields = body as Record<string, unknown>;
-            if (typeof fields.code === 'string') this.code = fields.code;
-        }
-    }
+	constructor(message: string, status: number, body?: unknown) {
+		super(message);
+		this.name = 'ApiError';
+		this.status = status;
+		if (body && typeof body === 'object') {
+			const fields = body as Record<string, unknown>;
+			if (typeof fields.code === 'string') this.code = fields.code;
+		}
+	}
 }
 
 export class API {
-    private static async getBaseUrl(): Promise<string> {
-        const baseUrl = await EnvironmentManager.getBaseUrl();
-        return `${baseUrl}/api`;
-    }
-
-    public static get baseUrl(): Promise<string> {
-        return this.getBaseUrl();
-    }
-
-    public static async getJwtToken(): Promise<string | undefined> {
-        const token = await EnvironmentManager.getJwtToken();
-        return token;
-    }
-
-    private static async authedFetch(url: string, init?: RequestInit): Promise<Response> {
-        const token = await this.getJwtToken();
-        if (!isUsableJwt(token)) {
-            await handleUnauthorized();
-            throw new AuthError();
-        }
-
-        const sentAuth = new Headers(init?.headers).get('Authorization');
-        const response = await fetch(url, init);
-        if (response.status === 401) {
-            const currentToken = await this.getJwtToken();
-            if (currentToken && sentAuth === `Bearer ${currentToken}`) {
-                await handleUnauthorized();
-            }
-            throw new AuthError();
-        }
-        return response;
-    }
-
-    // Reads the body of a response that must succeed. A failed response becomes
-    // an error, so a caller never mistakes an error body for data and never
-    // writes one into a cache.
-    private static async readJson<T>(response: Response, failureMessage: string): Promise<T> {
-        if (response.ok) {
-            return response.json();
-        }
-        let message = `${failureMessage}: ${response.status}`;
-        let body: unknown;
-        try {
-            body = await response.json();
-            if (body && typeof body === 'object') {
-                const fields = body as Record<string, unknown>;
-                if (fields.error) message = String(fields.error);
-                else if (fields.message) message = String(fields.message);
-                else if (fields.detail) message = String(fields.detail);
-            }
-        } catch {
-            /* ignore parse errors */
-        }
-        throw new ApiError(message, response.status, body);
-    }
-
-    private static async friendApiRequest(path: string, failureMessage: string, method = 'GET', body?: unknown): Promise<unknown> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}${path}`, {
-            method,
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
-            },
-            ...(body === undefined ? {} : { body: JSON.stringify(body) })
-        });
-        return this.readJson<unknown>(response, failureMessage);
-    }
-
-    // Reads one flag from the full list. An unknown flag is off.
-    public static async checkFeatureFlag(flagName: string): Promise<boolean> {
-        const { feature_flags } = await this.getAllFeatureFlags();
-        return feature_flags?.[flagName] ?? false;
-    }
-
-    public static async getAllFeatureFlags(): Promise<FeatureFlagsResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/feature_flags`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-
-        if (!response.ok) {
-            console.error('Feature flags API error:', response.status, response.statusText);
-            throw new Error(`Failed to fetch feature flags: ${response.status}`);
-        }
-
-        return response.json();
-    }
-
-    // The current and the next term from the public catalog API. The catalog
-    // answers 404 when a term does not exist yet, which becomes null here.
-    public static async getTerms(): Promise<TermResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const [current_term, next_term] = await Promise.all([
-            this.getCatalogTerm(`${baseUrl}/v1/catalog/terms/current`),
-            this.getCatalogTerm(`${baseUrl}/v1/catalog/terms/next`)
-        ]);
-        return validatedTerms({ current_term, next_term });
-    }
-
-    private static async getCatalogTerm(url: string): Promise<CurrentTerm | null> {
-        const response = await fetch(url, { method: 'GET' });
-        if (response.status === 404) {
-            await response.text();
-            return null;
-        }
-
-        const { data } = await this.readJson<{ data: CatalogTerm }>(response, 'Failed to fetch terms');
-        return { id: data.uid, name: data.name, start_date: data.start_date, end_date: data.end_date };
-    }
-
-    // GET /api/user returns the public id, the email, and the ICS URL together.
-    public static async getUser(): Promise<{ pub_id: string; email: string; ics_url: string }> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await this.authedFetch(`${baseUrl}/user`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${await this.getJwtToken()}`
-            }
-        });
-        return this.readJson(response, 'Failed to fetch the user');
-    }
-
-    public static async getUserEmail(): Promise<{ email: string }> {
-        const { email } = await this.getUser();
-        return { email };
-    }
-
-    public static async userSettings(settings?: Partial<UserSettings>): Promise<UserSettings> {
-        const baseUrl = await this.getBaseUrl();
-        const url = `${baseUrl}/user/extension_config`;
-        const token = await this.getJwtToken();
-        const headers: HeadersInit = {
-            'Authorization': `Bearer ${token}`
-        };
-
-        if (settings === undefined) {
-            const response = await this.authedFetch(url, {
-                method: 'GET',
-                headers,
-            });
-            return this.readJson(response, 'Failed to fetch the user settings');
-        } else {
-            const response = await this.authedFetch(url, {
-                method: 'PUT',
-                body: JSON.stringify(settings),
-                headers: {
-                    ...headers,
-                    'Content-Type': 'application/json'
-                }
-            });
-            return this.readJson(response, 'Failed to save the user settings');
-        }
-    }
-
-    public static async userIsProcessed(termUid: string): Promise<isProcessed> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/processed_events/status?term_uid=${encodeURIComponent(termUid)}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return processedStatus(await this.readJson<isProcessed>(response, 'Failed to check your schedule status'));
-    }
-
-    public static async getProcessedEvents(termUid: string): Promise<ProcessedEvents> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/processed_events?term_uid=${encodeURIComponent(termUid)}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        const data = await this.readJson<ProcessedEvents>(response, 'Failed to fetch your schedule');
-        validateCourses(data?.classes);
-        return data;
-    }
-
-    public static async getFriends(): Promise<FriendListResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return friendList(await this.readJson<FriendListResponse>(response, 'Failed to fetch friends'));
-    }
-
-    public static async getFriendRequests(): Promise<FriendRequestsResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/requests`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return friendRequests(await this.readJson<FriendRequestsResponse>(response, 'Failed to fetch friend requests'));
-    }
-
-    public static async createFriendRequest(
-        payload: FriendRequestInput
-    ): Promise<FriendRequestCreateResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/requests`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-        return requestCreated(await this.readJson<FriendRequestCreateResponse>(response, 'Failed to send the friend request'));
-    }
-
-    public static async acceptFriendRequest(requestId: string, visibility?: SharingLevel): Promise<FriendRequestAcceptResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}/accept`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                ...(visibility === undefined ? {} : { 'Content-Type': 'application/json' })
-            },
-            ...(visibility === undefined ? {} : { body: JSON.stringify({ visibility }) })
-        });
-        return requestAccepted(await this.readJson<FriendRequestAcceptResponse>(response, 'Failed to accept the friend request'));
-    }
-
-    public static async declineFriendRequest(requestId: string): Promise<OkResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}/decline`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return mutationResult(await this.readJson<OkResponse>(response, 'Failed to decline the friend request'));
-    }
-
-    public static async cancelFriendRequest(requestId: string): Promise<OkResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return mutationResult(await this.readJson<OkResponse>(response, 'Failed to cancel the friend request'));
-    }
-
-    public static async removeFriend(friendId: string): Promise<OkResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return mutationResult(await this.readJson<OkResponse>(response, 'Failed to remove the friend'));
-    }
-
-    public static async friendIsProcessed(friendId: string, termUid: string): Promise<isProcessed> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/processed_events/status?term_uid=${encodeURIComponent(termUid)}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return processedStatus(await this.readJson<isProcessed>(response, 'Failed to check the friend schedule status'));
-    }
-
-    public static async getFriendProcessedEvents(friendId: string, termUid: string): Promise<FriendProcessedEventsResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/processed_events?term_uid=${encodeURIComponent(termUid)}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return this.readJson(response, `Failed to fetch the schedule of friend ${friendId}`);
-    }
-
-    public static async setFriendExpiry(friendId: string, expiresAt: string | null): Promise<FriendExpiryResponse> {
-        return friendExpiry(await this.friendApiRequest(
-            `/friends/${encodeURIComponent(friendId)}/expiry`, 'Failed to update friendship expiry',
-            'PATCH', { expires_at: expiresAt }
-        ));
-    }
-
-    public static async getMeetingLinks(): Promise<MeetingLinksResponse> {
-        return meetingLinks(await this.friendApiRequest('/meeting_links', 'Failed to fetch meeting links'));
-    }
-
-    public static async setFriendVisibility(friendId: string, visibility: SharingLevel): Promise<FriendVisibilityResponse> {
-        const result = friendVisibility(await this.friendApiRequest(
-            `/friends/${encodeURIComponent(friendId)}/visibility`, 'Failed to update sharing',
-            'PATCH', { visibility }
-        ));
-        if (result.friend_id !== friendId) throw new Error('The sharing change was not confirmed. Reload friends to try again.');
-        return result;
-    }
-
-    public static async getBusyBlocks(id: string, from: string, until: string): Promise<BusyBlocksResponse> {
-        const range = new URLSearchParams({ start_date: from, end_date: until });
-        const path = id === 'you' ? '/user/busy_blocks' : `/friends/${encodeURIComponent(id)}/busy_blocks`;
-        return busyBlocks(await this.friendApiRequest(`${path}?${range}`, 'Failed to fetch availability'), from, until);
-    }
-
-    public static async getFriendGroups(): Promise<FriendGroup[]> {
-        return friendGroups(await this.friendApiRequest('/friends/groups', 'Failed to fetch groups'));
-    }
-
-    public static async saveFriendGroup(name: string | undefined, memberIds: string[] | undefined, groupId?: string, expiresAt?: string | null): Promise<FriendGroup> {
-        return friendGroup(await this.friendApiRequest(
-            groupId ? `/friends/groups/${encodeURIComponent(groupId)}` : '/friends/groups',
-            'Failed to save group', groupId ? 'PATCH' : 'POST', { name, member_ids: memberIds, expires_at: expiresAt }
-        ));
-    }
-
-    public static async deleteFriendGroup(id: string): Promise<OkResponse> {
-        return mutationResult(await this.friendApiRequest(
-            `/friends/groups/${encodeURIComponent(id)}`, 'Failed to delete group', 'DELETE'
-        ) as OkResponse);
-    }
-
-    public static async getSavedMeetings(start: string, end: string): Promise<SavedMeetingsResponse> {
-        const range = new URLSearchParams({ start, end });
-        return savedMeetings(await this.friendApiRequest(`/friends/meetings?${range}`, 'Failed to fetch saved meetings'));
-    }
-
-    public static async updateSavedMeeting(id: string, changes: SavedMeetingChanges): Promise<{ meeting: SavedMeeting }> {
-        return savedMeetingResponse(await this.friendApiRequest(
-            `/friends/meetings/${encodeURIComponent(id)}`, 'Failed to update meeting', 'PATCH', changes
-        ));
-    }
-
-    public static async createSavedMeeting(payload: SavedMeetingInput, idempotencyKey: string): Promise<{ meeting: SavedMeeting }> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await this.authedFetch(`${baseUrl}/friends/meetings`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${await this.getJwtToken()}`,
-                'Content-Type': 'application/json',
-                'Idempotency-Key': idempotencyKey
-            },
-            body: JSON.stringify(payload)
-        });
-        return savedMeetingResponse(await this.readJson(response, 'Failed to create meeting'));
-    }
-
-    public static async leaveSavedMeeting(id: string): Promise<void> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await this.authedFetch(`${baseUrl}/friends/meetings/${encodeURIComponent(id)}/attendance`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
-        });
-        if (!response.ok) await this.readJson(response, 'Failed to leave meeting');
-    }
-
-    public static async deleteSavedMeeting(id: string): Promise<void> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await this.authedFetch(`${baseUrl}/friends/meetings/${encodeURIComponent(id)}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
-        });
-        if (!response.ok) await this.readJson(response, 'Failed to delete meeting');
-    }
-
-    public static async createMeetingLink(payload: MeetingLinkInput): Promise<MeetingLinkCreateResponse> {
-        return meetingLinkCreated(await this.friendApiRequest(
-            '/meeting_links', 'Failed to create meeting link', 'POST', payload
-        ));
-    }
-
-    public static async revokeMeetingLink(linkId: string): Promise<MeetingLinkResponse> {
-        return meetingLink(await this.friendApiRequest(
-            `/meeting_links/${encodeURIComponent(linkId)}`, 'Failed to revoke meeting link', 'DELETE'
-        ));
-    }
-
-    public static async getIcsUrl(): Promise<{ ics_url: string }> {
-        const { ics_url } = await this.getUser();
-        return { ics_url };
-    }
-
-    public static async getUniversityEventCategories(): Promise<{ categories: UniversityEventCategoryWithCount[] }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/university_calendar_events/categories`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return response.json();
-    }
-
-    public static async getUniversityEvents(params?: { category?: string; categories?: string; start_date?: string; end_date?: string; term_id?: string; page?: number; per_page?: number }): Promise<{ events: UniversityCalendarEvent[]; meta: { current_page: number; total_pages: number; total_count: number; per_page: number } }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const searchParams = new URLSearchParams();
-        if (params?.category) searchParams.append('category', params.category);
-        if (params?.categories) searchParams.append('categories', params.categories);
-        if (params?.start_date) searchParams.append('start_date', params.start_date);
-        if (params?.end_date) searchParams.append('end_date', params.end_date);
-        if (params?.term_id) searchParams.append('term_id', params.term_id);
-        if (params?.page) searchParams.append('page', params.page.toString());
-        if (params?.per_page) searchParams.append('per_page', params.per_page.toString());
-
-        const url = `${baseUrl}/university_calendar_events${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
-        const response = await this.authedFetch(url, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return response.json();
-    }
-
-    public static async getHolidays(params?: { term_id?: string; start_date?: string; end_date?: string }): Promise<{ holidays: UniversityCalendarEvent[] }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const searchParams = new URLSearchParams();
-        if (params?.term_id) searchParams.append('term_id', params.term_id);
-        if (params?.start_date) searchParams.append('start_date', params.start_date);
-        if (params?.end_date) searchParams.append('end_date', params.end_date);
-
-        const url = `${baseUrl}/university_calendar_events/holidays${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
-        const response = await this.authedFetch(url, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return response.json();
-    }
-
-    // Course processing endpoints
-    public static async processCoursesBatch(terms: ProcessingTerm[]): Promise<BatchProcessingResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/process_courses/batch`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ terms })
-        });
-        const data = await this.readJson<BatchProcessingResponse>(response, 'Failed to process terms');
-        if (!Array.isArray(data?.terms) || data.terms.length !== terms.length ||
-            data.terms.some((result, index) => result.term !== terms[index].term ||
-                !['processed', 'pending', 'failed'].includes(result.status))) {
-            throw new Error('Invalid batch processing response');
-        }
-        return data;
-    }
-
-    public static async processCourses(courses: any[]): Promise<{ user_pub: string; ics_url: string }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/process_courses`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(courses)
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Process courses failed: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-        return response.json();
-    }
-
-    public static async reprocessCourses(courses: any[]): Promise<{
-        ics_url: string;
-        removed_enrollments: number;
-        removed_courses: Array<{ crn: number; title: string; course_number: number }>;
-        processed_courses: any[];
-    }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/courses/reprocess`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ courses })
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Reprocess courses failed: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-        return response.json();
-    }
-
-    // Event preferences endpoints
-    public static async getPreferenceVersion(): Promise<string | undefined> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await this.authedFetch(`${baseUrl}/user/preferences/version`, {
-            method: 'GET',
-            cache: 'no-store',
-            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
-        });
-        if (response.status === 404 || response.status === 405) return undefined;
-        const data = await this.readJson<{ version: unknown }>(response, 'Failed to check preferences');
-        if (typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version)) {
-            throw new Error('Invalid preference version');
-        }
-        return data.version;
-    }
-
-    public static async getMeetingTimePreference(
-        meetingTimeId: number | string
-    ): Promise<GetPreferencesResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return this.readJson(response, 'Failed to load event preferences');
-    }
-
-    // The same data as getMeetingTimePreference, for many meeting times in one
-    // request, keyed by the id that was sent. The backend takes up to 200 ids.
-    // Only an unsupported endpoint permits fallback. Outages and rate limits
-    // must not multiply one failed batch into a request for every event.
-    public static async getMeetingTimePreferences(
-        meetingTimeIds: Array<number | string>
-    ): Promise<{ preferences: Record<string, GetPreferencesResponse>; version?: string } | undefined> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/meeting_times/preferences`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ meeting_time_ids: meetingTimeIds.map(String) })
-        });
-        if (response.status === 404 || response.status === 405) return undefined;
-        const data = await this.readJson<{
-            preferences: Record<string, GetPreferencesResponse>;
-            version?: string;
-        }>(
-            response, 'Failed to load event preferences'
-        );
-        if (data.version !== undefined &&
-            (typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version))) {
-            throw new Error('Invalid preference version');
-        }
-        return data;
-    }
-
-    public static async updateMeetingTimePreference(
-        meetingTimeId: number | string,
-        preferences: { event_preference: Partial<GetPreferencesResponse['resolved']> }
-    ): Promise<GetPreferencesResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(preferences)
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Update meeting time preference failed: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-        return response.json();
-    }
-
-    public static async deleteMeetingTimePreference(meetingTimeId: number | string): Promise<any> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return response.json();
-    }
-
-    // Notifications DND (Do Not Disturb) mode
-    public static async getNotificationStatus(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string | null }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return this.readJson(response, 'Failed to fetch the notification status');
-    }
-
-    public static async disableNotifications(duration?: number): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const body = JSON.stringify(duration ? { disabled: true, duration } : { disabled: true });
-        const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
-            method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body
-        });
-        return this.readJson(response, 'Failed to disable notifications');
-    }
-
-    public static async enableNotifications(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: null }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
-            method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ disabled: false })
-        });
-        return this.readJson(response, 'Failed to enable notifications');
-    }
-
-    // Global calendar preferences
-    public static async getGlobalCalendarPreference(): Promise<any> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/calendar_preferences/global`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return response.json();
-    }
-
-    public static async setGlobalCalendarPreference(preferences: {
-        reminder_settings?: any[];
-        title_template?: string;
-        description_template?: string;
-        color_id?: string;
-    }): Promise<any> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/calendar_preferences/global`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ calendar_preference: preferences })
-        });
-        return response.json();
-    }
-
-    // Connected Google accounts
-    public static async getConnectedAccounts(): Promise<{ oauth_credentials: Array<{id: string, email: string, provider: string, needs_reauth: boolean, token_revoked: boolean, has_calendar?: boolean}> }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/oauth_credentials`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return this.readJson(response, 'Failed to fetch the connected accounts');
-    }
-
-    public static async requestOAuthForEmail(email: string): Promise<{ oauth_url?: string, calendar_id?: string, error?: string }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/google_calendar`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ email })
-        });
-        return response.json();
-    }
-
-    public static async disconnectAccount(credentialId: string): Promise<void> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        await this.authedFetch(`${baseUrl}/user/oauth_credentials/${credentialId}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-    }
-
-    // University calendar preferences
-    public static async getCalendarPreferences(): Promise<{
-        global: any;
-        uni_cal_global: {
-            color_id?: string;
-            reminder_settings?: { time: string | number; type: string; method: string }[] | null;
-        } | null;
-        event_types: Record<string, any>;
-        uni_cal_categories: Record<string, any>;
-    }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/calendar_preferences`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return this.readJson(response, 'Failed to fetch the calendar preferences');
-    }
-
-    public static async setUniCalCategoryPreference(category: string, preferences: {
-        color_id?: string;
-        title_template?: string;
-        description_template?: string;
-    }): Promise<any> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/calendar_preferences/uni_cal:${category}`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ calendar_preference: preferences })
-        });
-        return response.json();
-    }
-
-    public static async setUniCalGlobalPreference(preferences: {
-        color_id?: string;
-        reminder_settings?: { time: string; type: string; method: string }[] | "default";
-    }): Promise<void> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/calendar_preferences/uni_cal`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ calendar_preference: preferences })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to set university calendar preference (HTTP ${response.status})`);
-        }
-    }
-
-    // Set the color for every university calendar event at once.
-    // hexColor should be a lowercase #rrggbb hex string.
-    //
-    // This writes the one uni_cal preference that covers the whole university
-    // calendar. Do not go back to writing one preference per category: that
-    // needs a copy of the backend category list here, and an out of date copy
-    // leaves the missing category on the default Graphite color. That is what
-    // happened to Study Day in issue #498.
-    public static async setAllUniCalCategoriesColor(hexColor: string): Promise<void> {
-        await this.setUniCalGlobalPreference({ color_id: hexColor });
-    }
-
-    // The /passkey page holds no session. This mints a single-use, short-lived
-    // grant it can spend to register a passkey, so the JWT never goes in a URL.
-    public static async createPasskeyHandoff(): Promise<{ code: string }> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await this.authedFetch(`${baseUrl}/user/passkeys/handoff`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${await this.getJwtToken()}`
-            }
-        });
-        if (!response.ok) {
-            throw new Error(`Could not start adding a passkey (${response.status})`);
-        }
-        return response.json();
-    }
-
-    public static async exchangePasskeyCode(code: string): Promise<{ jwt?: string }> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/user/passkeys/exchange`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code })
-        });
-        if (response.status === 401) {
-            return {};
-        }
-        if (!response.ok) {
-            throw new Error(`Passkey sign-in failed (${response.status})`);
-        }
-        return response.json();
-    }
-
-    public static async listPasskeys(): Promise<{ passkeys: PasskeySummary[] }> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await this.authedFetch(`${baseUrl}/user/passkeys`, {
-            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
-        });
-        if (!response.ok) {
-            throw new Error(`Could not list passkeys (${response.status})`);
-        }
-        return response.json();
-    }
-
-    public static async deletePasskey(passkeyId: string): Promise<void> {
-        const baseUrl = await this.getBaseUrl();
-        const response = await this.authedFetch(`${baseUrl}/user/passkeys/${passkeyId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
-        });
-        if (!response.ok) {
-            throw new Error(`Could not remove the passkey (${response.status})`);
-        }
-    }
-
+	private static async getBaseUrl(): Promise<string> {
+		const baseUrl = await EnvironmentManager.getBaseUrl();
+		return `${baseUrl}/api`;
+	}
+
+	public static get baseUrl(): Promise<string> {
+		return this.getBaseUrl();
+	}
+
+	public static async getJwtToken(): Promise<string | undefined> {
+		const token = await EnvironmentManager.getJwtToken();
+		return token;
+	}
+
+	private static async authedFetch(url: string, init?: RequestInit): Promise<Response> {
+		const token = await this.getJwtToken();
+		if (!isUsableJwt(token)) {
+			await handleUnauthorized();
+			throw new AuthError();
+		}
+
+		const sentAuth = new Headers(init?.headers).get('Authorization');
+		const response = await fetch(url, init);
+		if (response.status === 401) {
+			const currentToken = await this.getJwtToken();
+			if (currentToken && sentAuth === `Bearer ${currentToken}`) {
+				await handleUnauthorized();
+			}
+			throw new AuthError();
+		}
+		return response;
+	}
+
+	// Reads the body of a response that must succeed. A failed response becomes
+	// an error, so a caller never mistakes an error body for data and never
+	// writes one into a cache.
+	private static async readJson<T>(response: Response, failureMessage: string): Promise<T> {
+		if (response.ok) {
+			return response.json();
+		}
+		let message = `${failureMessage}: ${response.status}`;
+		let body: unknown;
+		try {
+			body = await response.json();
+			if (body && typeof body === 'object') {
+				const fields = body as Record<string, unknown>;
+				if (fields.error) message = String(fields.error);
+				else if (fields.message) message = String(fields.message);
+				else if (fields.detail) message = String(fields.detail);
+			}
+		} catch {
+			/* ignore parse errors */
+		}
+		throw new ApiError(message, response.status, body);
+	}
+
+	private static async friendApiRequest(
+		path: string,
+		failureMessage: string,
+		method = 'GET',
+		body?: unknown
+	): Promise<unknown> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}${path}`, {
+			method,
+			headers: {
+				Authorization: `Bearer ${token}`,
+				...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+			},
+			...(body === undefined ? {} : { body: JSON.stringify(body) })
+		});
+		return this.readJson<unknown>(response, failureMessage);
+	}
+
+	// Reads one flag from the full list. An unknown flag is off.
+	public static async checkFeatureFlag(flagName: string): Promise<boolean> {
+		const { feature_flags } = await this.getAllFeatureFlags();
+		return feature_flags?.[flagName] ?? false;
+	}
+
+	public static async getAllFeatureFlags(): Promise<FeatureFlagsResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/user/feature_flags`, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+
+		if (!response.ok) {
+			console.error('Feature flags API error:', response.status, response.statusText);
+			throw new Error(`Failed to fetch feature flags: ${response.status}`);
+		}
+
+		return response.json();
+	}
+
+	// The current and the next term from the public catalog API. The catalog
+	// answers 404 when a term does not exist yet, which becomes null here.
+	public static async getTerms(): Promise<TermResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const [current_term, next_term] = await Promise.all([
+			this.getCatalogTerm(`${baseUrl}/v1/catalog/terms/current`),
+			this.getCatalogTerm(`${baseUrl}/v1/catalog/terms/next`)
+		]);
+		return validatedTerms({ current_term, next_term });
+	}
+
+	private static async getCatalogTerm(url: string): Promise<CurrentTerm | null> {
+		const response = await fetch(url, { method: 'GET' });
+		if (response.status === 404) {
+			await response.text();
+			return null;
+		}
+
+		const { data } = await this.readJson<{ data: CatalogTerm }>(response, 'Failed to fetch terms');
+		return { id: data.uid, name: data.name, start_date: data.start_date, end_date: data.end_date };
+	}
+
+	// GET /api/user returns the public id, the email, and the ICS URL together.
+	public static async getUser(): Promise<{ pub_id: string; email: string; ics_url: string }> {
+		const baseUrl = await this.getBaseUrl();
+		const response = await this.authedFetch(`${baseUrl}/user`, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${await this.getJwtToken()}`
+			}
+		});
+		return this.readJson(response, 'Failed to fetch the user');
+	}
+
+	public static async getUserEmail(): Promise<{ email: string }> {
+		const { email } = await this.getUser();
+		return { email };
+	}
+
+	public static async userSettings(settings?: Partial<UserSettings>): Promise<UserSettings> {
+		const baseUrl = await this.getBaseUrl();
+		const url = `${baseUrl}/user/extension_config`;
+		const token = await this.getJwtToken();
+		const headers: HeadersInit = {
+			Authorization: `Bearer ${token}`
+		};
+
+		if (settings === undefined) {
+			const response = await this.authedFetch(url, {
+				method: 'GET',
+				headers
+			});
+			return this.readJson(response, 'Failed to fetch the user settings');
+		} else {
+			const response = await this.authedFetch(url, {
+				method: 'PUT',
+				body: JSON.stringify(settings),
+				headers: {
+					...headers,
+					'Content-Type': 'application/json'
+				}
+			});
+			return this.readJson(response, 'Failed to save the user settings');
+		}
+	}
+
+	public static async userIsProcessed(termUid: string): Promise<isProcessed> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(
+			`${baseUrl}/user/processed_events/status?term_uid=${encodeURIComponent(termUid)}`,
+			{
+				method: 'GET',
+				headers: {
+					Authorization: `Bearer ${token}`
+				}
+			}
+		);
+		return processedStatus(
+			await this.readJson<isProcessed>(response, 'Failed to check your schedule status')
+		);
+	}
+
+	public static async getProcessedEvents(termUid: string): Promise<ProcessedEvents> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(
+			`${baseUrl}/user/processed_events?term_uid=${encodeURIComponent(termUid)}`,
+			{
+				method: 'GET',
+				headers: {
+					Authorization: `Bearer ${token}`
+				}
+			}
+		);
+		const data = await this.readJson<ProcessedEvents>(response, 'Failed to fetch your schedule');
+		validateCourses(data?.classes);
+		return data;
+	}
+
+	public static async getFriends(): Promise<FriendListResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/friends`, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return friendList(await this.readJson<FriendListResponse>(response, 'Failed to fetch friends'));
+	}
+
+	public static async getFriendRequests(): Promise<FriendRequestsResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/friends/requests`, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return friendRequests(
+			await this.readJson<FriendRequestsResponse>(response, 'Failed to fetch friend requests')
+		);
+	}
+
+	public static async createFriendRequest(
+		payload: FriendRequestInput
+	): Promise<FriendRequestCreateResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/friends/requests`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(payload)
+		});
+		return requestCreated(
+			await this.readJson<FriendRequestCreateResponse>(
+				response,
+				'Failed to send the friend request'
+			)
+		);
+	}
+
+	public static async acceptFriendRequest(
+		requestId: string,
+		visibility?: SharingLevel
+	): Promise<FriendRequestAcceptResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}/accept`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				...(visibility === undefined ? {} : { 'Content-Type': 'application/json' })
+			},
+			...(visibility === undefined ? {} : { body: JSON.stringify({ visibility }) })
+		});
+		return requestAccepted(
+			await this.readJson<FriendRequestAcceptResponse>(
+				response,
+				'Failed to accept the friend request'
+			)
+		);
+	}
+
+	public static async declineFriendRequest(requestId: string): Promise<OkResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}/decline`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return mutationResult(
+			await this.readJson<OkResponse>(response, 'Failed to decline the friend request')
+		);
+	}
+
+	public static async cancelFriendRequest(requestId: string): Promise<OkResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}`, {
+			method: 'DELETE',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return mutationResult(
+			await this.readJson<OkResponse>(response, 'Failed to cancel the friend request')
+		);
+	}
+
+	public static async removeFriend(friendId: string): Promise<OkResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/friends/${friendId}`, {
+			method: 'DELETE',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return mutationResult(await this.readJson<OkResponse>(response, 'Failed to remove the friend'));
+	}
+
+	public static async friendIsProcessed(friendId: string, termUid: string): Promise<isProcessed> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(
+			`${baseUrl}/friends/${friendId}/processed_events/status?term_uid=${encodeURIComponent(termUid)}`,
+			{
+				method: 'GET',
+				headers: {
+					Authorization: `Bearer ${token}`
+				}
+			}
+		);
+		return processedStatus(
+			await this.readJson<isProcessed>(response, 'Failed to check the friend schedule status')
+		);
+	}
+
+	public static async getFriendProcessedEvents(
+		friendId: string,
+		termUid: string
+	): Promise<FriendProcessedEventsResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(
+			`${baseUrl}/friends/${friendId}/processed_events?term_uid=${encodeURIComponent(termUid)}`,
+			{
+				method: 'GET',
+				headers: {
+					Authorization: `Bearer ${token}`
+				}
+			}
+		);
+		return this.readJson(response, `Failed to fetch the schedule of friend ${friendId}`);
+	}
+
+	public static async setFriendExpiry(
+		friendId: string,
+		expiresAt: string | null
+	): Promise<FriendExpiryResponse> {
+		return friendExpiry(
+			await this.friendApiRequest(
+				`/friends/${encodeURIComponent(friendId)}/expiry`,
+				'Failed to update friendship expiry',
+				'PATCH',
+				{ expires_at: expiresAt }
+			)
+		);
+	}
+
+	public static async getMeetingLinks(): Promise<MeetingLinksResponse> {
+		return meetingLinks(
+			await this.friendApiRequest('/meeting_links', 'Failed to fetch meeting links')
+		);
+	}
+
+	public static async setFriendVisibility(
+		friendId: string,
+		visibility: SharingLevel
+	): Promise<FriendVisibilityResponse> {
+		const result = friendVisibility(
+			await this.friendApiRequest(
+				`/friends/${encodeURIComponent(friendId)}/visibility`,
+				'Failed to update sharing',
+				'PATCH',
+				{ visibility }
+			)
+		);
+		if (result.friend_id !== friendId)
+			throw new Error('The sharing change was not confirmed. Reload friends to try again.');
+		return result;
+	}
+
+	public static async getBusyBlocks(
+		id: string,
+		from: string,
+		until: string
+	): Promise<BusyBlocksResponse> {
+		const range = new URLSearchParams({ start_date: from, end_date: until });
+		const path =
+			id === 'you' ? '/user/busy_blocks' : `/friends/${encodeURIComponent(id)}/busy_blocks`;
+		return busyBlocks(
+			await this.friendApiRequest(`${path}?${range}`, 'Failed to fetch availability'),
+			from,
+			until
+		);
+	}
+
+	public static async getFriendGroups(): Promise<FriendGroup[]> {
+		return friendGroups(await this.friendApiRequest('/friends/groups', 'Failed to fetch groups'));
+	}
+
+	public static async saveFriendGroup(
+		name: string | undefined,
+		memberIds: string[] | undefined,
+		groupId?: string,
+		expiresAt?: string | null
+	): Promise<FriendGroup> {
+		return friendGroup(
+			await this.friendApiRequest(
+				groupId ? `/friends/groups/${encodeURIComponent(groupId)}` : '/friends/groups',
+				'Failed to save group',
+				groupId ? 'PATCH' : 'POST',
+				{ name, member_ids: memberIds, expires_at: expiresAt }
+			)
+		);
+	}
+
+	public static async deleteFriendGroup(id: string): Promise<OkResponse> {
+		return mutationResult(
+			(await this.friendApiRequest(
+				`/friends/groups/${encodeURIComponent(id)}`,
+				'Failed to delete group',
+				'DELETE'
+			)) as OkResponse
+		);
+	}
+
+	public static async getSavedMeetings(start: string, end: string): Promise<SavedMeetingsResponse> {
+		const range = new URLSearchParams({ start, end });
+		return savedMeetings(
+			await this.friendApiRequest(`/friends/meetings?${range}`, 'Failed to fetch saved meetings')
+		);
+	}
+
+	public static async updateSavedMeeting(
+		id: string,
+		changes: SavedMeetingChanges
+	): Promise<{ meeting: SavedMeeting }> {
+		return savedMeetingResponse(
+			await this.friendApiRequest(
+				`/friends/meetings/${encodeURIComponent(id)}`,
+				'Failed to update meeting',
+				'PATCH',
+				changes
+			)
+		);
+	}
+
+	public static async createSavedMeeting(
+		payload: SavedMeetingInput,
+		idempotencyKey: string
+	): Promise<{ meeting: SavedMeeting }> {
+		const baseUrl = await this.getBaseUrl();
+		const response = await this.authedFetch(`${baseUrl}/friends/meetings`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${await this.getJwtToken()}`,
+				'Content-Type': 'application/json',
+				'Idempotency-Key': idempotencyKey
+			},
+			body: JSON.stringify(payload)
+		});
+		return savedMeetingResponse(await this.readJson(response, 'Failed to create meeting'));
+	}
+
+	public static async leaveSavedMeeting(id: string): Promise<void> {
+		const baseUrl = await this.getBaseUrl();
+		const response = await this.authedFetch(
+			`${baseUrl}/friends/meetings/${encodeURIComponent(id)}/attendance`,
+			{
+				method: 'DELETE',
+				headers: { Authorization: `Bearer ${await this.getJwtToken()}` }
+			}
+		);
+		if (!response.ok) await this.readJson(response, 'Failed to leave meeting');
+	}
+
+	public static async deleteSavedMeeting(id: string): Promise<void> {
+		const baseUrl = await this.getBaseUrl();
+		const response = await this.authedFetch(
+			`${baseUrl}/friends/meetings/${encodeURIComponent(id)}`,
+			{
+				method: 'DELETE',
+				headers: { Authorization: `Bearer ${await this.getJwtToken()}` }
+			}
+		);
+		if (!response.ok) await this.readJson(response, 'Failed to delete meeting');
+	}
+
+	public static async createMeetingLink(
+		payload: MeetingLinkInput
+	): Promise<MeetingLinkCreateResponse> {
+		return meetingLinkCreated(
+			await this.friendApiRequest(
+				'/meeting_links',
+				'Failed to create meeting link',
+				'POST',
+				payload
+			)
+		);
+	}
+
+	public static async revokeMeetingLink(linkId: string): Promise<MeetingLinkResponse> {
+		return meetingLink(
+			await this.friendApiRequest(
+				`/meeting_links/${encodeURIComponent(linkId)}`,
+				'Failed to revoke meeting link',
+				'DELETE'
+			)
+		);
+	}
+
+	public static async getIcsUrl(): Promise<{ ics_url: string }> {
+		const { ics_url } = await this.getUser();
+		return { ics_url };
+	}
+
+	public static async getUniversityEventCategories(): Promise<{
+		categories: UniversityEventCategoryWithCount[];
+	}> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/university_calendar_events/categories`, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return response.json();
+	}
+
+	public static async getUniversityEvents(params?: {
+		category?: string;
+		categories?: string;
+		start_date?: string;
+		end_date?: string;
+		term_id?: string;
+		page?: number;
+		per_page?: number;
+	}): Promise<{
+		events: UniversityCalendarEvent[];
+		meta: { current_page: number; total_pages: number; total_count: number; per_page: number };
+	}> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const searchParams = new URLSearchParams();
+		if (params?.category) searchParams.append('category', params.category);
+		if (params?.categories) searchParams.append('categories', params.categories);
+		if (params?.start_date) searchParams.append('start_date', params.start_date);
+		if (params?.end_date) searchParams.append('end_date', params.end_date);
+		if (params?.term_id) searchParams.append('term_id', params.term_id);
+		if (params?.page) searchParams.append('page', params.page.toString());
+		if (params?.per_page) searchParams.append('per_page', params.per_page.toString());
+
+		const url = `${baseUrl}/university_calendar_events${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+		const response = await this.authedFetch(url, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return response.json();
+	}
+
+	public static async getHolidays(params?: {
+		term_id?: string;
+		start_date?: string;
+		end_date?: string;
+	}): Promise<{ holidays: UniversityCalendarEvent[] }> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const searchParams = new URLSearchParams();
+		if (params?.term_id) searchParams.append('term_id', params.term_id);
+		if (params?.start_date) searchParams.append('start_date', params.start_date);
+		if (params?.end_date) searchParams.append('end_date', params.end_date);
+
+		const url = `${baseUrl}/university_calendar_events/holidays${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+		const response = await this.authedFetch(url, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return response.json();
+	}
+
+	// Course processing endpoints
+	public static async processCoursesBatch(
+		terms: ProcessingTerm[]
+	): Promise<BatchProcessingResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/process_courses/batch`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ terms })
+		});
+		const data = await this.readJson<BatchProcessingResponse>(response, 'Failed to process terms');
+		if (
+			!Array.isArray(data?.terms) ||
+			data.terms.length !== terms.length ||
+			data.terms.some(
+				(result, index) =>
+					result.term !== terms[index].term ||
+					!['processed', 'pending', 'failed'].includes(result.status)
+			)
+		) {
+			throw new Error('Invalid batch processing response');
+		}
+		return data;
+	}
+
+	public static async processCourses(
+		courses: any[]
+	): Promise<{ user_pub: string; ics_url: string }> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/process_courses`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(courses)
+		});
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(
+				`Process courses failed: ${response.status} ${response.statusText} - ${errorText}`
+			);
+		}
+		return response.json();
+	}
+
+	public static async reprocessCourses(courses: any[]): Promise<{
+		ics_url: string;
+		removed_enrollments: number;
+		removed_courses: Array<{ crn: number; title: string; course_number: number }>;
+		processed_courses: any[];
+	}> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/courses/reprocess`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ courses })
+		});
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(
+				`Reprocess courses failed: ${response.status} ${response.statusText} - ${errorText}`
+			);
+		}
+		return response.json();
+	}
+
+	// Event preferences endpoints
+	public static async getPreferenceVersion(): Promise<string | undefined> {
+		const baseUrl = await this.getBaseUrl();
+		const response = await this.authedFetch(`${baseUrl}/user/preferences/version`, {
+			method: 'GET',
+			cache: 'no-store',
+			headers: { Authorization: `Bearer ${await this.getJwtToken()}` }
+		});
+		if (response.status === 404 || response.status === 405) return undefined;
+		const data = await this.readJson<{ version: unknown }>(response, 'Failed to check preferences');
+		if (typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version)) {
+			throw new Error('Invalid preference version');
+		}
+		return data.version;
+	}
+
+	public static async getMeetingTimePreference(
+		meetingTimeId: number | string
+	): Promise<GetPreferencesResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(
+			`${baseUrl}/meeting_times/${meetingTimeId}/preference`,
+			{
+				method: 'GET',
+				headers: {
+					Authorization: `Bearer ${token}`
+				}
+			}
+		);
+		return this.readJson(response, 'Failed to load event preferences');
+	}
+
+	// The same data as getMeetingTimePreference, for many meeting times in one
+	// request, keyed by the id that was sent. The backend takes up to 200 ids.
+	// Only an unsupported endpoint permits fallback. Outages and rate limits
+	// must not multiply one failed batch into a request for every event.
+	public static async getMeetingTimePreferences(
+		meetingTimeIds: Array<number | string>
+	): Promise<
+		{ preferences: Record<string, GetPreferencesResponse>; version?: string } | undefined
+	> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/meeting_times/preferences`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ meeting_time_ids: meetingTimeIds.map(String) })
+		});
+		if (response.status === 404 || response.status === 405) return undefined;
+		const data = await this.readJson<{
+			preferences: Record<string, GetPreferencesResponse>;
+			version?: string;
+		}>(response, 'Failed to load event preferences');
+		if (
+			data.version !== undefined &&
+			(typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version))
+		) {
+			throw new Error('Invalid preference version');
+		}
+		return data;
+	}
+
+	public static async updateMeetingTimePreference(
+		meetingTimeId: number | string,
+		preferences: { event_preference: Partial<GetPreferencesResponse['resolved']> }
+	): Promise<GetPreferencesResponse> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(
+			`${baseUrl}/meeting_times/${meetingTimeId}/preference`,
+			{
+				method: 'PUT',
+				headers: {
+					Authorization: `Bearer ${token}`,
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(preferences)
+			}
+		);
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(
+				`Update meeting time preference failed: ${response.status} ${response.statusText} - ${errorText}`
+			);
+		}
+		return response.json();
+	}
+
+	public static async deleteMeetingTimePreference(meetingTimeId: number | string): Promise<any> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(
+			`${baseUrl}/meeting_times/${meetingTimeId}/preference`,
+			{
+				method: 'DELETE',
+				headers: {
+					Authorization: `Bearer ${token}`
+				}
+			}
+		);
+		return response.json();
+	}
+
+	// Notifications DND (Do Not Disturb) mode
+	public static async getNotificationStatus(): Promise<{
+		notifications_disabled: boolean;
+		notifications_disabled_until: string | null;
+	}> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return this.readJson(response, 'Failed to fetch the notification status');
+	}
+
+	public static async disableNotifications(
+		duration?: number
+	): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string }> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const body = JSON.stringify(duration ? { disabled: true, duration } : { disabled: true });
+		const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
+			method: 'PATCH',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body
+		});
+		return this.readJson(response, 'Failed to disable notifications');
+	}
+
+	public static async enableNotifications(): Promise<{
+		notifications_disabled: boolean;
+		notifications_disabled_until: null;
+	}> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
+			method: 'PATCH',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ disabled: false })
+		});
+		return this.readJson(response, 'Failed to enable notifications');
+	}
+
+	// Global calendar preferences
+	public static async getGlobalCalendarPreference(): Promise<any> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/calendar_preferences/global`, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return response.json();
+	}
+
+	public static async setGlobalCalendarPreference(preferences: {
+		reminder_settings?: any[];
+		title_template?: string;
+		description_template?: string;
+		color_id?: string;
+	}): Promise<any> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/calendar_preferences/global`, {
+			method: 'PUT',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ calendar_preference: preferences })
+		});
+		return response.json();
+	}
+
+	// Connected Google accounts
+	public static async getConnectedAccounts(): Promise<{
+		oauth_credentials: Array<{
+			id: string;
+			email: string;
+			provider: string;
+			needs_reauth: boolean;
+			token_revoked: boolean;
+			has_calendar?: boolean;
+		}>;
+	}> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/user/oauth_credentials`, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return this.readJson(response, 'Failed to fetch the connected accounts');
+	}
+
+	public static async requestOAuthForEmail(
+		email: string
+	): Promise<{ oauth_url?: string; calendar_id?: string; error?: string }> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/user/google_calendar`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ email })
+		});
+		return response.json();
+	}
+
+	public static async disconnectAccount(credentialId: string): Promise<void> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		await this.authedFetch(`${baseUrl}/user/oauth_credentials/${credentialId}`, {
+			method: 'DELETE',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+	}
+
+	// University calendar preferences
+	public static async getCalendarPreferences(): Promise<{
+		global: any;
+		uni_cal_global: {
+			color_id?: string;
+			reminder_settings?: { time: string | number; type: string; method: string }[] | null;
+		} | null;
+		event_types: Record<string, any>;
+		uni_cal_categories: Record<string, any>;
+	}> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/calendar_preferences`, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+		return this.readJson(response, 'Failed to fetch the calendar preferences');
+	}
+
+	public static async setUniCalCategoryPreference(
+		category: string,
+		preferences: {
+			color_id?: string;
+			title_template?: string;
+			description_template?: string;
+		}
+	): Promise<any> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/calendar_preferences/uni_cal:${category}`, {
+			method: 'PUT',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ calendar_preference: preferences })
+		});
+		return response.json();
+	}
+
+	public static async setUniCalGlobalPreference(preferences: {
+		color_id?: string;
+		reminder_settings?: { time: string; type: string; method: string }[] | 'default';
+	}): Promise<void> {
+		const baseUrl = await this.getBaseUrl();
+		const token = await this.getJwtToken();
+		const response = await this.authedFetch(`${baseUrl}/calendar_preferences/uni_cal`, {
+			method: 'PUT',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ calendar_preference: preferences })
+		});
+
+		if (!response.ok) {
+			throw new Error(`Failed to set university calendar preference (HTTP ${response.status})`);
+		}
+	}
+
+	// Set the color for every university calendar event at once.
+	// hexColor should be a lowercase #rrggbb hex string.
+	//
+	// This writes the one uni_cal preference that covers the whole university
+	// calendar. Do not go back to writing one preference per category: that
+	// needs a copy of the backend category list here, and an out of date copy
+	// leaves the missing category on the default Graphite color. That is what
+	// happened to Study Day in issue #498.
+	public static async setAllUniCalCategoriesColor(hexColor: string): Promise<void> {
+		await this.setUniCalGlobalPreference({ color_id: hexColor });
+	}
+
+	// The /passkey page holds no session. This mints a single-use, short-lived
+	// grant it can spend to register a passkey, so the JWT never goes in a URL.
+	public static async createPasskeyHandoff(): Promise<{ code: string }> {
+		const baseUrl = await this.getBaseUrl();
+		const response = await this.authedFetch(`${baseUrl}/user/passkeys/handoff`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${await this.getJwtToken()}`
+			}
+		});
+		if (!response.ok) {
+			throw new Error(`Could not start adding a passkey (${response.status})`);
+		}
+		return response.json();
+	}
+
+	public static async exchangePasskeyCode(code: string): Promise<{ jwt?: string }> {
+		const baseUrl = await this.getBaseUrl();
+		const response = await fetch(`${baseUrl}/user/passkeys/exchange`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ code })
+		});
+		if (response.status === 401) {
+			return {};
+		}
+		if (!response.ok) {
+			throw new Error(`Passkey sign-in failed (${response.status})`);
+		}
+		return response.json();
+	}
+
+	public static async listPasskeys(): Promise<{ passkeys: PasskeySummary[] }> {
+		const baseUrl = await this.getBaseUrl();
+		const response = await this.authedFetch(`${baseUrl}/user/passkeys`, {
+			headers: { Authorization: `Bearer ${await this.getJwtToken()}` }
+		});
+		if (!response.ok) {
+			throw new Error(`Could not list passkeys (${response.status})`);
+		}
+		return response.json();
+	}
+
+	public static async deletePasskey(passkeyId: string): Promise<void> {
+		const baseUrl = await this.getBaseUrl();
+		const response = await this.authedFetch(`${baseUrl}/user/passkeys/${passkeyId}`, {
+			method: 'DELETE',
+			headers: { Authorization: `Bearer ${await this.getJwtToken()}` }
+		});
+		if (!response.ok) {
+			throw new Error(`Could not remove the passkey (${response.status})`);
+		}
+	}
 }
