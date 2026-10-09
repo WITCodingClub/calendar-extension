@@ -1,7 +1,7 @@
 import { EnvironmentManager } from "./environment";
 import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
 import type {
-    FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse,
+    ProcessingTerm, BatchProcessingResponse, FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse,
     FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse,
     GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse,
     UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings,
@@ -500,6 +500,26 @@ export class API {
     }
 
     // Course processing endpoints
+    public static async processCoursesBatch(terms: ProcessingTerm[]): Promise<BatchProcessingResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await this.authedFetch(`${baseUrl}/process_courses/batch`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ terms })
+        });
+        const data = await this.readJson<BatchProcessingResponse>(response, 'Failed to process terms');
+        if (!Array.isArray(data?.terms) || data.terms.length !== terms.length ||
+            data.terms.some((result, index) => result.term !== terms[index].term ||
+                !['processed', 'pending', 'failed'].includes(result.status))) {
+            throw new Error('Invalid batch processing response');
+        }
+        return data;
+    }
+
     public static async processCourses(courses: any[]): Promise<{ user_pub: string; ics_url: string }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();

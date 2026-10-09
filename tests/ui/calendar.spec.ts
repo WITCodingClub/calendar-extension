@@ -2,6 +2,25 @@ import { test, expect } from './extension.fixture';
 import { fitsViewport, chooseRadio } from './helpers';
 import { now, origin, preference, settings, terms } from './backend';
 
+test('a queued current term is polled without opening LeopardWeb', async ({ extension }) => {
+	const { page, context } = extension;
+	let polls = 0;
+	await context.route(origin + '/api/user/is_processed', (route) =>
+		route.fulfill({
+			json:
+				++polls === 1
+					? { processed: false, status: 'processing', error_code: null }
+					: { processed: true, status: 'processed', error_code: null }
+		})
+	);
+	await extension.open();
+	await expect(page.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
+	expect(polls).toBeGreaterThanOrEqual(2);
+	expect(context.pages().some((tab) => tab.url().startsWith('https://selfservice.wit.edu/'))).toBe(
+		false
+	);
+});
+
 test('accounts without enrollments only get the current term', async ({ extension }) => {
 	const { page, context } = extension;
 	await context.route(origin + '/api/user/extension_config', (route) =>

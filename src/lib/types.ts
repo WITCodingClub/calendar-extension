@@ -64,6 +64,8 @@ interface CalendarConfig {
 
 interface isProcessed {
     processed: boolean;
+    status?: 'not_started' | 'pending' | 'processing' | 'processed' | 'failed';
+    error_code?: string | null;
 }
 
 interface FriendIdentity {
@@ -345,4 +347,15 @@ export {
     type CalendarConfig, type Course, type CurrentTerm, type DayItem,
     type EventPreferences, type FeatureFlagsResponse, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location,
     type MeetingTime, type NextTerm, type NotificationMethod, type NotificationSetting, type NotificationType, type OkResponse, type Preview, type ProcessedEvents, type Professor, type ReminderSettings, type ResolvedData, type ResponseData, type TemplateVariables, type Term, type TermResponse, type UniversityCalendarEvent, type UniversityEventCategory, type UniversityEventCategoryWithCount, type UserSettings
+};
+
+export type ProcessingTerm = {
+	term: string;
+	courses: Array<{ crn: string; term: string; courseNumber: string }>;
+};
+
+export type BatchProcessingResponse = {
+	user_pub: string;
+	ics_url: string;
+	terms: Array<{ term: string; status: 'processed' | 'pending' | 'failed'; error?: string }>;
 };

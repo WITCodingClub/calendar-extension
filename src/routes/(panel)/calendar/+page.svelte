@@ -645,6 +645,7 @@
 			});
 
 			const result = results[0]?.result;
+			if (!session.active) return;
 			if (!result) {
 				throw new Error('Unexpected response from LeopardWeb');
 			}
@@ -679,6 +680,44 @@
 			}));
 
 			const response = await API.processCourses(coursesArray);
+			if (!session.active) return;
+			const remaining = termOptions.filter((term) => term.id !== usedTermId && /^\d+$/.test(term.id));
+			if (remaining.length) {
+				const importTabId = tabToUse.id;
+				const closeImportTab = shouldCloseTab;
+				shouldCloseTab = false;
+				void session.termProcessing.start(remaining.map((term) => term.id), async (term) => {
+					const results = await chrome.scripting.executeScript({
+						target: { tabId: importTabId },
+						world: 'MAIN',
+						func: async (term: string) => {
+							try {
+								const token = document.querySelector('meta[name="synchronizerToken"]')?.getAttribute('content');
+								const response = await fetch(`/StudentRegistrationSsb/ssb/registrationHistory/reset?term=${encodeURIComponent(term)}`, {
+									credentials: 'include',
+									headers: {
+										Accept: 'application/json',
+										'X-Requested-With': 'XMLHttpRequest',
+										...(token ? { 'X-Synchronizer-Token': token } : {})
+									}
+								});
+								if (!response.ok) throw new Error(`LeopardWeb returned ${response.status}`);
+								const data = await response.json();
+								if (!Array.isArray(data?.data?.registrations)) throw new Error('Unexpected response from LeopardWeb');
+								return { courses: data.data.registrations.map((reg: { courseReferenceNumber: string; term: string; courseNumber: string }) => ({ crn: reg.courseReferenceNumber, term: reg.term, courseNumber: reg.courseNumber })) };
+							} catch (error) {
+								return { error: error instanceof Error ? error.message : String(error) };
+							}
+						},
+						args: [term]
+					});
+					const result = results[0]?.result;
+					if (!result || 'error' in result) throw new Error(result?.error || 'Unexpected response from LeopardWeb');
+					return result.courses;
+				}).finally(async () => {
+					if (closeImportTab) await chrome.tabs.remove(importTabId).catch(() => {});
+				});
+			}
 
 			if (typeof response === 'string') {
 				return { ics_url: response, termId: usedTermId };
@@ -696,14 +735,21 @@
 
 	async function ensureProcessedForTerm(termId: string | undefined) {
 		if (!termId || loading) return;
-		const version = session.ownScheduleVersions[termId] ?? 0;
+		let version = session.ownScheduleVersions[termId] ?? 0;
 		const fresh = () =>
 			session.active &&
 			selected === termId &&
 			(session.ownScheduleVersions[termId] ?? 0) === version;
 		try {
 			loading = true;
-			const status = await API.userIsProcessed(termId);
+			if (session.termProcessing.pending.has(termId)) await session.termProcessing.wait(termId);
+			if (!session.active || selected !== termId) return;
+			version = session.ownScheduleVersions[termId] ?? 0;
+			let status = await API.userIsProcessed(termId);
+			if (status.status === 'pending' || status.status === 'processing') {
+				await session.termProcessing.wait(termId, status);
+				status = await API.userIsProcessed(termId);
+			}
 			if (!fresh()) return;
 			if (status?.processed) {
 				const events = await session.loadProcessedEvents(termId);
@@ -951,6 +997,10 @@
 
 	async function runScrapeAndProcess(termId: string | undefined) {
 		if (loading) return;
+		if (termId && session.termProcessing.pending.has(termId)) {
+			await ensureProcessedForTerm(termId);
+			return;
+		}
 		let expectedTerm = termId;
 		let version = expectedTerm ? (session.ownScheduleVersions[expectedTerm] ?? 0) : 0;
 		const fresh = () =>
@@ -1007,6 +1057,10 @@
 
 	async function refreshSchedule(termId: string | undefined) {
 		if (!termId || refreshing || loading) return;
+		if (session.termProcessing.pending.has(termId)) {
+			await ensureProcessedForTerm(termId);
+			return;
+		}
 		let version = session.ownScheduleVersions[termId] ?? 0;
 		const fresh = () =>
 			session.active &&

@@ -295,6 +295,8 @@
 	function loadSchedule(term: string, id: string): Promise<void> {
 		if (!session.active || ui.scheduleTerm !== term || !ui.selected.includes(id))
 			return Promise.resolve();
+		if (id === 'you' && session.termProcessing.pending.has(term))
+			return session.termProcessing.wait(term).then(() => loadSchedule(term, id));
 		if (
 			id !== 'you' &&
 			ui.friends.find((friend) => friend.id === id)?.visibility?.theirs === 'availability_only'
@@ -678,6 +680,12 @@
 			)
 	};
 	ui.busyActions = { load: loadBusyRange, invalidate: discardBusy };
+	session.ownScheduleProcessed = (term) => {
+		discardBusy('you');
+		ui.scheduleStatus[term] ??= {};
+		ui.scheduleStatus[term].you = 'loaded';
+		delete ui.scheduleErrors[term]?.you;
+	};
 	$effect(() => {
 		const from = ui.preferences.from;
 		const until = ui.preferences.until;
