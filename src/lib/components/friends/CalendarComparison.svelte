@@ -26,7 +26,6 @@
 		ownEvents,
 		friendSchedules,
 		onownselect,
-		onexit,
 		onedit,
 		militaryTime
 	}: {
@@ -38,7 +37,6 @@
 		ownEvents?: { byDay: Record<string, CalendarGridEvent[]> };
 		friendSchedules: Record<string, Course[]>;
 		onownselect?: (item: CalendarGridEvent, day: DayItem) => void;
-		onexit: () => void;
 		onedit: () => void;
 		militaryTime: boolean;
 	} = $props();
@@ -334,12 +332,6 @@
 </script>
 
 <section class="min-w-0 gap-4 grid" aria-label="Calendar comparison">
-	<div class="gap-3 flex flex-wrap items-center justify-between">
-		<div>
-			<h2>{comparison ? `Compare schedules (${participants.length} people)` : 'Your week'}</h2>
-		</div>
-		{#if comparison}<Button variant="text" onclick={onexit}>Exit comparison</Button>{/if}
-	</div>
 	<WeekNavigation bind:week />
 	{#if comparison}<ConnectedButtons>
 			<input

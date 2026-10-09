@@ -1543,19 +1543,21 @@
 		{#if ui.comparison}
 			<div class="gap-2 flex flex-wrap items-center justify-between">
 				<ParticipantPicker bind:selected={ui.selected} />
-			</div>
-			{#if comparisonMessage}
-				<div class="gap-2 flex flex-wrap items-center justify-between" role="status">
-					<p class="text-sm text-on-surface-variant">{comparisonMessage}</p>
-					<Button variant="text" onclick={() => ui.friendActions?.retrySchedules()}
-						>Reload schedules</Button
-					>
+				<div class="ml-auto shrink-0">
 					<Button
 						variant="text"
 						onclick={() => {
 							ui.comparison = false;
 							ui.highlightedSlot = undefined;
 						}}>Exit comparison</Button
+					>
+				</div>
+			</div>
+			{#if comparisonMessage}
+				<div class="gap-2 flex flex-wrap items-center justify-between" role="status">
+					<p class="text-sm text-on-surface-variant">{comparisonMessage}</p>
+					<Button variant="text" onclick={() => ui.friendActions?.retrySchedules()}
+						>Reload schedules</Button
 					>
 				</div>
 			{:else}
@@ -1572,10 +1574,6 @@
 					onedit={() => {
 						ui.meetingDetails = true;
 						ui.meetingEditorOpen = true;
-					}}
-					onexit={() => {
-						ui.comparison = false;
-						ui.highlightedSlot = undefined;
 					}}
 				/>
 			{/if}
