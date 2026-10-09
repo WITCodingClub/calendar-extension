@@ -11,6 +11,9 @@
 	import SavedMeetings from './SavedMeetings.svelte';
 	import { scheduleAvailability } from './availability';
 	const ui = getPanelUi();
+	let links: MeetingLinks | undefined = $state();
+	let meetings: SavedMeetings | undefined = $state();
+	let refreshing = $state(false);
 	const militaryTime = $derived($userSettings?.military_time ?? true);
 	const ownCourses = $derived(
 		(ui.scheduleTerm
@@ -25,14 +28,55 @@
 		ui.comparison = true;
 		void goto(resolve('/calendar'));
 	}
+
+	async function refresh() {
+		if (refreshing || links?.isBusy() || meetings?.isBusy()) return;
+		refreshing = true;
+		try {
+			await Promise.all([ui.friendActions?.refresh(), links?.reload(), meetings?.refresh()]);
+		} finally {
+			refreshing = false;
+		}
+	}
 </script>
 
 <main class="min-w-0 gap-4 grid">
 	<div class="gap-2 flex flex-wrap items-center justify-between">
-		<ParticipantPicker bind:selected={ui.selected} />
-		{#if ui.hasSelectedFriends}<Button variant="tonal" onclick={() => compare()}
-				>Compare calendars</Button
-			>{/if}
+		<div class="gap-2 flex flex-wrap items-center">
+			<ParticipantPicker bind:selected={ui.selected} />
+			{#if ui.hasSelectedFriends}<Button variant="tonal" onclick={() => compare()}
+					>Compare calendars</Button
+				>{/if}
+		</div>
+		<div class="ml-auto shrink-0">
+			<Button
+				variant="tonal"
+				disabled={refreshing ||
+					links?.isBusy() ||
+					meetings?.isBusy() ||
+					Boolean(ui.actionLoadingId || ui.groupLoadingId)}
+				onclick={() => void refresh()}
+				aria-label="Refresh friends"
+				title="Refresh friends"
+			>
+				<svg
+					aria-hidden="true"
+					width="20"
+					height="20"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					viewBox="0 0 24 24"
+					class:animate-spin={refreshing}
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+					/>
+				</svg>
+			</Button>
+		</div>
 	</div>
 	{#if ui.hasSelectedFriends}
 		<MeetingPreferences
@@ -47,12 +91,8 @@
 			bind:starts={ui.starts}
 			{militaryTime}
 		/>
-		<Button variant="text" onclick={() => ui.friendActions?.retrySchedules()}
-			>Reload schedules</Button
-		>
 	{:else}
 		{#if ui.friendsError}<p class="text-sm text-error" role="alert">{ui.friendsError}</p>
-			<Button variant="text" onclick={() => ui.friendActions?.reload()}>Reload friends</Button>
 		{/if}
 		<div class="gap-3 rounded-2xl bg-surface-container-low p-4 grid" role="status">
 			<p class="text-sm text-on-surface-variant">
@@ -75,6 +115,6 @@
 				>{/if}
 		</div>
 	{/if}
-	<MeetingLinks />
-	<SavedMeetings week={ui.week} {militaryTime} />
+	<MeetingLinks bind:this={links} />
+	<SavedMeetings bind:this={meetings} week={ui.week} {militaryTime} />
 </main>

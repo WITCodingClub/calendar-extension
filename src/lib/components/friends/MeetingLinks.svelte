@@ -28,7 +28,11 @@
 	let version = 0;
 	const durations = [15, 30, 45, 60, 90, 120];
 
-	async function reload() {
+	export function isBusy() {
+		return loading || submitting || Boolean(revoking);
+	}
+
+	export async function reload() {
 		if (!session.active || submitting || revoking) return;
 		const current = ++version;
 		loading = true;
@@ -37,7 +41,6 @@
 			const response = await API.getMeetingLinks();
 			if (session.active && current === version) {
 				links = response.meeting_links;
-				ui.invalidateMeetings(session);
 			}
 		} catch (failure) {
 			if (session.active && current === version)
@@ -151,7 +154,7 @@
 
 	{#if loading}<p class="text-sm text-on-surface-variant" role="status">Loading links…</p>{/if}
 	{#if error}<p class="text-sm text-error" role="alert">{error}</p>{/if}
-	{#each links as link (link.id)}
+	{#each links.filter((link) => link.status !== 'revoked' || link.booking) as link (link.id)}
 		<div class="gap-2 border-outline-variant pb-3 grid border-b">
 			<p class="text-sm font-medium">
 				{link.title || 'Meeting link'} · {link.status === 'active' &&
@@ -176,11 +179,6 @@
 				>{/if}
 		</div>
 	{/each}
-	<Button
-		variant="text"
-		disabled={loading || Boolean(revoking) || submitting}
-		onclick={() => void reload()}>Reload links</Button
-	>
 	<PreviewDialog
 		bind:open={creating}
 		closable={!submitting}

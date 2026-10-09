@@ -589,6 +589,16 @@
 	};
 
 	ui.friendActions = {
+		refresh: async () => {
+			await Promise.all([loadFriendsAndRequests(), loadTerms(true)]);
+			if (!session.active) return;
+			await loadGroups();
+			if (!session.active) return;
+			for (const friend of ui.friends) discardFriend(friend.id);
+			for (const item of $storedProcessedData) session.invalidateOwnSchedule(String(item.termId));
+			storedProcessedData.set([]);
+			await ui.friendActions?.retrySchedules();
+		},
 		setSharing: (id, level) =>
 			performAction(
 				`sharing-${id}`,

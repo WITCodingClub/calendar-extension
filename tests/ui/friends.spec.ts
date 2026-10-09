@@ -45,7 +45,7 @@ test('picker, planning preferences, meeting validation, draft, preview and link 
 	const schedulesBefore = extension.network.filter((row) =>
 		row.path.endsWith('/processed_events')
 	).length;
-	await page.getByRole('button', { name: 'Reload schedules', exact: true }).click();
+	await page.getByRole('button', { name: 'Refresh friends', exact: true }).click();
 	await expect
 		.poll(() => extension.network.filter((row) => row.path.endsWith('/processed_events')).length)
 		.toBe(schedulesBefore + 3);
@@ -82,11 +82,11 @@ test('picker, planning preferences, meeting validation, draft, preview and link 
 	const details = page.getByRole('dialog', { name: 'Edit / confirm meeting' });
 	await details.getByLabel('Title', { exact: true }).fill('Test planning draft');
 	await details.getByLabel('Location (optional)').fill('Test Hall');
-	await expect(details.getByLabel('Destination calendar')).toBeDisabled();
+	await expect(details.getByRole('checkbox', { name: 'ICS calendar feed' })).toBeChecked();
 	await expect(
-		details.getByRole('checkbox', { name: 'Send invitations when supported' })
-	).toBeDisabled();
-	await expect(details.getByRole('button', { name: 'Create meeting', exact: true })).toBeDisabled();
+		details.getByRole('checkbox', { name: 'Send an invite to participants' })
+	).toBeEnabled();
+	await expect(details.getByRole('button', { name: 'Create meeting', exact: true })).toBeEnabled();
 	await details.getByRole('button', { name: 'Change time' }).click();
 	await editor.getByRole('button', { name: 'Continue' }).click();
 	await expect(details.getByLabel('Title', { exact: true })).toHaveValue('Test planning draft');
@@ -109,7 +109,7 @@ test('picker, planning preferences, meeting validation, draft, preview and link 
 	const link = page.getByRole('dialog', { name: 'Create meeting link' });
 	await link.getByLabel('Meeting name (optional)').fill('Test link draft');
 	await link.getByLabel('Link expires').fill('2026-10-20');
-	await expect(link.getByRole('button', { name: 'Generate link' })).toBeDisabled();
+	await expect(link.getByRole('button', { name: 'Generate link' })).toBeEnabled();
 	for (const width of [320, 480, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		await fitsViewport(page, link);
@@ -199,4 +199,136 @@ test('detailed/group comparison uses real selected schedules, details and week n
 			exact: true
 		})
 	).toBeVisible();
+});
+
+test('combined refresh retries saved-meeting errors and reloads all Friends data', async ({
+	extension
+}) => {
+	const { page, context, network } = extension;
+	let savedRequests = 0;
+	let state: 'error' | 'one' | 'empty' = 'error';
+	let release = () => {};
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const meeting = {
+		id: 'saved-test',
+		title: 'Saved test meeting',
+		location: null,
+		start_time: '2026-10-07T12:00:00-04:00',
+		end_time: '2026-10-07T12:30:00-04:00',
+		time_zone: 'America/New_York',
+		frequency: 'one_time',
+		recurrence: null,
+		repeat_until: null,
+		invite_friends: false,
+		role: 'owner',
+		can_edit: true,
+		can_delete: true,
+		can_leave: false,
+		owner: { id: 'you', name: 'You' },
+		friends: [],
+		destinations: ['ics'],
+		publications: []
+	};
+	await context.route(origin + '/api/friends/meetings?*', async (route) => {
+		if (route.request().method() !== 'GET') return route.fallback();
+		++savedRequests;
+		if (state === 'error')
+			return route.fulfill({ status: 503, json: { error: 'Saved meetings unavailable' } });
+		await held;
+		return route.fulfill({
+			json:
+				state === 'one'
+					? {
+							meetings: [meeting],
+							occurrences: [
+								{
+									id: 'saved-occurrence',
+									meeting_id: meeting.id,
+									start_time: meeting.start_time,
+									end_time: meeting.end_time
+								}
+							]
+						}
+					: { meetings: [], occurrences: [] }
+		});
+	});
+	await extension.open('friends');
+	const saved = page.getByRole('region', { name: 'Saved meetings', exact: true });
+	await expect(saved.getByRole('alert')).toContainText('Saved meetings unavailable');
+	await selectFriends(page);
+	const refresh = page.getByRole('button', { name: 'Refresh friends', exact: true });
+	await expect(refresh).toBeEnabled();
+	const paths = [
+		'/api/friends',
+		'/api/friends/requests',
+		'/api/friends/groups',
+		'/api/terms/current_and_next',
+		'/api/meeting_links'
+	];
+	const counts = paths.map((path) => network.filter((row) => row.path === path).length);
+	const schedules = network.filter((row) => row.path.endsWith('/processed_events')).length;
+	const busy = network.filter((row) => row.path.endsWith('/busy_blocks')).length;
+	const savedBefore = savedRequests;
+	state = 'one';
+	try {
+		await refresh.click();
+		await expect(refresh).toBeDisabled();
+		await expect(saved.getByRole('status')).toHaveText('Loading meetings…');
+		await expect.poll(() => savedRequests).toBe(savedBefore + 1);
+	} finally {
+		release();
+	}
+	await expect(saved.getByText('Saved test meeting', { exact: true })).toBeVisible();
+	await expect(saved.getByRole('alert')).toHaveCount(0);
+	await expect(refresh).toBeEnabled();
+	for (const [index, path] of paths.entries())
+		expect(network.filter((row) => row.path === path)).toHaveLength(counts[index] + 1);
+	expect(network.filter((row) => row.path.endsWith('/processed_events'))).toHaveLength(
+		schedules + 3
+	);
+	expect(network.filter((row) => row.path.endsWith('/busy_blocks'))).toHaveLength(busy + 3);
+	for (const width of [320, 480, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		await fitsViewport(page);
+	}
+	state = 'empty';
+	const peopleBounds = await page.getByRole('button', { name: /^People:/ }).boundingBox();
+	const compareBounds = await page
+		.getByRole('button', { name: 'Compare calendars', exact: true })
+		.boundingBox();
+	const refreshBounds = await refresh.boundingBox();
+	const mainBounds = await page.getByRole('main').boundingBox();
+	expect(compareBounds!.x).toBeGreaterThanOrEqual(peopleBounds!.x + peopleBounds!.width);
+	expect(refreshBounds!.x).toBeGreaterThan(compareBounds!.x + compareBounds!.width);
+	expect(refreshBounds!.x + refreshBounds!.width).toBeCloseTo(mainBounds!.x + mainBounds!.width, 0);
+	await refresh.click();
+	await expect(refresh).toBeEnabled();
+	await expect(saved).toHaveCount(0);
+	expect(savedRequests).toBe(savedBefore + 2);
+});
+
+test('unchanged meeting-link reads preserve meeting and availability caches across navigation', async ({
+	extension
+}) => {
+	const { page, network } = extension;
+	await extension.open();
+	await selectFriends(page);
+	await expect(page.getByRole('button', { name: 'Refresh friends', exact: true })).toBeEnabled();
+	const meetings = network.filter((row) => row.path === '/api/friends/meetings').length;
+	const busy = network.filter((row) => row.path.endsWith('/busy_blocks')).length;
+	const links = network.filter((row) => row.path === '/api/meeting_links').length;
+	await chooseRadio(page, 'Calendar');
+	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
+	await chooseRadio(page, 'Friends');
+	await expect
+		.poll(() => network.filter((row) => row.path === '/api/meeting_links').length)
+		.toBe(links + 1);
+	await expect(page.getByRole('button', { name: 'Refresh friends', exact: true })).toBeEnabled();
+	await expect(
+		page.getByRole('region', { name: 'Shared free periods' }).getByRole('button').first()
+	).toBeVisible();
+	expect(network.filter((row) => row.path === '/api/friends/meetings')).toHaveLength(meetings);
+	expect(network.filter((row) => row.path.endsWith('/busy_blocks'))).toHaveLength(busy);
 });

@@ -136,18 +136,22 @@
 		ui.invalidateMeetings(session);
 	}
 
-	function refresh() {
-		if (loading || busy) return;
-		ui.invalidateMeetings(session);
+	export function isBusy() {
+		return loading || busy;
+	}
+
+	export async function refresh() {
+		if (isBusy() || !session.active) return;
+		session.savedMeetings.clear();
+		session.pendingSavedMeetings.clear();
+		++ui.meetingVersion;
+		await load(week);
 	}
 </script>
 
-{#if showList && data.occurrences.length > 0}
+{#if showList && (loading || error || data.occurrences.length > 0)}
 	<section class="gap-2 grid" aria-label="Saved meetings">
 		<h2 class="text-base font-semibold">Saved meetings this week</h2>
-		{#if data.meetings.length > 1}
-			<Button variant="text" disabled={loading || busy} onclick={refresh}>Refresh meetings</Button>
-		{/if}
 		{#if loading}<p class="text-sm text-on-surface-variant" role="status">Loading meetings…</p>
 		{:else if error}<p class="text-sm text-error" role="alert">{error}</p>
 		{:else}
@@ -180,6 +184,8 @@
 		{/if}
 	</section>
 {/if}
+
+{#if !showList && error}<p class="text-sm text-error" role="alert">{error}</p>{/if}
 
 {#if selected && meeting}
 	<PreviewDialog

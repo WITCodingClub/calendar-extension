@@ -1,6 +1,75 @@
 import { test, expect } from './extension.fixture';
 import { fitsViewport, chooseRadio } from './helpers';
-import { now, origin, preference } from './backend';
+import { now, origin, preference, settings, terms } from './backend';
+
+test('accounts without enrollments only get the current term', async ({ extension }) => {
+	const { page, context } = extension;
+	await context.route(origin + '/api/user/extension_config', (route) =>
+		route.fulfill({ json: { ...settings, enrolled_terms: [] } })
+	);
+	await context.route(origin + '/api/terms/current_and_next', (route) =>
+		route.fulfill({
+			json: {
+				...terms,
+				next_term: {
+					id: 202710,
+					name: 'Spring 2027',
+					start_date: '2027-01-01',
+					end_date: '2027-04-30'
+				}
+			}
+		})
+	);
+	await extension.open();
+	await expect(page.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
+	await expect(page.getByRole('radio', { name: 'Fall 2026', exact: true })).toBeChecked();
+	await expect(page.getByRole('radio', { name: 'Spring 2027', exact: true })).toHaveCount(0);
+});
+
+test('comparison waits for terms before choosing among historical enrollments', async ({
+	extension
+}) => {
+	const { page, context } = extension;
+	const historical = { id: '202510', name: 'Fall 2025' };
+	await context.addInitScript((term) => {
+		localStorage.setItem('enrolledTerms', JSON.stringify([term]));
+		localStorage.setItem('userSettings', JSON.stringify({ show_historic_terms: true }));
+	}, historical);
+	await context.route(origin + '/api/user/extension_config', (route) =>
+		route.fulfill({
+			json: {
+				...settings,
+				show_historic_terms: true,
+				enrolled_terms: [historical]
+			}
+		})
+	);
+	await extension.open('friends');
+	await expect
+		.poll(
+			() => extension.network.filter((row) => row.path === '/api/terms/current_and_next').length
+		)
+		.toBe(1);
+	await expect(page.getByRole('button', { name: 'Refresh friends', exact: true })).toBeEnabled();
+	let release = () => {};
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	await context.route(origin + '/api/terms/current_and_next', async (route) => {
+		await held;
+		return route.fulfill({ json: terms });
+	});
+	try {
+		await page.goto(extension.baseUrl + '/friends.html?view=calendar');
+		await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Exit comparison', exact: true })).toBeVisible();
+		await expect(page.getByRole('radio', { name: 'Fall 2025', exact: true })).toHaveCount(0);
+	} finally {
+		release();
+	}
+	await expect(page.getByRole('radio', { name: 'Fall 2026', exact: true })).toBeChecked();
+	await expect(page.getByRole('button', { name: 'Exit comparison', exact: true })).toBeVisible();
+});
 
 test('two distinct event dialogs reuse loaded preferences; UI and startup request timings are separate', async ({
 	extension

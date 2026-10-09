@@ -134,13 +134,14 @@
 	let showHistoricTerms = $derived($storedUserSettings?.show_historic_terms ?? false);
 	let displayTerms = $derived(
 		(() => {
+			if (!terms) return [];
 			const currentTermId = terms?.current_term?.id ?? ui.currentTerm;
 			const fromEnrolled = $enrolledTerms.filter((t) => t?.id);
 			const fromApi = [
 				terms?.current_term && { id: String(terms.current_term.id), name: terms.current_term.name },
 				terms?.next_term && { id: String(terms.next_term.id), name: terms.next_term.name }
 			].filter((t): t is { id: string; name: string } => !!t);
-			const base = fromEnrolled.length > 0 ? [...fromEnrolled] : fromApi;
+			const base = fromEnrolled.length > 0 ? [...fromEnrolled] : fromApi.slice(0, 1);
 			const planningTermId =
 				ui.currentTerm ??
 				(terms?.current_term?.id != null ? String(terms.current_term.id) : undefined);
@@ -1393,6 +1394,7 @@
 	});
 
 	$effect(() => {
+		if (!terms) return;
 		if (!selected) {
 			if (preferredDisplayTerm?.id) {
 				ui.term = preferredDisplayTerm.id;

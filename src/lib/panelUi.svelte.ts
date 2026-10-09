@@ -94,6 +94,7 @@ export class PanelUi {
 	sendFriendVisibility = $state<SharingLevel>('full');
 	acceptFriendVisibility = $state<Record<string, SharingLevel>>({});
 	friendActions = $state.raw<{
+		refresh: () => Promise<void>;
 		reload: () => Promise<void>;
 		retrySchedules: () => Promise<void>;
 		send: () => Promise<void>;

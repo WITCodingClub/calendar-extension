@@ -160,7 +160,7 @@ export const test = base.extend<{ extension: Extension }>({
 				if (!live && allowedProbeHosts.has(url.hostname) && url.pathname === '/__egress_probe__')
 					return route.continue();
 				const safePath = url.pathname
-					.replace(/(\/friends\/)(?!requests(?:\/|$))[^/]+/g, '$1:friend')
+					.replace(/(\/friends\/)(?!(?:requests|groups|meetings)(?:\/|$))[^/]+/g, '$1:friend')
 					.replace(/(\/meeting_times\/)[^/]+(?=\/preference)/g, '$1:event');
 				if (live) {
 					// Staging reads only. Deliberate writes need their own authorized test scope.

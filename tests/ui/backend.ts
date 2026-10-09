@@ -141,6 +141,8 @@ export function responseFor(
 				return { groups: [] };
 			case '/api/meeting_links':
 				return { meeting_links: [] };
+			case '/api/friends/meetings':
+				return { meetings: [], occurrences: [] };
 			case '/api/friends/requests':
 				return {
 					incoming: [
