@@ -367,10 +367,10 @@ export class API {
         return friendGroups(await this.friendApiRequest('/friends/groups', 'Failed to fetch groups'));
     }
 
-    public static async saveFriendGroup(name: string, memberIds: string[], groupId?: string): Promise<FriendGroup> {
+    public static async saveFriendGroup(name: string | undefined, memberIds: string[] | undefined, groupId?: string, expiresAt?: string | null): Promise<FriendGroup> {
         return friendGroup(await this.friendApiRequest(
             groupId ? `/friends/groups/${encodeURIComponent(groupId)}` : '/friends/groups',
-            'Failed to save group', groupId ? 'PATCH' : 'POST', { name, member_ids: memberIds }
+            'Failed to save group', groupId ? 'PATCH' : 'POST', { name, member_ids: memberIds, expires_at: expiresAt }
         ));
     }
 

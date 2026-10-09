@@ -8,6 +8,10 @@ function parseGroup(value: unknown): FriendGroup {
 		!group.id.trim() ||
 		typeof group.name !== 'string' ||
 		!group.name.trim() ||
+		(group.expires_at !== null &&
+			(typeof group.expires_at !== 'string' ||
+				!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(group.expires_at) ||
+				!Number.isFinite(Date.parse(group.expires_at)))) ||
 		!Array.isArray(group.members) ||
 		!group.members.every(
 			(member) =>
@@ -22,7 +26,7 @@ function parseGroup(value: unknown): FriendGroup {
 		throw new Error('Invalid friend group returned.');
 	const members = group.members.map((member) => member.id as string);
 	if (new Set(members).size !== members.length) throw new Error('Invalid friend group returned.');
-	return { id: group.id, name: group.name, members };
+	return { id: group.id, name: group.name, members, expires_at: group.expires_at as string | null };
 }
 
 export function friendGroup(value: unknown): FriendGroup {

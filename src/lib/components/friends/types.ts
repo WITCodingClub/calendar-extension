@@ -7,7 +7,12 @@ export type Participant = {
 	expiry?: string;
 };
 
-export type FriendGroup = { id: string; name: string; members: string[] };
+export type FriendGroup = {
+	id: string;
+	name: string;
+	members: string[];
+	expires_at: string | null;
+};
 export type ScheduleClass = {
 	id: string;
 	personId: string;

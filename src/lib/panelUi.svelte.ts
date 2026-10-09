@@ -62,7 +62,12 @@ export class PanelUi {
 	groupLoadingId = $state('');
 	groupActions = $state.raw<{
 		reload: () => Promise<void>;
-		save: (name: string, members: string[], id?: string) => Promise<boolean>;
+		save: (
+			name: string,
+			members: string[],
+			id?: string,
+			expiresAt?: string | null
+		) => Promise<boolean>;
 		remove: (id: string) => Promise<boolean>;
 	}>();
 	friendSchedules = $state<Record<string, Record<string, Course[]>>>({});

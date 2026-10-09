@@ -256,10 +256,15 @@
 			const groups = cached ?? (await API.getFriendGroups());
 			if (!fresh()) return;
 			const ids = session.friends && new Set(session.friends.map((friend) => friend.id));
-			ui.groups = groups.map((group) => ({
-				...group,
-				members: ids ? group.members.filter((id) => ids.has(id)) : group.members
-			}));
+			ui.groups = groups
+				.filter(
+					(group) =>
+						!group.expires_at || Date.parse(group.expires_at) > Math.max(ui.now, Date.now())
+				)
+				.map((group) => ({
+					...group,
+					members: ids ? group.members.filter((id) => ids.has(id)) : group.members
+				}));
 			session.groups = ui.groups;
 		} catch (error) {
 			console.error('Failed to load friend groups', error);
@@ -270,22 +275,47 @@
 		}
 	}
 
-	async function changeGroup(id: string, action: () => Promise<void>): Promise<boolean> {
+	function discardGroup(id: string) {
+		ui.groups = ui.groups.filter((group) => group.id !== id);
+		if (session.groups) session.groups = ui.groups;
+	}
+
+	async function changeGroup(
+		id: string | undefined,
+		action: () => Promise<void>
+	): Promise<boolean> {
 		if (!session.active || ui.groupLoadingId || ui.groupsLoading) return false;
+		if (
+			id &&
+			!ui.groups.some(
+				(group) =>
+					group.id === id &&
+					(!group.expires_at || Date.parse(group.expires_at) > Math.max(ui.now, Date.now()))
+			)
+		) {
+			discardGroup(id);
+			ui.groupsError = 'This group is no longer available. Your friendships remain.';
+			return false;
+		}
 		++groupsVersion;
-		ui.groupLoadingId = id;
+		ui.groupLoadingId = id ?? 'new-group';
 		ui.groupsError = '';
 		try {
 			await action();
 			return session.active;
 		} catch (error) {
 			console.error('Failed to save friend groups', error);
-			if (session.active)
-				ui.groupsError = errorMessage(
-					'Could not save group',
-					error,
-					'Your edits are kept. Try again.'
-				);
+			if (session.active) {
+				if (id && error instanceof ApiError && error.status === 404) {
+					discardGroup(id);
+					ui.groupsError = 'This group is no longer available. Your friendships remain.';
+				} else
+					ui.groupsError = errorMessage(
+						'Could not save group',
+						error,
+						'Your edits are kept. Try again.'
+					);
+			}
 			return false;
 		} finally {
 			if (session.active) ui.groupLoadingId = '';
@@ -572,13 +602,18 @@
 
 	ui.groupActions = {
 		reload: () => loadGroups(),
-		save: (name, members, id) =>
-			changeGroup(id ?? 'new-group', async () => {
-				const group = await API.saveFriendGroup(name, members, id);
+		save: (name, members, id, expiresAt) =>
+			changeGroup(id, async () => {
+				const group = await API.saveFriendGroup(name, members, id, expiresAt);
 				if (!session.active) return;
-				ui.groups = id
-					? ui.groups.map((existing) => (existing.id === id ? group : existing))
-					: [...ui.groups, group];
+				ui.groups =
+					id && ui.groups.some((existing) => existing.id === id)
+						? ui.groups.map((existing) => (existing.id === id ? group : existing))
+						: [...ui.groups, group];
+				ui.groups = ui.groups.filter(
+					(group) =>
+						!group.expires_at || Date.parse(group.expires_at) > Math.max(ui.now, Date.now())
+				);
 				session.groups = ui.groups;
 			}),
 		remove: (id) =>
@@ -708,6 +743,16 @@
 		});
 	});
 	$effect(() => {
+		const expired = ui.groups.filter(
+			(group) => group.expires_at && Date.parse(group.expires_at) <= ui.now
+		);
+		if (!expired.length) return;
+		untrack(() => {
+			if (!session.active) return;
+			for (const group of expired) discardGroup(group.id);
+		});
+	});
+	$effect(() => {
 		const expired = ui.friends.filter(
 			(friend) => friend.expires_at && Date.parse(friend.expires_at) <= ui.now
 		);
@@ -745,6 +790,7 @@
 		if (ui.manageOpen)
 			untrack(() => {
 				void loadFriendsAndRequests();
+				void loadGroups();
 			});
 	});
 </script>

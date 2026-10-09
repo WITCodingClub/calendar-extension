@@ -25,9 +25,25 @@
 	let editingGroup = $state(false);
 	let groupName = $state('');
 	let groupMembers = $state<string[]>([]);
+	let groupExpiryDate = $state('');
+	let initialGroupExpiryDate = $state('');
 	let requestExpiry = $state<Record<string, string>>({});
 	const activePerson = $derived(ui.friends.find((person) => person.id === personId));
 	const activeGroup = $derived(ui.groups.find((group) => group.id === groupId));
+	const unavailableGroup = $derived(editingGroup && !!groupId && !activeGroup);
+	const groupChanged = $derived(
+		!activeGroup ||
+			groupName.trim() !== activeGroup.name ||
+			groupExpiryDate !== initialGroupExpiryDate ||
+			groupMembers.length !== activeGroup.members.length ||
+			groupMembers.some((id) => !activeGroup.members.includes(id))
+	);
+	const groupError = $derived(
+		ui.groupsError ||
+			(tab === 'groups' && unavailableGroup
+				? 'This group is no longer available. Your friendships remain.'
+				: '')
+	);
 	const sharingOptions = [
 		{ text: 'Full schedule', value: 'full' },
 		{ text: 'Availability only', value: 'availability_only' }
@@ -75,20 +91,42 @@
 		groupId = id;
 		groupName = group?.name ?? '';
 		groupMembers = [...(group?.members ?? [])];
+		groupExpiryDate = group?.expires_at
+			? new Intl.DateTimeFormat('en-CA', {
+					timeZone: 'America/New_York',
+					year: 'numeric',
+					month: '2-digit',
+					day: '2-digit'
+				}).format(new Date(group.expires_at))
+			: '';
+		initialGroupExpiryDate = groupExpiryDate;
+		ui.groupsError = '';
 		search = '';
 		editingGroup = true;
 	}
 
 	async function saveGroup() {
 		const name = groupName.trim();
-		if (!name || ui.groupLoadingId) return;
-		if (!(await ui.groupActions?.save(name, [...groupMembers], groupId))) return;
+		if (!name || ui.groupLoadingId || unavailableGroup) return;
+		const expiresAt =
+			groupExpiryDate !== initialGroupExpiryDate ? groupExpiryDate || null : undefined;
+		if (expiresAt) {
+			try {
+				calendarDateTime(expiresAt, '00:00');
+				if (expiresAt < todayDate('America/New_York'))
+					throw new Error('Choose today or a future end date.');
+			} catch (error) {
+				ui.groupsError = error instanceof Error ? error.message : 'Choose a valid end date.';
+				return;
+			}
+		}
+		if (!(await ui.groupActions?.save(name, [...groupMembers], groupId, expiresAt))) return;
 		editingGroup = false;
 		groupId = undefined;
 	}
 
 	async function deleteGroup() {
-		if (!groupId || ui.groupLoadingId) return;
+		if (!groupId || ui.groupLoadingId || unavailableGroup) return;
 		if (!(await ui.groupActions?.remove(groupId))) return;
 		editingGroup = false;
 		groupId = undefined;
@@ -191,9 +229,9 @@
 		]}
 	/>
 	<div class="min-h-0 p-4 [&>*+*]:mt-4 flex-1 overflow-y-auto overscroll-contain">
-		{#if ui.groupsError && (tab === 'groups' || activePerson)}
+		{#if groupError && (tab === 'groups' || activePerson)}
 			<div class="rounded-xl bg-error-container p-3 text-sm text-on-error-container" role="alert">
-				<p>{ui.groupsError}</p>
+				<p>{groupError}</p>
 				<Button
 					variant="text"
 					disabled={ui.groupsLoading || !!ui.groupLoadingId}
@@ -377,24 +415,40 @@
 						onclick={() => (editingGroup = false)}>{@render backIcon()}</Button
 					>
 					<div class="min-w-0">
-						<h3 class="text-lg truncate">{activeGroup?.name ?? 'Create group'}</h3>
+						<h3 class="text-lg truncate">
+							{groupId ? (activeGroup?.name ?? groupName) : 'Create group'}
+						</h3>
 						<p class="text-sm text-on-surface-variant">
 							{groupMembers.length}
 							{groupMembers.length === 1 ? 'member' : 'members'} ·
-							<span class="whitespace-nowrap">Only you can see this group</span>
+							<span class="whitespace-nowrap"
+								>{activeGroup?.expires_at
+									? `Ends on ${new Date(activeGroup.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}`
+									: 'No end date'}</span
+							>
 						</p>
 					</div>
 				</div>
 				<section class="gap-3 border-outline-variant pt-4 grid border-t">
-					<h4 class="text-xs font-semibold text-primary">Name</h4>
-					<div class="preview-form-stack min-w-0 grid">
+					<h4 class="text-xs font-semibold text-primary">Group settings</h4>
+					<div class="preview-form-stack min-w-0 gap-4 grid">
 						<TextFieldOutlined
 							label="Group name"
 							maxlength={50}
-							disabled={!!ui.groupLoadingId}
+							disabled={!!ui.groupLoadingId || unavailableGroup}
 							bind:value={groupName}
 						/>
+						<TextFieldOutlined
+							label="Group end date (optional)"
+							type="date"
+							min={todayDate('America/New_York')}
+							disabled={!!ui.groupLoadingId || unavailableGroup}
+							bind:value={groupExpiryDate}
+						/>
 					</div>
+					<p class="text-xs text-on-surface-variant">
+						When the end date passes, the group disappears. Your friendships remain.
+					</p>
 				</section>
 				<section class="gap-3 border-outline-variant pt-4 grid border-t">
 					<h4 class="text-xs font-semibold text-primary">Members</h4>
@@ -409,7 +463,7 @@
 								>{#snippet leading()}<Checkbox
 										><input
 											type="checkbox"
-											disabled={!!ui.groupLoadingId}
+											disabled={!!ui.groupLoadingId || unavailableGroup}
 											bind:group={groupMembers}
 											value={person.id}
 										/></Checkbox
@@ -419,7 +473,11 @@
 					</ul>
 					<div class="flex justify-end">
 						<Button
-							disabled={!groupName.trim() || ui.groupsLoading || !!ui.groupLoadingId}
+							disabled={!groupName.trim() ||
+								!groupChanged ||
+								ui.groupsLoading ||
+								!!ui.groupLoadingId ||
+								unavailableGroup}
 							onclick={saveGroup}>{ui.groupLoadingId ? 'Saving…' : 'Save group'}</Button
 						>
 					</div>
@@ -432,7 +490,7 @@
 						<Button
 							variant="text"
 							iconType="left"
-							disabled={!!ui.groupLoadingId}
+							disabled={!!ui.groupLoadingId || unavailableGroup}
 							onclick={deleteGroup}>{@render removeIcon()}Delete group</Button
 						>
 					</div>
@@ -457,7 +515,7 @@
 							.includes(groupSearch.toLowerCase())) as group (group.id)}
 						<ListItem
 							headline={group.name}
-							supporting={`${group.members.length} members`}
+							supporting={`${group.members.length} members${group.expires_at ? ` · Ends on ${new Date(group.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}` : ''}`}
 							onclick={() => editGroup(group.id)}
 						/>
 					{/each}

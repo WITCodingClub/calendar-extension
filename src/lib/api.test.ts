@@ -104,3 +104,22 @@ describe('API calls that moved to new paths', () => {
         expect(JSON.parse(String(on?.body))).toEqual({ disabled: false });
     });
 });
+
+describe('API.saveFriendGroup', () => {
+    it('omits unchanged expiry and sends date-only changes and explicit clearing', async () => {
+        fetchMock.mockImplementation(async () => json({ group: {
+            id: 'group-study', name: 'Study group', members: [], expires_at: null
+        } }));
+
+        await API.saveFriendGroup('Study group', [], undefined, '2026-11-01');
+        await API.saveFriendGroup('Renamed group', ['friend-ada'], 'group-study');
+        await API.saveFriendGroup(undefined, undefined, 'group-study', null);
+
+        const calls = fetchMock.mock.calls;
+        expect(calls.map(([url, init]) => [url, init?.method, JSON.parse(String(init?.body))])).toEqual([
+            ['https://calendar.example.test/api/friends/groups', 'POST', { name: 'Study group', member_ids: [], expires_at: '2026-11-01' }],
+            ['https://calendar.example.test/api/friends/groups/group-study', 'PATCH', { name: 'Renamed group', member_ids: ['friend-ada'] }],
+            ['https://calendar.example.test/api/friends/groups/group-study', 'PATCH', { expires_at: null }]
+        ]);
+    });
+});

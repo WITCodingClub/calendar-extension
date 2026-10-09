@@ -325,7 +325,9 @@ test('failed version and preference reads remain retryable at the next interval'
 		);
 	});
 	await page.clock.install({ time: new Date(now) });
+	const healthCheck = page.waitForResponse(origin + '/up');
 	await open();
+	expect(await (await healthCheck).finished()).toBeNull();
 	await expect(page.getByRole('button', { name: /Loaded Algorithms/ }).first()).toBeVisible();
 	const failed = page.waitForResponse(
 		(response) => response.url().endsWith('/user/preferences/version') && response.status() === 503
