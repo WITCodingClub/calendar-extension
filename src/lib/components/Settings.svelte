@@ -39,7 +39,6 @@
     let authenticatedEnvironments = $state<Environment[]>([]);
     let notificationsDisabled = $state(false);
     let connectedAccounts = $state<ConnectedAccount[]>([]);
-    let addEmailInput = $state("");
     let showEnvSwitcher = $state<boolean>(false);
     let checkingEnvironment = $state<boolean>(false);
     let isRefreshingFlags = $state<boolean>(false);
@@ -560,13 +559,8 @@
     }
 
     async function addGoogleAccount() {
-        if (!addEmailInput.trim()) {
-            snackbar('Please enter an email address', undefined, true);
-            return;
-        }
-
         try {
-            const response = await API.requestOAuthForEmail(addEmailInput.trim());
+            const response = await API.requestOAuthForEmail();
             if (response.error) {
                 snackbar(response.error, undefined, true);
                 return;
@@ -587,12 +581,10 @@
                     } catch (e) {
                         console.error('Failed to refresh accounts:', e);
                     }
-                    addEmailInput = "";
                 });
                 await openOAuthWindow(response.oauth_url);
             } else if (response.calendar_id) {
                 snackbar('This email is already connected', undefined, true);
-                addEmailInput = "";
             }
         } catch (e) {
             console.error('Failed to add Google account:', e);
@@ -838,14 +830,14 @@
         {/if}
 
         <div class="flex flex-row items-center gap-2 @max-[24rem]:flex-col @max-[24rem]:items-stretch">
-            <input
+            <!-- <input
                 type="email"
                 placeholder="Enter email address"
                 bind:value={addEmailInput}
                 aria-label="Google account email"
                 class="min-w-0 flex-1 rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                 onkeydown={(e) => e.key === 'Enter' && addGoogleAccount()}
-            />
+            /> -->
             <Button variant="tonal" onclick={addGoogleAccount}>Add Account</Button>
         </div>
     </div>
