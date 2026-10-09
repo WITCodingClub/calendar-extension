@@ -174,7 +174,7 @@ test('detailed/group comparison uses real selected schedules, details and week n
 		})
 	);
 	const detailsBefore = extension.network.filter(
-		(row) => row.path.endsWith('/processed_events') || row.path.endsWith('/is_processed')
+		(row) => row.path.endsWith('/processed_events') || row.path.endsWith('/processed_events/status')
 	).length;
 	await page.getByRole('button', { name: 'Manage friends', exact: true }).click();
 	const drawer = page.getByRole('dialog', { name: 'Manage friends' });
@@ -187,7 +187,8 @@ test('detailed/group comparison uses real selected schedules, details and week n
 	await expect(page.getByRole('button', { name: /Ada Class/ })).toHaveCount(0);
 	expect(
 		extension.network.filter(
-			(row) => row.path.endsWith('/processed_events') || row.path.endsWith('/is_processed')
+			(row) =>
+				row.path.endsWith('/processed_events') || row.path.endsWith('/processed_events/status')
 		)
 	).toHaveLength(detailsBefore);
 	await page.getByRole('button', { name: 'Exit comparison' }).click();
@@ -264,7 +265,8 @@ test('combined refresh retries saved-meeting errors and reloads all Friends data
 		'/api/friends',
 		'/api/friends/requests',
 		'/api/friends/groups',
-		'/api/terms/current_and_next',
+		'/api/v1/catalog/terms/current',
+		'/api/v1/catalog/terms/next',
 		'/api/meeting_links'
 	];
 	const counts = paths.map((path) => network.filter((row) => row.path === path).length);

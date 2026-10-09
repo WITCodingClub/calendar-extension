@@ -144,7 +144,10 @@ export class API {
 
     private static async getCatalogTerm(url: string): Promise<CurrentTerm | null> {
         const response = await fetch(url, { method: 'GET' });
-        if (response.status === 404) return null;
+        if (response.status === 404) {
+            await response.text();
+            return null;
+        }
 
         const { data } = await this.readJson<{ data: CatalogTerm }>(response, 'Failed to fetch terms');
         return { id: data.uid, name: data.name, start_date: data.start_date, end_date: data.end_date };

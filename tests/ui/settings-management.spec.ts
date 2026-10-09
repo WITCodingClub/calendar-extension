@@ -25,11 +25,7 @@ test('Settings loads and scrolls every section without changing values', async (
 		await expect.poll(values).toEqual(before);
 	}
 	expect(
-		network.every(
-			(row) =>
-				row.method === 'GET' ||
-				/is_processed|processed_events|meeting_times\/preferences/.test(row.path)
-		)
+		network.every((row) => row.method === 'GET' || /meeting_times\/preferences/.test(row.path))
 	).toBe(true);
 });
 

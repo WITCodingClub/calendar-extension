@@ -164,12 +164,9 @@ export const test = base.extend<{ extension: Extension }>({
 					.replace(/(\/meeting_times\/)[^/]+(?=\/preference)/g, '$1:event');
 				if (live) {
 					// Staging reads only. Deliberate writes need their own authorized test scope.
-					const readPost =
-						/^(?:\/api\/user\/(?:is_processed|processed_events)|\/api\/friends\/[^/]+\/(?:is_processed|processed_events)|\/api\/meeting_times\/preferences)$/.test(
-							url.pathname
-						);
+					const readPost = url.pathname === '/api/meeting_times/preferences';
 					const readGet =
-						/^\/api\/(?:terms\/current_and_next|friends(?:\/requests|\/groups|\/[^/]+\/busy_blocks)?|meeting_links|user\/(?:busy_blocks|extension_config|email|notifications_status|oauth_credentials|passkeys|ics_url|feature_flags|preferences\/version)|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference)$/.test(
+						/^(?:\/up|\/api\/(?:v1\/catalog\/terms\/(?:current|next)|friends(?:\/requests|\/groups|\/meetings|\/[^/]+\/(?:busy_blocks|processed_events(?:\/status)?))?|meeting_links|user(?:\/(?:busy_blocks|extension_config|notifications|oauth_credentials|passkeys|feature_flags|preferences\/version|processed_events(?:\/status)?))?|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference))$/.test(
 							url.pathname
 						);
 					if (
@@ -186,15 +183,19 @@ export const test = base.extend<{ extension: Extension }>({
 					}
 					const data = responseFor(method, url.pathname, body, url.searchParams);
 					if (data !== undefined) {
+						const status = data === null ? 404 : 200;
 						const row: NetworkRow = {
 							method,
 							path: safePath,
-							status: 200,
+							status,
 							source: request.serviceWorker() ? 'worker' : 'page'
 						};
 						network.push(row);
 						rows.set(request, row);
-						return route.fulfill({ status: 200, json: data });
+						return route.fulfill({
+							status,
+							json: data ?? { error: 'Term not found', code: 'NOT_FOUND' }
+						});
 					}
 				}
 				unexpected.push(`${method} ${url.hostname}${safePath}`);
