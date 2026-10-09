@@ -32,7 +32,14 @@
 		{ text: 'Availability only', value: 'availability_only' }
 	];
 	let ownSharing = $derived<SharingLevel | ''>(activePerson?.visibility?.mine ?? '');
-	let expiryDate = $derived(
+	const theirSharing = $derived(
+		activePerson?.visibility?.theirs === 'full'
+			? 'Shares their full schedule with you'
+			: activePerson?.visibility?.theirs === 'availability_only'
+				? 'Shares their availability with you'
+				: 'Sharing unavailable'
+	);
+	const currentExpiry = $derived(
 		activePerson?.expires_at
 			? new Intl.DateTimeFormat('en-CA', {
 					timeZone: 'America/New_York',
@@ -42,6 +49,11 @@
 				}).format(new Date(activePerson.expires_at))
 			: ''
 	);
+	let expiryDate = $derived(currentExpiry);
+	const sharingChanged = $derived(
+		!!sharingLevel(ownSharing) && ownSharing !== activePerson?.visibility?.mine
+	);
+	const expiryChanged = $derived(expiryDate !== currentExpiry);
 	const requestCount = $derived(ui.incomingRequests.length + ui.outgoingRequests.length);
 	const inputMessage = $derived(
 		ui.sendFriendIdInput ? requestInputMessage(ui.sendFriendIdInput) : undefined
@@ -105,6 +117,14 @@
 		} catch (error) {
 			ui.friendError = error instanceof Error ? error.message : 'Could not update expiry.';
 		}
+	}
+
+	async function saveFriendSettings(id: string) {
+		const sharing = ownSharing;
+		const date = expiryChanged ? expiryDate : undefined;
+		ui.friendError = '';
+		if (sharingChanged && sharingLevel(sharing)) await ui.friendActions?.setSharing(id, sharing);
+		if (date !== undefined && !ui.friendError) await saveExpiry(id, date);
 	}
 
 	function planWithPerson(compare = false) {
@@ -188,72 +208,85 @@
 			</p>{/if}
 		{#if tab === 'people'}
 			{#if activePerson}
-				<Button variant="text" onclick={() => (personId = undefined)}>All people</Button>
-				<h3>{activePerson.name}</h3>
-				<p class="text-sm text-on-surface-variant">
-					They share: {sharingLabel(activePerson.visibility?.theirs)}. You share: {sharingLabel(
-						activePerson.visibility?.mine
-					)}.
-				</p>
-				<p class="text-sm text-on-surface-variant">
-					{activePerson.expires_at
-						? `Expires ${new Date(activePerson.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}`
-						: 'No expiry'}
-				</p>
-				<div class="preview-form-stack min-w-0 gap-3 grid">
-					<SelectOutlined
-						label="What you share"
-						bind:value={ownSharing}
-						options={ownSharing
-							? sharingOptions
-							: [{ text: 'Choose sharing', value: '' }, ...sharingOptions]}
-						disabled={ui.actionLoadingId !== ''}
-					/>
+				<div class="gap-2 flex items-center">
 					<Button
 						variant="text"
-						disabled={ui.actionLoadingId !== '' ||
-							!sharingLevel(ownSharing) ||
-							ownSharing === activePerson.visibility?.mine}
-						onclick={() => {
-							if (sharingLevel(ownSharing))
-								void ui.friendActions?.setSharing(activePerson.id, ownSharing);
-						}}>Save sharing</Button
+						iconType="full"
+						aria-label="All people"
+						title="All people"
+						onclick={() => (personId = undefined)}
 					>
-					<TextFieldOutlined
-						label="Friendship expires (optional)"
-						type="date"
-						min={todayDate('America/New_York')}
-						bind:value={expiryDate}
-					/>
-					<p class="text-sm text-on-surface-variant">
-						Earlier dates apply now. Later dates or no expiry require your friend's approval in the
-						web dashboard. Leave empty to propose no expiry. Dates use Eastern time.
-					</p>
-					<Button
-						variant="text"
-						disabled={ui.actionLoadingId !== ''}
-						onclick={() => saveExpiry(activePerson.id)}>Set or propose expiry</Button
-					>
+						<svg aria-hidden="true" viewBox="0 0 24 24"
+							><path
+								fill="currentColor"
+								d="m7.825 13l4.9 4.9q.3.3.288.7t-.313.7q-.3.275-.7.288t-.7-.288l-6.6-6.6q-.15-.15-.213-.325T4.426 12t.063-.375t.212-.325l6.6-6.6q.275-.275.688-.275t.712.275q.3.3.3.713t-.3.712L7.825 11H19q.425 0 .713.288T20 12t-.288.713T19 13z"
+							/></svg
+						>
+					</Button>
+					<div class="min-w-0">
+						<h3 class="text-lg truncate">{activePerson.name}</h3>
+						<p class="text-sm text-on-surface-variant">
+							{theirSharing} ·
+							<span class="whitespace-nowrap"
+								>{activePerson.expires_at
+									? `Expires ${new Date(activePerson.expires_at).toLocaleDateString(undefined, { timeZone: 'America/New_York' })}`
+									: 'No expiry'}</span
+							>
+						</p>
+					</div>
 				</div>
-
-				<p class="text-xs font-semibold text-primary">Groups</p>
-				<ul class="preview-list p-0 list-none">
-					{#each ui.groups as group (group.id)}
-						<ListItem label headline={group.name}>
-							{#snippet leading()}<Checkbox
-									><input
-										type="checkbox"
-										checked={group.members.includes(activePerson.id)}
-										disabled={ui.groupsLoading || !!ui.groupLoadingId}
-										onchange={(event) => toggleMember(group.id, event.currentTarget)}
-									/></Checkbox
-								>{/snippet}
-						</ListItem>
-					{/each}
-				</ul>
-				<div class="gap-2 flex flex-wrap items-center">
+				<div class="gap-2 flex flex-wrap *:grow">
 					<Button variant="tonal" onclick={() => planWithPerson(true)}>Compare calendars</Button>
-					<Button variant="text" onclick={() => planWithPerson()}>Find a time together</Button>
+					<Button variant="outlined" onclick={() => planWithPerson()}>Find a time together</Button>
+				</div>
+				<section class="gap-3 border-outline-variant pt-4 grid border-t">
+					<h4 class="text-xs font-semibold text-primary">Your settings</h4>
+					<div class="preview-form-stack min-w-0 gap-4 grid">
+						<SelectOutlined
+							label="What you share"
+							bind:value={ownSharing}
+							options={ownSharing
+								? sharingOptions
+								: [{ text: 'Choose sharing', value: '' }, ...sharingOptions]}
+							disabled={ui.actionLoadingId !== ''}
+						/>
+						<TextFieldOutlined
+							label="Friendship expires (optional)"
+							type="date"
+							min={todayDate('America/New_York')}
+							bind:value={expiryDate}
+						/>
+					</div>
+					<div class="flex justify-end">
+						<Button
+							disabled={ui.actionLoadingId !== '' || !(sharingChanged || expiryChanged)}
+							onclick={() => saveFriendSettings(activePerson.id)}>Save changes</Button
+						>
+					</div>
+				</section>
+				{#if ui.groups.length}
+					<section class="gap-1 border-outline-variant pt-4 grid border-t">
+						<h4 class="text-xs font-semibold text-primary">Groups</h4>
+						<ul class="preview-list p-0 list-none">
+							{#each ui.groups as group (group.id)}
+								<ListItem label headline={group.name}>
+									{#snippet leading()}<Checkbox
+											><input
+												type="checkbox"
+												checked={group.members.includes(activePerson.id)}
+												disabled={ui.groupsLoading || !!ui.groupLoadingId}
+												onchange={(event) => toggleMember(group.id, event.currentTarget)}
+											/></Checkbox
+										>{/snippet}
+								</ListItem>
+							{/each}
+						</ul>
+					</section>
+				{/if}
+				<div
+					class="border-outline-variant pt-4 border-t"
+					style="--m3-scheme-primary: var(--m3-scheme-error)"
+				>
 					<Button
 						variant="text"
 						iconType="left"
