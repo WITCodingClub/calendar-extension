@@ -1,14 +1,12 @@
 <script lang="ts">
 	import { untrack, onDestroy } from 'svelte';
 	import { Button } from 'm3-svelte';
-	import { API } from '$lib/api';
-	import { getPanelSession } from '$lib/panelSession';
-	import { getPanelUi } from '$lib/panelUi.svelte';
-	import { dateLabel, shiftDate } from '$lib/calendarDates';
-	import type { SavedMeeting, SavedMeetingsResponse } from '$lib/savedMeetings';
-	import PreviewDialog from './PreviewDialog.svelte';
+	import { getPanelSession } from '$lib/panel/session';
+	import { getPanelUi } from '$lib/panel/ui.svelte';
+	import { dateLabel, formatTime, shiftDate } from '$lib/datetime';
+	import type { SavedMeeting, SavedMeetingsResponse } from '$lib/friends/savedMeetings';
+	import PreviewDialog from '$lib/components/ui/PreviewDialog.svelte';
 	import SavedMeetingDetail from './SavedMeetingDetail.svelte';
-	import { formatTime } from './formatTime';
 	let {
 		week,
 		militaryTime,
@@ -45,13 +43,13 @@
 		ondata?.(value);
 	}
 
-	async function load(start: string, force = false) {
+	async function load(start: string) {
 		const end = shiftDate(start, 7);
 		const key = `${start}:${end}`;
 		const version = ++loadVersion;
 		const meetingVersion = ui.meetingVersion;
 		error = '';
-		if (!force && session.savedMeetings.has(key)) {
+		if (session.savedMeetings.has(key)) {
 			publish(session.savedMeetings.get(key)!);
 			loading = false;
 			return;
@@ -59,31 +57,11 @@
 		publish({ meetings: [], occurrences: [] });
 		loading = true;
 		try {
-			if (force) {
-				session.savedMeetings.delete(key);
-				session.pendingSavedMeetings.delete(key);
-			}
-			let request = session.pendingSavedMeetings.get(key);
-			if (!request) {
-				request = API.getSavedMeetings(start, end);
-				session.pendingSavedMeetings.set(key, request);
-				const pending = request;
-				request
-					.then((response) => {
-						if (
-							session.active &&
-							ui.meetingVersion === meetingVersion &&
-							session.pendingSavedMeetings.get(key) === pending
-						)
-							session.savedMeetings.set(key, response);
-					})
-					.finally(() => {
-						if (session.pendingSavedMeetings.get(key) === pending)
-							session.pendingSavedMeetings.delete(key);
-					})
-					.catch(() => undefined);
-			}
-			const response = await request;
+			const response = await session.loadSavedMeetings(
+				start,
+				end,
+				() => ui.meetingVersion === meetingVersion
+			);
 			if (
 				active &&
 				session.active &&

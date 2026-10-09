@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { API } from '$lib/api';
-	import { continueAfterSignIn } from '$lib/afterSignIn';
-	import { persistSession, AuthError } from '$lib/auth';
+	import { continueAfterSignIn } from '$lib/auth/afterSignIn';
+	import { persistSession, AuthError } from '$lib/auth/session';
 	import { Button, LoadingIndicator, snackbar } from 'm3-svelte';
-	import ErrorNotice from '$lib/components/ErrorNotice.svelte';
+	import ErrorNotice from '$lib/components/ui/ErrorNotice.svelte';
 	import { onMount } from 'svelte';
-	import { EnvironmentManager } from '$lib/environment';
-	import { getWitGoogleAuthCode } from '$lib/witGoogleAuth';
-	import { track } from '$lib/telemetry';
+	import { EnvironmentManager } from '$lib/browser/environment';
+	import { getWitGoogleAuthCode } from '$lib/auth/googleAuth';
+	import { track } from '$lib/browser/telemetry';
 
 	let error = $state<string | null>(null);
 
@@ -134,9 +134,3 @@
 		{/if}
 	</div>
 </div>
-
-<style>
-	:global(.peak button) {
-		height: 3rem !important;
-	}
-</style>

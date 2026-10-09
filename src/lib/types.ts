@@ -1,10 +1,19 @@
-interface Building {
+export type Weekday =
+	| 'monday'
+	| 'tuesday'
+	| 'wednesday'
+	| 'thursday'
+	| 'friday'
+	| 'saturday'
+	| 'sunday';
+
+export interface Building {
 	name: string;
 	abbreviation: string;
 	pub_id?: string;
 }
 
-interface Course {
+export interface Course {
 	title: string;
 	prefix: string;
 	course_number: number;
@@ -14,28 +23,23 @@ interface Course {
 	meeting_times: MeetingTime[];
 }
 
-const FEATURE_FLAGS = [
+export const FEATURE_FLAGS = [
 	'debugMode',
 	'envSwitcher',
 	'finalsRetroactive',
 	'bypassRateLimits'
 ] as const;
 
-interface FeatureFlagEnabled {
-	feature_name: string;
-	is_enabled: boolean;
-}
-
-interface FeatureFlagsResponse {
+export interface FeatureFlagsResponse {
 	feature_flags: Record<string, boolean>;
 }
 
-interface Location {
+export interface Location {
 	building: Building | null;
 	rooms: string[];
 }
 
-interface MeetingTime {
+export interface MeetingTime {
 	id: number | string; // Can be internal ID or public_id
 	begin_time: string;
 	end_time: string;
@@ -50,16 +54,11 @@ interface MeetingTime {
 	saturday: boolean;
 	sunday: boolean;
 	color?: string;
-	title_overrides?: Partial<
-		Record<
-			'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday',
-			string
-		>
-	>;
+	title_overrides?: Partial<Record<Weekday, string>>;
 	calendar_config?: CalendarConfig;
 }
 
-interface CalendarConfig {
+export interface CalendarConfig {
 	title: string;
 	description?: string;
 	color_id?: string;
@@ -67,39 +66,39 @@ interface CalendarConfig {
 	visibility?: string;
 }
 
-interface isProcessed {
+export interface isProcessed {
 	processed: boolean;
 	status?: 'not_started' | 'pending' | 'processing' | 'processed' | 'failed';
 	error_code?: string | null;
 }
 
-interface FriendIdentity {
+export interface FriendIdentity {
 	id: string;
 	name: string;
 }
 
-type SharingLevel = 'full' | 'availability_only';
+export type SharingLevel = 'full' | 'availability_only';
 
-interface FriendVisibility {
+export interface FriendVisibility {
 	mine: SharingLevel;
 	theirs: SharingLevel;
 }
 
-interface FriendVisibilityResponse extends FriendVisibility {
+export interface FriendVisibilityResponse extends FriendVisibility {
 	friend_id: string;
 }
 
-interface Friend extends FriendIdentity {
+export interface Friend extends FriendIdentity {
 	expires_at?: string | null;
 	visibility?: FriendVisibility | null;
 }
 
-type FriendRequestInput = ({ friend_id: string } | { friend_email: string }) & {
+export type FriendRequestInput = ({ friend_id: string } | { friend_email: string }) & {
 	expires_at?: string | null;
 	visibility?: SharingLevel;
 };
 
-interface FriendExpiryResponse {
+export interface FriendExpiryResponse {
 	friendship_id: string;
 	status: 'pending' | 'accepted';
 	expires_at: string | null;
@@ -107,8 +106,8 @@ interface FriendExpiryResponse {
 	friend: FriendIdentity;
 }
 
-type MeetingLinkDuration = 15 | 30 | 45 | 60 | 90 | 120;
-interface MeetingLinkInput {
+export type MeetingLinkDuration = 15 | 30 | 45 | 60 | 90 | 120;
+export interface MeetingLinkInput {
 	starts_on: string;
 	ends_on: string;
 	duration_minutes: MeetingLinkDuration;
@@ -116,7 +115,7 @@ interface MeetingLinkInput {
 	expires_at?: string;
 }
 
-interface MeetingLink {
+export interface MeetingLink {
 	id: string;
 	title: string | null;
 	starts_on: string;
@@ -134,59 +133,59 @@ interface MeetingLink {
 	} | null;
 }
 
-interface MeetingLinkCreateResponse {
+export interface MeetingLinkCreateResponse {
 	meeting_link: MeetingLink & { url: string };
 }
-interface MeetingLinkResponse {
+export interface MeetingLinkResponse {
 	meeting_link: MeetingLink;
 }
-interface MeetingLinksResponse {
+export interface MeetingLinksResponse {
 	meeting_links: MeetingLink[];
 }
 
-interface FriendRequestIncoming {
+export interface FriendRequestIncoming {
 	request_id: string;
 	from: FriendIdentity;
 	created_at: string;
 	expires_at?: string | null;
 }
 
-interface FriendRequestOutgoing {
+export interface FriendRequestOutgoing {
 	request_id: string;
 	to: FriendIdentity;
 	created_at: string;
 	expires_at?: string | null;
 }
 
-interface FriendListResponse {
+export interface FriendListResponse {
 	friends: Friend[];
 }
 
-interface FriendRequestsResponse {
+export interface FriendRequestsResponse {
 	incoming: FriendRequestIncoming[];
 	outgoing: FriendRequestOutgoing[];
 }
 
-interface FriendRequestCreateResponse {
+export interface FriendRequestCreateResponse {
 	request_id: string;
 	expires_at?: string | null;
 }
 
-interface FriendRequestAcceptResponse {
+export interface FriendRequestAcceptResponse {
 	friendship_id: string;
 	friend: FriendIdentity;
 	expires_at?: string | null;
 }
 
-interface OkResponse {
+export interface OkResponse {
 	ok: boolean;
 }
 
-interface FriendProcessedEventsResponse {
+export interface FriendProcessedEventsResponse {
 	processed_courses: any[];
 }
 
-interface Professor {
+export interface Professor {
 	first_name: string;
 	last_name: string;
 	email: string;
@@ -194,23 +193,23 @@ interface Professor {
 	pub_id?: string;
 }
 
-interface ResponseData {
+export interface ResponseData {
 	ics_url: string;
 	classes: Course[];
 }
 
-interface ProcessedEvents {
+export interface ProcessedEvents {
 	classes: Course[];
 }
 
-interface Term {
+export interface Term {
 	uid: number;
 	season: string;
 	year: number;
 	pub_id?: string;
 }
 
-interface UserSettings {
+export interface UserSettings {
 	military_time: boolean;
 	default_color_lecture: string;
 	default_color_lab: string;
@@ -222,45 +221,22 @@ interface UserSettings {
 	enrolled_terms?: Array<{ id: string; name: string }>;
 }
 
-interface UniversityEventCategory {
+export interface ConnectedAccount {
+	id: string;
+	email: string;
+	provider: string;
+	needs_reauth: boolean;
+	token_revoked: boolean;
+	has_calendar?: boolean;
+}
+
+export interface UniversityEventCategory {
 	id: string;
 	name: string;
 	description: string;
 }
 
-interface UniversityEventCategoryWithCount {
-	id: string;
-	name: string;
-	count: number;
-}
-
-interface UniversityCalendarEvent {
-	id: string;
-	summary: string;
-	description?: string;
-	location?: string;
-	start_time: string;
-	end_time: string;
-	all_day: boolean;
-	category: string;
-	organization?: string;
-	academic_term?: string;
-	term_id?: string;
-	excludes_classes: boolean;
-	formatted_date: string;
-	created_at: string;
-	updated_at: string;
-}
-
-interface CurrentTerm {
-	name: string;
-	id: number;
-	pub_id?: string;
-	start_date?: string | null;
-	end_date?: string | null;
-}
-
-interface NextTerm {
+export interface CurrentTerm {
 	name: string;
 	id: number;
 	pub_id?: string;
@@ -269,7 +245,7 @@ interface NextTerm {
 }
 
 // A term as GET /api/v1/catalog/terms/current and /next return it.
-interface CatalogTerm {
+export interface CatalogTerm {
 	uid: number;
 	name: string;
 	season: string;
@@ -279,19 +255,19 @@ interface CatalogTerm {
 	section_count?: number;
 }
 
-interface TermResponse {
+export interface TermResponse {
 	current_term: CurrentTerm | null;
-	next_term: NextTerm | null;
+	next_term: CurrentTerm | null;
 }
 
-interface DayItem {
-	key: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+export interface DayItem {
+	key: Weekday;
 	label: string;
 	abbr: string;
 	order: number;
 }
 
-interface EventPreferences {
+export interface EventPreferences {
 	title_template: string;
 	description_template: string;
 	reminder_settings: ReminderSettings[];
@@ -299,7 +275,7 @@ interface EventPreferences {
 	visibility: string;
 }
 
-interface TemplateVariables {
+export interface TemplateVariables {
 	title: string;
 	course_code: string;
 	subject: string;
@@ -321,7 +297,7 @@ interface TemplateVariables {
 	schedule_type_short?: string;
 }
 
-interface ResolvedData {
+export interface ResolvedData {
 	title_template: string;
 	description_template: string;
 	location_template: string;
@@ -330,13 +306,13 @@ interface ResolvedData {
 	visibility: string;
 }
 
-interface Preview {
+export interface Preview {
 	title: string;
 	description: string;
 	location: string;
 }
 
-interface GetPreferencesResponse {
+export interface GetPreferencesResponse {
 	notifications_disabled: boolean;
 	individual_preference: EventPreferences;
 	preview: Preview;
@@ -344,74 +320,20 @@ interface GetPreferencesResponse {
 	resolved: ResolvedData;
 }
 
-interface ReminderSettings {
+export interface ReminderSettings {
 	time: number;
 	method: string;
 	type: NotificationType;
 }
 
-type NotificationType = 'minutes' | 'hours' | 'days';
-type NotificationMethod = 'email' | 'notification';
+export type NotificationType = 'minutes' | 'hours' | 'days';
+export type NotificationMethod = 'email' | 'notification';
 
-interface NotificationSetting {
+export interface NotificationSetting {
 	time: string;
 	type: NotificationType;
 	method: NotificationMethod;
 }
-
-export {
-	type Friend,
-	type FriendRequestInput,
-	type FriendExpiryResponse,
-	type SharingLevel,
-	type FriendVisibility,
-	type FriendVisibilityResponse,
-	type MeetingLinkDuration,
-	type MeetingLinkInput,
-	type MeetingLink,
-	type MeetingLinkCreateResponse,
-	type MeetingLinkResponse,
-	type MeetingLinksResponse,
-	FEATURE_FLAGS,
-	type Building,
-	type CalendarConfig,
-	type Course,
-	type CurrentTerm,
-	type DayItem,
-	type EventPreferences,
-	type FeatureFlagsResponse,
-	type FriendIdentity,
-	type FriendListResponse,
-	type FriendProcessedEventsResponse,
-	type FriendRequestAcceptResponse,
-	type FriendRequestCreateResponse,
-	type FriendRequestIncoming,
-	type FriendRequestOutgoing,
-	type FriendRequestsResponse,
-	type GetPreferencesResponse,
-	type isProcessed,
-	type Location,
-	type CatalogTerm,
-	type MeetingTime,
-	type NextTerm,
-	type NotificationMethod,
-	type NotificationSetting,
-	type NotificationType,
-	type OkResponse,
-	type Preview,
-	type ProcessedEvents,
-	type Professor,
-	type ReminderSettings,
-	type ResolvedData,
-	type ResponseData,
-	type TemplateVariables,
-	type Term,
-	type TermResponse,
-	type UniversityCalendarEvent,
-	type UniversityEventCategory,
-	type UniversityEventCategoryWithCount,
-	type UserSettings
-};
 
 export type ProcessingTerm = {
 	term: string;

@@ -3,9 +3,10 @@
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { API } from '$lib/api';
-	import { AuthError, getUsableJwt } from '$lib/auth';
-	import { hasUsableGoogleCalendar } from '$lib/afterSignIn';
-	import { track } from '$lib/telemetry';
+	import { AuthError, checkBetaAccess, getUsableJwt } from '$lib/auth/session';
+	import { hasUsableGoogleCalendar } from '$lib/auth/afterSignIn';
+	import { openOAuthWindow } from '$lib/auth/popup';
+	import { track } from '$lib/browser/telemetry';
 
 	let emailToSignInWith: string | null = $state(null);
 	let emailToSubmit = $state('');
@@ -20,14 +21,6 @@
 				return;
 			}
 			throw err;
-		}
-	}
-
-	async function checkBetaAccess() {
-		const beta_access = await chrome.storage.local.get('beta_access');
-		if (beta_access && (beta_access.beta_access === 'false' || beta_access.beta_access === false)) {
-			goto('/beta-access-denied/');
-			return Promise.reject(new Error('Beta access denied')) as never;
 		}
 	}
 
@@ -70,31 +63,7 @@
 				return;
 			}
 			if (data.oauth_url) {
-				const screenWidth = window.screen.availWidth;
-				const screenHeight = window.screen.availHeight;
-				const createOptions: chrome.windows.CreateData = {
-					url: data.oauth_url,
-					width: 650,
-					height: 800,
-					left: Math.floor((screenWidth - 650) / 2),
-					top: Math.floor((screenHeight - 800) / 2),
-					type: 'popup'
-				};
-
-				try {
-					await chrome.windows.create(createOptions);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					if (!message.includes('Invalid value for bounds')) {
-						throw error;
-					}
-					await chrome.windows.create({
-						url: data.oauth_url,
-						width: Math.min(650, screenWidth),
-						height: Math.min(800, screenHeight),
-						type: 'popup'
-					});
-				}
+				await openOAuthWindow(data.oauth_url);
 			} else {
 				await chrome.storage.local.set({
 					oauth_status: 'success',
@@ -145,9 +114,3 @@
 		{/if}
 	</div>
 </div>
-
-<style>
-	:global(.peak button) {
-		height: 2.5rem !important;
-	}
-</style>

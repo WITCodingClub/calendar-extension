@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Button, TextFieldOutlined, snackbar } from 'm3-svelte';
-	import { continueAfterSignIn, finishPasskeySetup, isPasskeySetupPending } from '$lib/afterSignIn';
-	import { AuthError } from '$lib/auth';
-	import { registerPasskey } from '$lib/passkeys';
-	import { track } from '$lib/telemetry';
+	import {
+		continueAfterSignIn,
+		finishPasskeySetup,
+		isPasskeySetupPending
+	} from '$lib/auth/afterSignIn';
+	import { AuthError } from '$lib/auth/session';
+	import { registerPasskey } from '$lib/auth/passkeys';
+	import { track } from '$lib/browser/telemetry';
 
 	let nickname = $state('');
 	let isCreating = $state(false);
@@ -68,10 +72,3 @@
 		</div>
 	</div>
 </div>
-
-<style>
-	:global(.peak button) {
-		height: 3rem !important;
-		min-width: 280px;
-	}
-</style>

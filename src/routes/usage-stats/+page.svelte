@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { continueAfterSignIn } from '$lib/afterSignIn';
-	import { AuthError } from '$lib/auth';
-	import { setUsageStatsEnabled } from '$lib/telemetry';
+	import { continueAfterSignIn } from '$lib/auth/afterSignIn';
+	import { AuthError } from '$lib/auth/session';
+	import { setUsageStatsEnabled } from '$lib/browser/telemetry';
 
 	let isSaving = $state(false);
 
@@ -70,27 +70,3 @@
 		</button>
 	</div>
 </div>
-
-<style>
-	.roboto-flex-wit-main {
-		font-size: 28px;
-		font-family: 'Roboto Flex', sans-serif;
-		color: var(--color-primary);
-		font-optical-sizing: 144;
-		font-weight: 900;
-		line-height: 1;
-		font-style: normal;
-		font-variation-settings:
-			'slnt' 0,
-			'wdth' 129,
-			'GRAD' 0,
-			'XOPQ' 140,
-			'XTRA' 468,
-			'YOPQ' 51,
-			'YTAS' 750,
-			'YTDE' -203,
-			'YTFI' 738,
-			'YTLC' 514,
-			'YTUC' 712;
-	}
-</style>

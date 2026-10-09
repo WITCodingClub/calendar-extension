@@ -4,9 +4,9 @@
 	import { afterNavigate, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { NewSnackbar } from 'm3-svelte';
-	import { clearLocalData, guardCurrentRoute } from '$lib/auth';
-	import { extensionPageUrl } from '$lib/openPageInTab';
-	import OfflineEnvironmentDialog from '$lib/components/OfflineEnvironmentDialog.svelte';
+	import { clearLocalData, guardCurrentRoute } from '$lib/auth/session';
+	import { extensionPageUrl } from '$lib/browser/tabs';
+	import OfflineEnvironmentDialog from '$lib/components/panel/OfflineEnvironmentDialog.svelte';
 
 	let { children } = $props();
 

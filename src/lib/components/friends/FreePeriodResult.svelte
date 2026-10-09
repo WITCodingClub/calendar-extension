@@ -1,10 +1,15 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { Button, Slider, TextFieldOutlined } from 'm3-svelte';
-	import type { FreePeriod, PreviewSlot } from './types';
-	import { dateLabel, minutesTime, timeMinutes } from './availability';
-	import { formatTime } from './formatTime';
-	import { todayDate } from '$lib/calendarDates';
+	import type { FreePeriod, PreviewSlot } from '$lib/friends/types';
+	import {
+		dateLabel,
+		formatTime,
+		minutesTime,
+		normalizeTime,
+		timeMinutes,
+		todayDate
+	} from '$lib/datetime';
 
 	let {
 		period,
@@ -32,16 +37,11 @@
 		chosenStart !== undefined && chosenEnd !== undefined ? chosenEnd - chosenStart : 0
 	);
 
-	function normalize(value: string, format = militaryTime): string {
-		const minutes = timeMinutes(value);
-		return minutes === undefined ? value : formatTime(minutesTime(minutes), format);
-	}
-
 	$effect(() => {
 		const format = militaryTime;
 		untrack(() => {
-			slot.start = normalize(slot.start, format);
-			slot.end = normalize(slot.end, format);
+			slot.start = normalizeTime(slot.start, format);
+			slot.end = normalizeTime(slot.end, format);
 		});
 	});
 
@@ -49,8 +49,8 @@
 		const length = duration;
 		slot = {
 			...slot,
-			start: normalize(minutesTime(start)),
-			end: normalize(minutesTime(start + length))
+			start: normalizeTime(minutesTime(start), militaryTime),
+			end: normalizeTime(minutesTime(start + length), militaryTime)
 		};
 	}
 
@@ -61,7 +61,7 @@
 			Number.isInteger(minutes) &&
 			minutes > 0 &&
 			chosenStart + minutes < 1440
-				? normalize(minutesTime(chosenStart + minutes))
+				? normalizeTime(minutesTime(chosenStart + minutes), militaryTime)
 				: '';
 	}
 </script>
@@ -94,7 +94,7 @@
 			<div class="min-w-0">
 				<p class="text-xs text-on-surface-variant">Meeting time</p>
 				<p class="mt-1 text-lg font-semibold tabular-nums" aria-live="polite" aria-atomic="true">
-					{normalize(slot.start)}–{normalize(slot.end)}
+					{normalizeTime(slot.start, militaryTime)}–{normalizeTime(slot.end, militaryTime)}
 				</p>
 			</div>
 			<div class="preview-fields min-w-0 w-28 pt-1 grid">
@@ -126,7 +126,7 @@
 						size="s"
 						showValue={false}
 						aria-label="Meeting start time"
-						aria-valuetext={normalize(slot.start)}
+						aria-valuetext={normalizeTime(slot.start, militaryTime)}
 					/>
 				{/key}
 				<div class="gap-2 text-xs text-on-surface-variant flex justify-between tabular-nums">
@@ -140,12 +140,12 @@
 				label="Start"
 				bind:value={slot.start}
 				oninput={() => ++sliderVersion}
-				onblur={() => (slot.start = normalize(slot.start))}
+				onblur={() => (slot.start = normalizeTime(slot.start, militaryTime))}
 			/>
 			<TextFieldOutlined
 				label="End"
 				bind:value={slot.end}
-				onblur={() => (slot.end = normalize(slot.end))}
+				onblur={() => (slot.end = normalizeTime(slot.end, militaryTime))}
 			/>
 		</div>
 	</div>

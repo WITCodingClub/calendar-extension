@@ -22,10 +22,31 @@
 	}
 }
 
-iconify-icon {
-	display: inline-block;
-	width: 1em;
-	height: 1em;
+.peak button {
+	height: 3rem !important;
+	min-width: 280px;
+}
+
+.roboto-flex-wit-main {
+	font-size: 28px;
+	font-family: 'Roboto Flex', sans-serif;
+	color: var(--color-primary);
+	font-optical-sizing: 144;
+	font-weight: 900;
+	line-height: 1;
+	font-style: normal;
+	font-variation-settings:
+		'slnt' 0,
+		'wdth' 129,
+		'GRAD' 0,
+		'XOPQ' 140,
+		'XTRA' 468,
+		'YOPQ' 51,
+		'YTAS' 750,
+		'YTDE' -203,
+		'YTFI' 738,
+		'YTLC' 514,
+		'YTUC' 712;
 }
 
 body {

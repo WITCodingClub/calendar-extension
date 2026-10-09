@@ -3,9 +3,9 @@
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
-	import { AuthError } from '$lib/auth';
-	import { getGoogleCalendarState } from '$lib/afterSignIn';
-	import { track } from '$lib/telemetry';
+	import { AuthError, checkBetaAccess } from '$lib/auth/session';
+	import { getGoogleCalendarState } from '$lib/auth/afterSignIn';
+	import { track } from '$lib/browser/telemetry';
 
 	async function checkGcalStatus() {
 		try {
@@ -19,14 +19,6 @@
 			if (err instanceof AuthError) {
 				return;
 			}
-		}
-	}
-
-	async function checkBetaAccess() {
-		const beta_access = await chrome.storage.local.get('beta_access');
-		if (beta_access && (beta_access.beta_access === 'false' || beta_access.beta_access === false)) {
-			goto('/beta-access-denied/');
-			return Promise.reject(new Error('Beta access denied')) as never;
 		}
 	}
 
@@ -68,9 +60,3 @@
 		<Button variant="outlined" square onclick={selectAllOtherCalendars}>All Other Calendars</Button>
 	</div>
 </div>
-
-<style>
-	:global(.peak button) {
-		height: 3rem !important;
-	}
-</style>

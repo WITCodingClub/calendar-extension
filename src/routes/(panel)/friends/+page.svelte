@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { getPanelUi } from '$lib/panelUi.svelte';
+	import { getPanelUi } from '$lib/panel/ui.svelte';
 	const ui = getPanelUi();
 	onMount(() => {
 		if (page.url.searchParams.get('view') === 'calendar') {

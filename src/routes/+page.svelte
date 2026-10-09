@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { PASSKEY_ICON } from '$lib/icons';
 	import { snackbar } from 'm3-svelte';
 	import { onMount } from 'svelte';
-	import { AuthError, getUsableJwt } from '$lib/auth';
-	import { continueAfterSignIn } from '$lib/afterSignIn';
-	import SignInWithGoogleButton from '$lib/components/SignInWithGoogleButton.svelte';
-	import { passkeysSupported, signInWithPasskey } from '$lib/passkeys';
-	import { track } from '$lib/telemetry';
+	import { AuthError, getUsableJwt } from '$lib/auth/session';
+	import { continueAfterSignIn } from '$lib/auth/afterSignIn';
+	import SignInWithGoogleButton from '$lib/components/ui/SignInWithGoogleButton.svelte';
+	import { passkeysSupported, signInWithPasskey } from '$lib/auth/passkeys';
+	import { track } from '$lib/browser/telemetry';
 	import { goto } from '$app/navigation';
 
 	let canUsePasskeys = $state(false);
@@ -114,36 +115,10 @@
 					fill="currentColor"
 					aria-hidden="true"
 				>
-					<path
-						d="M12 1a5 5 0 0 0-5 5c0 2.2 1.4 4.1 3.4 4.7L10 12v2H8v2h2v2l2 2 2-2V10.7A5 5 0 0 0 12 1zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"
-					/>
+					<path d={PASSKEY_ICON} />
 				</svg>
 				<span>{isUsingPasskey ? 'Waiting…' : 'Sign in with a passkey'}</span>
 			</button>
 		{/if}
 	</div>
 </div>
-
-<style>
-	.roboto-flex-wit-main {
-		font-size: 28px;
-		font-family: 'Roboto Flex', sans-serif;
-		color: var(--color-primary);
-		font-optical-sizing: 144;
-		font-weight: 900;
-		line-height: 1;
-		font-style: normal;
-		font-variation-settings:
-			'slnt' 0,
-			'wdth' 129,
-			'GRAD' 0,
-			'XOPQ' 140,
-			'XTRA' 468,
-			'YOPQ' 51,
-			'YTAS' 750,
-			'YTDE' -203,
-			'YTFI' 738,
-			'YTLC' 514,
-			'YTUC' 712;
-	}
-</style>
