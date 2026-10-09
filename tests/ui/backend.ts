@@ -10,6 +10,20 @@ export const terms = {
 	current_term: { id: 202610, name: 'Fall 2026', start_date: '2026-09-01', end_date: '2026-12-20' },
 	next_term: null
 };
+export function catalogTerm(term: typeof terms.current_term | null) {
+	return term
+		? {
+				data: {
+					uid: term.id,
+					name: term.name,
+					season: 'Fall',
+					year: 2026,
+					start_date: term.start_date,
+					end_date: term.end_date
+				}
+			}
+		: null;
+}
 export const settings = {
 	military_time: true,
 	default_color_lecture: '#3f51b5',
@@ -88,6 +102,18 @@ export function responseFor(
 	query = new URLSearchParams()
 ) {
 	if (method === 'GET') {
+		if (path === '/up') return { status: 'ok' };
+		if (query.get('term_uid') === '202610') {
+			if (path === '/api/user/processed_events/status') return { processed: true };
+			if (path === '/api/user/processed_events') return { classes: ownCourses };
+			const match = path.match(
+				/^\/api\/friends\/(friend-(?:ada|ben|cam))\/processed_events(\/status)?$/
+			);
+			if (match)
+				return match[2]
+					? { processed: true }
+					: { classes: schedules[match[1]], notifications_disabled: false };
+		}
 		if (/^\/api\/(?:user|friends\/[^/]+)\/busy_blocks$/.test(path)) {
 			const start = query.get('start_date')!;
 			const end = query.get('end_date')!;
@@ -122,8 +148,10 @@ export function responseFor(
 		switch (path) {
 			case '/api/user/preferences/version':
 				return { version: 'a'.repeat(64) };
-			case '/api/terms/current_and_next':
-				return terms;
+			case '/api/v1/catalog/terms/current':
+				return catalogTerm(terms.current_term);
+			case '/api/v1/catalog/terms/next':
+				return catalogTerm(terms.next_term);
 			case '/api/user/extension_config':
 				return settings;
 			case '/api/user/feature_flags':
@@ -160,9 +188,13 @@ export function responseFor(
 						}
 					]
 				};
-			case '/api/user/email':
-				return { email: 'primary@example.invalid' };
-			case '/api/user/notifications_status':
+			case '/api/user':
+				return {
+					pub_id: 'usr-test',
+					email: 'primary@example.invalid',
+					ics_url: 'https://example.invalid/synthetic.ics'
+				};
+			case '/api/user/notifications':
 				return { notifications_disabled: false, notifications_disabled_until: null };
 			case '/api/user/oauth_credentials':
 				return { oauth_credentials: [] };
@@ -174,8 +206,6 @@ export function responseFor(
 				return { holidays: [] };
 			case '/api/university_calendar_events/categories':
 				return { categories: [] };
-			case '/api/user/ics_url':
-				return { ics_url: 'https://example.invalid/synthetic.ics' };
 		}
 		const match = path.match(/^\/api\/meeting_times\/(own-[12])\/preference$/);
 		if (match) return preference(match[1]);
@@ -188,16 +218,6 @@ export function responseFor(
 					body.meeting_time_ids.map((id) => [String(id), preference(String(id))])
 				)
 			};
-		if (body?.term_uid !== '202610') return undefined;
-		if (path === '/api/user/is_processed') return { processed: true };
-		if (path === '/api/user/processed_events') return { classes: ownCourses };
-		const match = path.match(
-			/^\/api\/friends\/(friend-(?:ada|ben|cam))\/(is_processed|processed_events)$/
-		);
-		if (match)
-			return match[2] === 'is_processed'
-				? { processed: true }
-				: { classes: schedules[match[1]], notifications_disabled: false };
 	}
 	return undefined;
 }

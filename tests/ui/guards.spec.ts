@@ -1,5 +1,5 @@
 import { test, expect } from './extension.fixture';
-import { origin, terms } from './backend';
+import { catalogTerm, origin, terms } from './backend';
 import { fitsViewport } from './helpers';
 import { request } from 'node:http';
 
@@ -43,9 +43,9 @@ test('network interception covers extension pages and worker bypasses are contai
 	expect(
 		await page.evaluate(
 			async (url) => (await fetch(url)).json(),
-			`${origin}/api/terms/current_and_next`
+			`${origin}/api/v1/catalog/terms/current`
 		)
-	).toEqual(terms);
+	).toEqual(catalogTerm(terms.current_term));
 	// Probe an actual worker fetch, without replacing fetch or Chrome APIs.
 	const workerResult = await worker.evaluate(async (url) => {
 		try {
@@ -53,8 +53,8 @@ test('network interception covers extension pages and worker bypasses are contai
 		} catch {
 			return { blocked: true };
 		}
-	}, `${origin}/api/terms/current_and_next`);
-	expect(workerResult).toEqual({ data: terms });
+	}, `${origin}/api/v1/catalog/terms/current`);
+	expect(workerResult).toEqual({ data: catalogTerm(terms.current_term) });
 	expect(extension.network.some((row) => row.source === 'worker')).toBe(true);
 	// Browser-owned dictionary downloads bypass routing but must still be denied.
 	const browserHost = 'redirector.gvt1.com';
@@ -92,14 +92,14 @@ test('network interception covers extension pages and worker bypasses are contai
 	const count = unexpected.length;
 	const blocked = await page.evaluate(async () => {
 		try {
-			await fetch('https://calendar.witcc.dev/api/user/email');
+			await fetch('https://calendar.witcc.dev/api/user');
 			return false;
 		} catch {
 			return true;
 		}
 	});
 	expect(blocked).toBe(true);
-	expect(unexpected.slice(count)).toEqual(['GET calendar.witcc.dev/api/user/email']);
+	expect(unexpected.slice(count)).toEqual(['GET calendar.witcc.dev/api/user']);
 	unexpected.splice(count); // Only this explicit containment probe is expected.
 	allowedProbeHosts.add('calendar.witcc.dev');
 	expect(
@@ -113,4 +113,67 @@ test('network interception covers extension pages and worker bypasses are contai
 		})
 	).toBe(true);
 	expect(proxyDenied).toContain('calendar.witcc.dev');
+});
+
+test('offline environments offer retry and local reset without trapping the user', async ({
+	extension
+}) => {
+	const { page, context, worker } = extension;
+	let online = false;
+	await context.route(origin + '/up', (route) =>
+		route.fulfill({ status: online ? 200 : 503, body: '' })
+	);
+	await extension.open('index', false);
+	const dialog = page.getByRole('alertdialog', { name: 'Environment offline' });
+	await expect(dialog).toBeVisible();
+	await dialog.press('Escape');
+	await expect(dialog).toBeVisible();
+	for (const width of [320, 480, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		await fitsViewport(page, dialog);
+	}
+	online = true;
+	await dialog.getByRole('button', { name: 'Try again', exact: true }).click();
+	await expect(dialog).toBeHidden();
+	online = false;
+	await page.reload();
+	await expect(dialog).toBeVisible();
+	await dialog.getByRole('button', { name: 'Clear data now', exact: true }).click();
+	await expect(dialog).toBeHidden();
+	expect(await worker.evaluate(() => chrome.storage.local.get(null))).toEqual({});
+});
+
+test('resetting local data during a health check ignores the old environment result', async ({
+	extension
+}) => {
+	const { page, context, worker } = extension;
+	let release = () => {};
+	let started = false;
+	let finished = false;
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	await context.route(origin + '/up', async (route) => {
+		started = true;
+		await held;
+		await route.fulfill({ status: 503, body: '' });
+		finished = true;
+	});
+	await extension.open('index', false);
+	try {
+		await expect.poll(() => started).toBe(true);
+		await page.keyboard.press('Control+Shift+Alt+Backspace');
+		await expect(page.getByText('Local data cleared successfully')).toBeVisible();
+		expect(await worker.evaluate(() => chrome.storage.local.get(null))).toEqual({});
+	} finally {
+		release();
+	}
+	await expect.poll(() => finished).toBe(true);
+	await page.evaluate(
+		() =>
+			new Promise<void>((resolve) =>
+				requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+			)
+	);
+	await expect(page.getByRole('alertdialog', { name: 'Environment offline' })).toBeHidden();
 });

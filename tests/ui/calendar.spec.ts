@@ -1,11 +1,11 @@
 import { test, expect } from './extension.fixture';
 import { fitsViewport, chooseRadio } from './helpers';
-import { now, origin, preference, settings, terms } from './backend';
+import { catalogTerm, now, origin, preference, settings, terms } from './backend';
 
 test('a queued current term is polled without opening LeopardWeb', async ({ extension }) => {
 	const { page, context } = extension;
 	let polls = 0;
-	await context.route(origin + '/api/user/is_processed', (route) =>
+	await context.route(origin + '/api/user/processed_events/status?term_uid=202610', (route) =>
 		route.fulfill({
 			json:
 				++polls === 1
@@ -26,13 +26,14 @@ test('accounts without enrollments only get the current term', async ({ extensio
 	await context.route(origin + '/api/user/extension_config', (route) =>
 		route.fulfill({ json: { ...settings, enrolled_terms: [] } })
 	);
-	await context.route(origin + '/api/terms/current_and_next', (route) =>
+	await context.route(origin + '/api/v1/catalog/terms/next', (route) =>
 		route.fulfill({
 			json: {
-				...terms,
-				next_term: {
-					id: 202710,
+				data: {
+					uid: 202710,
 					name: 'Spring 2027',
+					season: 'Spring',
+					year: 2027,
 					start_date: '2027-01-01',
 					end_date: '2027-04-30'
 				}
@@ -66,7 +67,7 @@ test('comparison waits for terms before choosing among historical enrollments', 
 	await extension.open('friends');
 	await expect
 		.poll(
-			() => extension.network.filter((row) => row.path === '/api/terms/current_and_next').length
+			() => extension.network.filter((row) => row.path === '/api/v1/catalog/terms/current').length
 		)
 		.toBe(1);
 	await expect(page.getByRole('button', { name: 'Refresh friends', exact: true })).toBeEnabled();
@@ -74,9 +75,9 @@ test('comparison waits for terms before choosing among historical enrollments', 
 	const held = new Promise<void>((resolve) => {
 		release = resolve;
 	});
-	await context.route(origin + '/api/terms/current_and_next', async (route) => {
+	await context.route(origin + '/api/v1/catalog/terms/current', async (route) => {
 		await held;
-		return route.fulfill({ json: terms });
+		return route.fulfill({ json: catalogTerm(terms.current_term) });
 	});
 	try {
 		await page.goto(extension.baseUrl + '/friends.html?view=calendar');

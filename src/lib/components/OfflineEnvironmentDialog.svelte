@@ -9,20 +9,23 @@
     let offlineEnvironment = $state<Environment | undefined>(undefined);
     let open = $state(false);
     let checking = $state(false);
+    let checkVersion = 0;
 
     const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent);
     const hotkeyKeys = isMac ? ['Control', 'Shift', 'Option', 'Delete'] : ['Ctrl', 'Shift', 'Alt', 'Backspace'];
 
     async function check() {
-        if (checking) return;
+        const version = ++checkVersion;
         checking = true;
         try {
-            offlineEnvironment = await EnvironmentManager.getOfflineNonProdEnvironment();
+            const environment = await EnvironmentManager.getOfflineNonProdEnvironment();
+            if (version !== checkVersion) return;
+            offlineEnvironment = environment;
             open = offlineEnvironment !== undefined;
         } catch (error) {
             console.error('Failed to check the current environment:', error);
         } finally {
-            checking = false;
+            if (version === checkVersion) checking = false;
         }
     }
 
@@ -34,11 +37,14 @@
             if ('environment_data' in changes) void check();
         }
         chrome.storage.onChanged.addListener(onStorageChanged);
-        return () => chrome.storage.onChanged.removeListener(onStorageChanged);
+        return () => {
+            checkVersion += 1;
+            chrome.storage.onChanged.removeListener(onStorageChanged);
+        };
     });
 </script>
 
-<Dialog headline="Environment offline" bind:open closedby="none">
+<Dialog headline="Environment offline" aria-label="Environment offline" bind:open closedby="none">
     {#if offlineEnvironment}
         <div class="flex flex-col gap-3 text-on-surface-variant">
             <p class="m-0">
