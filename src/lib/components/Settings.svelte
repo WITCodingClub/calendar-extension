@@ -41,6 +41,7 @@
     let connectedAccounts = $state<ConnectedAccount[]>([]);
     let addEmailInput = $state("");
     let showEnvSwitcher = $state<boolean>(false);
+    let checkingEnvironment = $state<boolean>(false);
     let isRefreshingFlags = $state<boolean>(false);
     let passkeys = $state<PasskeySummary[]>([]);
     let canUsePasskeys = $state(false);
@@ -443,9 +444,21 @@
     }
 
     async function switchEnvironment(newEnv: Environment) {
-        if (newEnv === currentEnvironment) return;
+        if (newEnv === currentEnvironment || checkingEnvironment) return;
 
+        const previousEnvironment = currentEnvironment;
         currentEnvironment = newEnv;
+
+        // Do not switch to an environment whose backend is down. The user
+        // would land on a sign-in page that cannot reach the server.
+        checkingEnvironment = true;
+        const reachable = await EnvironmentManager.isReachable(newEnv);
+        checkingEnvironment = false;
+        if (!reachable) {
+            currentEnvironment = previousEnvironment;
+            snackbar(`${ENVIRONMENTS[newEnv].displayName} is offline. Staying on ${ENVIRONMENTS[previousEnvironment].displayName}.`, undefined, true);
+            return;
+        }
 
         // Set these before the switch. The (panel) layout mounts the calendar
         // page again as soon as the environment changes, and the page reads them.
@@ -681,6 +694,7 @@
                     { text: ENVIRONMENTS.staging.displayName, value: "staging" },
                     { text: ENVIRONMENTS.dev.displayName, value: "dev" },
                 ]}
+                disabled={checkingEnvironment}
                 bind:value={environmentGetterSetter.value}
             />
         </div>

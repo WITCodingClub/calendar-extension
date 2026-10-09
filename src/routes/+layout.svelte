@@ -6,6 +6,7 @@
 	import { NewSnackbar } from 'm3-svelte';
 	import { clearLocalData, guardCurrentRoute } from '$lib/auth';
 	import { extensionPageUrl } from '$lib/openPageInTab';
+	import OfflineEnvironmentDialog from '$lib/components/OfflineEnvironmentDialog.svelte';
 
 	let { children } = $props();
 
@@ -38,4 +39,5 @@
 <div class="overflow-x-hidden">
 	{@render children?.()}
 </div>
+<OfflineEnvironmentDialog />
 <NewSnackbar />
