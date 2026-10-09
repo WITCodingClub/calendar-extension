@@ -27,6 +27,7 @@
 	let groupMembers = $state<string[]>([]);
 	let requestExpiry = $state<Record<string, string>>({});
 	const activePerson = $derived(ui.friends.find((person) => person.id === personId));
+	const activeGroup = $derived(ui.groups.find((group) => group.id === groupId));
 	const sharingOptions = [
 		{ text: 'Full schedule', value: 'full' },
 		{ text: 'Availability only', value: 'availability_only' }
@@ -145,6 +146,12 @@
 			d="M12.5 11.95q.725-.8 1.113-1.825T14 8t-.387-2.125T12.5 4.05q1.5.2 2.5 1.325T16 8t-1 2.625t-2.5 1.325M17.45 20q.275-.45.413-.962T18 18v-1q0-.9-.4-1.713t-1.05-1.437q1.275.45 2.363 1.163T20 17v1q0 .825-.587 1.413T18 20zM20 11h-1q-.425 0-.712-.288T18 10t.288-.712T19 9h1V8q0-.425.288-.712T21 7t.713.288T22 8v1h1q.425 0 .713.288T24 10t-.288.713T23 11h-1v1q0 .425-.288.713T21 13t-.712-.288T20 12zm-14.825-.175Q4 9.65 4 8t1.175-2.825T8 4t2.825 1.175T12 8t-1.175 2.825T8 12t-2.825-1.175M0 18v-.8q0-.85.438-1.562T1.6 14.55q1.55-.775 3.15-1.162T8 13t3.25.388t3.15 1.162q.725.375 1.163 1.088T16 17.2v.8q0 .825-.587 1.413T14 20H2q-.825 0-1.412-.587T0 18"
 		/></svg
 	>{/snippet}
+{#snippet backIcon()}<svg aria-hidden="true" viewBox="0 0 24 24"
+		><path
+			fill="currentColor"
+			d="m7.825 13l4.9 4.9q.3.3.288.7t-.313.7q-.3.275-.7.288t-.7-.288l-6.6-6.6q-.15-.15-.213-.325T4.426 12t.063-.375t.212-.325l6.6-6.6q.275-.275.688-.275t.712.275q.3.3.3.713t-.3.712L7.825 11H19q.425 0 .713.288T20 12t-.288.713T19 13z"
+		/></svg
+	>{/snippet}
 {#snippet removeIcon()}<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"
 		><path
 			fill="currentColor"
@@ -214,15 +221,8 @@
 						iconType="full"
 						aria-label="All people"
 						title="All people"
-						onclick={() => (personId = undefined)}
+						onclick={() => (personId = undefined)}>{@render backIcon()}</Button
 					>
-						<svg aria-hidden="true" viewBox="0 0 24 24"
-							><path
-								fill="currentColor"
-								d="m7.825 13l4.9 4.9q.3.3.288.7t-.313.7q-.3.275-.7.288t-.7-.288l-6.6-6.6q-.15-.15-.213-.325T4.426 12t.063-.375t.212-.325l6.6-6.6q.275-.275.688-.275t.712.275q.3.3.3.713t-.3.712L7.825 11H19q.425 0 .713.288T20 12t-.288.713T19 13z"
-							/></svg
-						>
-					</Button>
 					<div class="min-w-0">
 						<h3 class="text-lg truncate">{activePerson.name}</h3>
 						<p class="text-sm text-on-surface-variant">
@@ -367,52 +367,76 @@
 					Loading groups…
 				</p>{/if}
 			{#if editingGroup}
-				<div class="gap-3 flex items-center justify-between">
-					<h3>{groupId ? 'Edit group' : 'Create group'}</h3>
+				<div class="gap-2 flex items-center">
 					<Button
 						variant="text"
+						iconType="full"
+						aria-label="All groups"
+						title="All groups"
 						disabled={!!ui.groupLoadingId}
-						onclick={() => (editingGroup = false)}>All groups</Button
+						onclick={() => (editingGroup = false)}>{@render backIcon()}</Button
 					>
+					<div class="min-w-0">
+						<h3 class="text-lg truncate">{activeGroup?.name ?? 'Create group'}</h3>
+						<p class="text-sm text-on-surface-variant">
+							{groupMembers.length}
+							{groupMembers.length === 1 ? 'member' : 'members'} ·
+							<span class="whitespace-nowrap">Only you can see this group</span>
+						</p>
+					</div>
 				</div>
-				<div class="preview-form-stack min-w-0 gap-4 grid">
-					<TextFieldOutlined
-						label="Group name"
-						maxlength={50}
-						disabled={!!ui.groupLoadingId}
-						bind:value={groupName}
-					/>
-					<TextFieldOutlined label="Search members" type="search" bind:value={search} />
-				</div>
-				<ul class="preview-list p-0 list-none">
-					{#each ui.friends.filter((person) => person.name
-							.toLowerCase()
-							.includes(search.toLowerCase())) as person (person.id)}
-						<ListItem label headline={person.name}
-							>{#snippet leading()}<Checkbox
-									><input
-										type="checkbox"
-										disabled={!!ui.groupLoadingId}
-										bind:group={groupMembers}
-										value={person.id}
-									/></Checkbox
-								>{/snippet}</ListItem
+				<section class="gap-3 border-outline-variant pt-4 grid border-t">
+					<h4 class="text-xs font-semibold text-primary">Name</h4>
+					<div class="preview-form-stack min-w-0 grid">
+						<TextFieldOutlined
+							label="Group name"
+							maxlength={50}
+							disabled={!!ui.groupLoadingId}
+							bind:value={groupName}
+						/>
+					</div>
+				</section>
+				<section class="gap-3 border-outline-variant pt-4 grid border-t">
+					<h4 class="text-xs font-semibold text-primary">Members</h4>
+					<div class="preview-form-stack min-w-0 grid">
+						<TextFieldOutlined label="Search members" type="search" bind:value={search} />
+					</div>
+					<ul class="preview-list p-0 list-none">
+						{#each ui.friends.filter((person) => person.name
+								.toLowerCase()
+								.includes(search.toLowerCase())) as person (person.id)}
+							<ListItem label headline={person.name}
+								>{#snippet leading()}<Checkbox
+										><input
+											type="checkbox"
+											disabled={!!ui.groupLoadingId}
+											bind:group={groupMembers}
+											value={person.id}
+										/></Checkbox
+									>{/snippet}</ListItem
+							>
+						{/each}
+					</ul>
+					<div class="flex justify-end">
+						<Button
+							disabled={!groupName.trim() || ui.groupsLoading || !!ui.groupLoadingId}
+							onclick={saveGroup}>{ui.groupLoadingId ? 'Saving…' : 'Save group'}</Button
 						>
-					{/each}
-				</ul>
-				<p class="text-sm text-on-surface-variant">Only you can see your groups.</p>
-				<div class="gap-2 flex flex-wrap">
-					<Button
-						disabled={!groupName.trim() || ui.groupsLoading || !!ui.groupLoadingId}
-						onclick={saveGroup}>{ui.groupLoadingId ? 'Saving…' : 'Save group'}</Button
+					</div>
+				</section>
+				{#if groupId}
+					<div
+						class="border-outline-variant pt-4 border-t"
+						style="--m3-scheme-primary: var(--m3-scheme-error)"
 					>
-					{#if groupId}<Button
+						<Button
 							variant="text"
 							iconType="left"
 							disabled={!!ui.groupLoadingId}
 							onclick={deleteGroup}>{@render removeIcon()}Delete group</Button
-						>{/if}
-				</div>
+						>
+					</div>
+				{/if}
 			{:else}
 				<div class="gap-3 flex flex-wrap items-center justify-between">
 					<h2>Groups</h2>
