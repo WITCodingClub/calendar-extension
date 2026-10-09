@@ -259,6 +259,9 @@ test('refresh removes unavailable groups and stale editors, and initial loads fi
 	await drawer.getByRole('button', { name: 'Close manage friends' }).click();
 	state.group = null;
 	await page.getByRole('button', { name: 'Manage friends', exact: true }).click();
+	await chooseRadio(drawer, /^Requests/);
+	await drawer.getByRole('button', { name: 'Refresh friends', exact: true }).click();
+	await chooseRadio(drawer, 'Groups');
 	await expect(drawer.getByRole('button', { name: 'Save group' })).toBeDisabled();
 	await expect(drawer.getByLabel('Group name')).toHaveValue('Kept on refresh');
 	await drawer.getByRole('button', { name: 'All groups' }).click();

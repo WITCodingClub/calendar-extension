@@ -24,6 +24,7 @@
 	let requestsVersion = 0;
 	let termsVersion = 0;
 	let groupsVersion = 0;
+	let friendsLoadedAt = 0;
 	const inFlight = new SvelteMap<string, Promise<void>>();
 	const busyInFlight = new Map<string, Promise<void>>();
 	const generations: Record<string, number> = {};
@@ -243,6 +244,11 @@
 
 	async function loadFriendsAndRequests(useCachedFriends = false) {
 		await Promise.all([loadFriends(useCachedFriends), loadRequests()]);
+	}
+
+	async function reloadFriendsData() {
+		friendsLoadedAt = Date.now();
+		await Promise.all([loadFriendsAndRequests(), loadGroups()]);
 	}
 
 	async function loadGroups(useCachedGroups = false) {
@@ -595,6 +601,7 @@
 	}
 
 	onMount(() => {
+		friendsLoadedAt = Date.now();
 		void loadTerms();
 		void loadFriendsAndRequests(true);
 		void loadGroups(true);
@@ -627,6 +634,7 @@
 
 	ui.friendActions = {
 		refresh: async () => {
+			friendsLoadedAt = Date.now();
 			await Promise.all([loadFriendsAndRequests(), loadTerms(true)]);
 			if (!session.active) return;
 			await loadGroups();
@@ -655,7 +663,7 @@
 					ui.friendNotice = 'Your sharing preference applies now.';
 				}
 			),
-		reload: () => loadFriendsAndRequests(),
+		reload: reloadFriendsData,
 		retrySchedules: async () => {
 			if (ui.termError || !ui.currentTerm) await loadTerms(true);
 			const term = selected;
@@ -789,8 +797,7 @@
 	$effect(() => {
 		if (ui.manageOpen)
 			untrack(() => {
-				void loadFriendsAndRequests();
-				void loadGroups();
+				if (Date.now() - friendsLoadedAt >= 300_000) void reloadFriendsData();
 			});
 	});
 </script>

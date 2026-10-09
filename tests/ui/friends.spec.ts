@@ -178,6 +178,9 @@ test('detailed/group comparison uses real selected schedules, details and week n
 	).length;
 	await page.getByRole('button', { name: 'Manage friends', exact: true }).click();
 	const drawer = page.getByRole('dialog', { name: 'Manage friends' });
+	await chooseRadio(drawer, /^Requests/);
+	await drawer.getByRole('button', { name: 'Refresh friends', exact: true }).click();
+	await chooseRadio(drawer, 'People');
 	await expect(drawer.getByText('Availability only', { exact: true }).first()).toBeVisible();
 	await drawer.getByRole('button', { name: 'Close manage friends', exact: true }).click();
 	await chooseRadio(page, 'Friends');

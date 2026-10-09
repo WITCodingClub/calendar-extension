@@ -28,6 +28,7 @@
 	let groupExpiryDate = $state('');
 	let initialGroupExpiryDate = $state('');
 	let requestExpiry = $state<Record<string, string>>({});
+	let refreshing = $state(false);
 	const activePerson = $derived(ui.friends.find((person) => person.id === personId));
 	const activeGroup = $derived(ui.groups.find((group) => group.id === groupId));
 	const unavailableGroup = $derived(editingGroup && !!groupId && !activeGroup);
@@ -164,6 +165,16 @@
 		ui.friendError = '';
 		if (sharingChanged && sharingLevel(sharing)) await ui.friendActions?.setSharing(id, sharing);
 		if (date !== undefined && !ui.friendError) await saveExpiry(id, date);
+	}
+
+	async function refresh() {
+		if (refreshing) return;
+		refreshing = true;
+		try {
+			await ui.friendActions?.reload();
+		} finally {
+			refreshing = false;
+		}
 	}
 
 	function planWithPerson(compare = false) {
@@ -522,12 +533,39 @@
 				</ul>
 			{/if}
 		{:else}
-			{#if ui.requestsLoading}<p class="text-sm text-on-surface-variant" role="status">
-					Loading requests…
-				</p>
-			{:else if !requestCount}<p class="text-sm text-on-surface-variant">
-					No pending requests.
-				</p>{/if}
+			<div class="gap-3 flex flex-wrap items-center justify-between">
+				{#if requestCount}<h2>Requests</h2>
+				{:else if ui.requestsLoading}<p class="text-sm text-on-surface-variant" role="status">
+						Loading requests…
+					</p>
+				{:else}<p class="text-sm text-on-surface-variant">No pending requests.</p>{/if}
+				<div class="ml-auto shrink-0">
+					<Button
+						variant="tonal"
+						disabled={refreshing || Boolean(ui.actionLoadingId || ui.groupLoadingId)}
+						onclick={() => void refresh()}
+						aria-label="Refresh friends"
+						title="Refresh friends"
+					>
+						<svg
+							aria-hidden="true"
+							width="20"
+							height="20"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							viewBox="0 0 24 24"
+							class:animate-spin={refreshing}
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+							/>
+						</svg>
+					</Button>
+				</div>
+			</div>
 			{#if ui.incomingRequests.length}<h3>Incoming requests</h3>{/if}
 			{#each ui.incomingRequests as request (request.request_id)}
 				<section class="gap-3 border-outline-variant pb-4 grid border-b">
