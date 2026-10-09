@@ -5,13 +5,14 @@
 	import { getPanelSession } from '$lib/panelSession';
 	import { API, ApiError } from '$lib/api';
 	import type { SavedMeetingInput } from '$lib/savedMeetings';
+	import type { MeetingDraft } from './types';
 	import { processedData, userSettings } from '$lib/store';
 	import { calendarDateTime, dateLabel, shiftDate, weekDates } from '$lib/calendarDates';
 	import { meetingMessage, minutesTime, timeMinutes } from './availability';
 	import FreePeriodResult from './FreePeriodResult.svelte';
 	import MeetingEventForm from './MeetingEventForm.svelte';
 	import PreviewDialog from './PreviewDialog.svelte';
-	import { snackbar } from 'm3-svelte';
+	import { Button, snackbar } from 'm3-svelte';
 	import { untrack } from 'svelte';
 
 	const ui = getPanelUi();
@@ -44,7 +45,9 @@
 	);
 
 	async function loadDestinations() {
-		const draft = ui.meetingDraft;
+		const draft = ui.meetingDraft as
+			| (MeetingDraft & { destinationDefaultsPending?: boolean })
+			| undefined;
 		const version = ++destinationVersion;
 		accountsLoading = true;
 		accountsError = '';
@@ -68,10 +71,6 @@
 							!account.token_revoked
 					)
 			) as Array<'google' | 'microsoft' | 'ics'>;
-			if (ui.meetingDraft && !ui.meetingDraft.submission)
-				ui.meetingDraft.destinations = ui.meetingDraft.destinations.filter((provider) =>
-					availableDestinations.includes(provider)
-				);
 		} catch (failure) {
 			if (
 				session.active &&
@@ -84,14 +83,27 @@
 					failure instanceof Error ? failure.message : 'Could not load connected calendars.';
 			}
 		} finally {
-			if (session.active && version === destinationVersion) accountsLoading = false;
+			if (session.active && version === destinationVersion) {
+				accountsLoading = false;
+				if (ui.meetingEditorOpen && ui.meetingDraft === draft && draft && !draft.submission) {
+					if (draft.destinationDefaultsPending) {
+						draft.destinations = availableDestinations.includes('google') ? ['google'] : ['ics'];
+						draft.destinationDefaultsPending = false;
+					} else {
+						const destinations = draft.destinations.filter((provider) =>
+							availableDestinations.includes(provider)
+						);
+						if (destinations.length !== draft.destinations.length)
+							draft.destinations = destinations.length ? destinations : ['ics'];
+					}
+				}
+			}
 		}
 	}
 
 	async function create() {
 		const draft = ui.meetingDraft;
 		if (!draft || submitting || !session.active) return;
-		const retry = Boolean(draft.submission);
 		try {
 			if (!draft.submission) {
 				const error = meetingMessage(ui, ownCourses, draft.slot);
@@ -143,12 +155,7 @@
 			snackbar('Meeting created.');
 			void goto(resolve('/calendar'));
 		} catch (failure) {
-			if (
-				!retry &&
-				failure instanceof ApiError &&
-				[400, 401, 403, 404, 422, 429].includes(failure.status)
-			)
-				draft.submission = undefined;
+			if (failure instanceof ApiError && failure.status === 422) draft.submission = undefined;
 			if (session.active)
 				draft.error = `${failure instanceof Error ? failure.message : 'Could not create the meeting.'}${draft.submission ? ' Retry to confirm this meeting; its details are kept to avoid duplicates.' : ''}`;
 		} finally {
@@ -195,6 +202,17 @@
 		void goto(resolve('/calendar'));
 	}
 </script>
+
+{#if ui.meetingDraft?.submission && !ui.meetingEditorOpen}
+	<Button
+		variant="text"
+		disabled={submitting}
+		onclick={() => {
+			ui.meetingDetails = true;
+			ui.meetingEditorOpen = true;
+		}}>Retry meeting creation</Button
+	>
+{/if}
 
 {#if ui.meetingDraft && ui.meetingEditorOpen}
 	<PreviewDialog

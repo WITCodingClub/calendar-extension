@@ -12,13 +12,15 @@
 	let {
 		week,
 		militaryTime,
+		showList = true,
 		selectedOccurrence = $bindable(''),
 		ondata
 	}: {
 		week: string;
 		militaryTime: boolean;
+		showList?: boolean;
 		selectedOccurrence?: string;
-		ondata: (data: SavedMeetingsResponse) => void;
+		ondata?: (data: SavedMeetingsResponse) => void;
 	} = $props();
 	const session = getPanelSession();
 	const ui = getPanelUi();
@@ -40,7 +42,7 @@
 
 	function publish(value: SavedMeetingsResponse) {
 		data = value;
-		ondata(value);
+		ondata?.(value);
 	}
 
 	async function load(start: string, force = false) {
@@ -140,41 +142,44 @@
 	}
 </script>
 
-<section class="gap-2 grid" aria-label="Saved meetings">
-	<h2 class="text-base font-semibold">Saved meetings this week</h2>
-	<Button variant="text" disabled={loading || busy} onclick={refresh}>Refresh meetings</Button>
-	{#if loading}<p class="text-sm text-on-surface-variant" role="status">Loading meetings…</p>
-	{:else if error}<p class="text-sm text-error" role="alert">{error}</p>
-	{:else if !data.occurrences.length}<p class="text-sm text-on-surface-variant">
-			No saved meetings this week.
-		</p>
-	{:else}
-		<ul class="gap-2 grid">
-			{#each data.occurrences as occurrence (occurrence.id)}
-				{@const item = data.meetings.find((meeting) => meeting.id === occurrence.meeting_id)!}
-				<li class="gap-2 rounded-xl bg-surface-container-low p-3 flex items-center justify-between">
-					<div class="min-w-0">
-						<p class="text-sm font-medium">
-							{item.title}{item.role === 'invitee' ? ' · Invited' : ''}
-						</p>
-						<p class="text-xs text-on-surface-variant">
-							{dateLabel(occurrence.start_time.slice(0, 10))} · {formatTime(
-								occurrence.start_time.slice(11, 16),
-								militaryTime
-							)}–{formatTime(occurrence.end_time.slice(11, 16), militaryTime)}{item.frequency ===
-							'weekly'
-								? ' · Weekly'
-								: ''}
-						</p>
-					</div>
-					<Button variant="text" onclick={() => (selectedOccurrence = occurrence.id)}
-						>Details</Button
+{#if showList && data.occurrences.length > 0}
+	<section class="gap-2 grid" aria-label="Saved meetings">
+		<h2 class="text-base font-semibold">Saved meetings this week</h2>
+		{#if data.meetings.length > 1}
+			<Button variant="text" disabled={loading || busy} onclick={refresh}>Refresh meetings</Button>
+		{/if}
+		{#if loading}<p class="text-sm text-on-surface-variant" role="status">Loading meetings…</p>
+		{:else if error}<p class="text-sm text-error" role="alert">{error}</p>
+		{:else}
+			<ul class="gap-2 grid">
+				{#each data.occurrences as occurrence (occurrence.id)}
+					{@const item = data.meetings.find((meeting) => meeting.id === occurrence.meeting_id)!}
+					<li
+						class="gap-2 rounded-xl bg-surface-container-low p-3 flex items-center justify-between"
 					>
-				</li>
-			{/each}
-		</ul>
-	{/if}
-</section>
+						<div class="min-w-0">
+							<p class="text-sm font-medium">
+								{item.title}{item.role === 'invitee' ? ' · Invited' : ''}
+							</p>
+							<p class="text-xs text-on-surface-variant">
+								{dateLabel(occurrence.start_time.slice(0, 10))} · {formatTime(
+									occurrence.start_time.slice(11, 16),
+									militaryTime
+								)}–{formatTime(occurrence.end_time.slice(11, 16), militaryTime)}{item.frequency ===
+								'weekly'
+									? ' · Weekly'
+									: ''}
+							</p>
+						</div>
+						<Button variant="text" onclick={() => (selectedOccurrence = occurrence.id)}
+							>Details</Button
+						>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
+{/if}
 
 {#if selected && meeting}
 	<PreviewDialog

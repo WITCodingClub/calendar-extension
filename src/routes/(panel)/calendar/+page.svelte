@@ -109,7 +109,7 @@
 		...(historicSchedule ? [] : savedMeetingCourses(savedData, dates))
 	]);
 	$effect(() => {
-		if (historicSchedule) {
+		if (historicSchedule && (!ui.comparison || displayTerms.some((term) => term.id === selected))) {
 			ui.comparison = false;
 			ui.highlightedSlot = undefined;
 		}
@@ -134,22 +134,22 @@
 	let showHistoricTerms = $derived($storedUserSettings?.show_historic_terms ?? false);
 	let displayTerms = $derived(
 		(() => {
-			const currentTermId = terms?.current_term?.id;
+			const currentTermId = terms?.current_term?.id ?? ui.currentTerm;
 			const fromEnrolled = $enrolledTerms.filter((t) => t?.id);
 			const fromApi = [
 				terms?.current_term && { id: String(terms.current_term.id), name: terms.current_term.name },
 				terms?.next_term && { id: String(terms.next_term.id), name: terms.next_term.name }
 			].filter((t): t is { id: string; name: string } => !!t);
-			const base = ui.comparison
-				? [
-						...fromEnrolled,
-						...fromApi.filter((term) => !fromEnrolled.some((t) => t.id === term.id))
-					]
-				: fromEnrolled.length > 0
-					? fromEnrolled
-					: fromApi;
+			const base = fromEnrolled.length > 0 ? [...fromEnrolled] : fromApi;
+			const planningTermId =
+				ui.currentTerm ??
+				(terms?.current_term?.id != null ? String(terms.current_term.id) : undefined);
+			const planningTerm = fromApi.find((term) => term.id === planningTermId);
+			if (ui.comparison && planningTerm && !base.some((term) => term.id === planningTerm.id)) {
+				base.push(planningTerm);
+			}
 			if (!showHistoricTerms && currentTermId != null) {
-				return base.filter((t) => parseInt(t.id) >= currentTermId);
+				return base.filter((t) => parseInt(t.id) >= Number(currentTermId));
 			}
 			return base;
 		})()
@@ -1400,11 +1400,7 @@
 				const initial = terms?.current_term?.id ?? terms?.next_term?.id;
 				ui.term = initial != null ? String(initial) : undefined;
 			}
-		} else if (
-			!ui.comparison &&
-			displayTerms.length > 0 &&
-			!displayTerms.some((t) => t?.id === selected)
-		) {
+		} else if (displayTerms.length > 0 && !displayTerms.some((t) => t?.id === selected)) {
 			if (preferredDisplayTerm?.id) ui.term = preferredDisplayTerm.id;
 		}
 	});
@@ -1600,6 +1596,7 @@
 			<SavedMeetings
 				week={ui.week}
 				{militaryTime}
+				showList={false}
 				bind:selectedOccurrence={selectedSavedOccurrence}
 				ondata={(data) => (savedData = data)}
 			/>

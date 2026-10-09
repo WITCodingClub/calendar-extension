@@ -193,7 +193,7 @@
 				</h2>
 				<p class="m-0 mt-0.5 text-xs text-on-surface-variant">
 					{activeTab === 'friends'
-						? 'Find shared free time from class schedules or compare calendars. Use the people icon to manage friends and groups. Meeting saving and links are not available yet.'
+						? 'Find shared free time, compare calendars, save meetings, or create meeting links. Use the people icon to manage friends and groups.'
 						: activeTab === 'settings'
 							? 'Manage your settings, account information, and event notifications.'
 							: 'Subscribe in another calendar app or customize event titles with templates.'}

@@ -9,7 +9,7 @@
 		title = $bindable(''),
 		location = $bindable(''),
 		destinations = $bindable<Array<'google' | 'microsoft' | 'ics'>>(['ics']),
-		inviteFriends = $bindable(false),
+		inviteFriends = $bindable(true),
 		frequency = $bindable<'one_time' | 'weekly'>('one_time'),
 		availableDestinations,
 		accountsLoading,
@@ -119,12 +119,8 @@
 				bind:checked={inviteFriends}
 				disabled={submitting || attempted}
 			/></Checkbox
-		>Invite friends</label
+		>Send an invite to participants</label
 	>
-	{#if inviteFriends}<p class="text-sm text-on-surface-variant">
-			Invited meetings appear and count as busy immediately. Calendar invitations use the first
-			selected Google or Microsoft destination. ICS does not send calendar invitations.
-		</p>{/if}
 	{#if error}<p class="text-sm text-error" role="status">{error}</p>
 	{:else if message && !attempted}<p class="text-sm text-error" role="status">{message}</p>{/if}
 	<div class="gap-2 flex flex-wrap items-center justify-end">

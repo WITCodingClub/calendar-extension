@@ -8,6 +8,7 @@
 	import MeetingPreferences from './MeetingPreferences.svelte';
 	import MeetingResults from './MeetingResults.svelte';
 	import MeetingLinks from './MeetingLinks.svelte';
+	import SavedMeetings from './SavedMeetings.svelte';
 	import { scheduleAvailability } from './availability';
 	const ui = getPanelUi();
 	const militaryTime = $derived($userSettings?.military_time ?? true);
@@ -75,4 +76,5 @@
 		</div>
 	{/if}
 	<MeetingLinks />
+	<SavedMeetings week={ui.week} {militaryTime} />
 </main>

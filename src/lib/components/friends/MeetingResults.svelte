@@ -51,7 +51,8 @@
 			title: '',
 			location: '',
 			destinations: ['ics'] as Array<'google' | 'microsoft' | 'ics'>,
-			inviteFriends: false,
+			destinationDefaultsPending: true,
+			inviteFriends: true,
 			frequency: 'one_time' as const,
 			idempotencyKey: crypto.randomUUID()
 		};
@@ -77,13 +78,6 @@
 	<div>
 		<h3 id="preview-results-title">Shared free periods</h3>
 		<p class="mt-1 text-sm text-on-surface-variant">Choose a free period to set up your meeting.</p>
-		{#if ui.meetingDraft}<Button
-				variant="text"
-				onclick={() => {
-					if (ui.meetingDraft?.submission) ui.meetingDetails = true;
-					ui.meetingEditorOpen = true;
-				}}>{ui.meetingDraft.submission ? 'Retry meeting creation' : 'Continue meeting'}</Button
-			>{/if}
 	</div>
 	{#if message}<p role="status" class="text-sm text-on-surface-variant">{message}</p>
 	{:else if !periods.length}<p role="status" class="text-sm text-on-surface-variant">
