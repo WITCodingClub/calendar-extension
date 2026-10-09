@@ -42,3 +42,35 @@ describe('EnvironmentManager.isReachable', () => {
         expect(await EnvironmentManager.isReachable('dev', 10)).toBe(false);
     });
 });
+
+describe('EnvironmentManager.getOfflineNonProdEnvironment', () => {
+    let storage: Record<string, unknown>;
+
+    beforeEach(() => {
+        storage = {};
+        vi.stubGlobal('chrome', {
+            storage: { local: { get: vi.fn(async (key: string) => ({ [key]: storage[key] })) } }
+        });
+    });
+
+    it('never reports production, even when it is down', async () => {
+        storage.environment_data = { current_environment: 'prod', jwt_tokens: {} };
+
+        expect(await EnvironmentManager.getOfflineNonProdEnvironment()).toBeUndefined();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('reports a non-prod environment whose server is down', async () => {
+        storage.environment_data = { current_environment: 'dev', jwt_tokens: {} };
+        fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+        expect(await EnvironmentManager.getOfflineNonProdEnvironment()).toBe('dev');
+    });
+
+    it('does not report a non-prod environment whose server is up', async () => {
+        storage.environment_data = { current_environment: 'staging', jwt_tokens: {} };
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+        expect(await EnvironmentManager.getOfflineNonProdEnvironment()).toBeUndefined();
+    });
+});

@@ -107,6 +107,16 @@ export class EnvironmentManager {
         }
     }
 
+    /**
+     * Returns the current environment when it is not prod and its backend is
+     * down. Production is never reported, because the user cannot leave it.
+     */
+    public static async getOfflineNonProdEnvironment(): Promise<Environment | undefined> {
+        const env = await this.getCurrentEnvironment();
+        if (env === 'prod') return undefined;
+        return (await this.isReachable(env)) ? undefined : env;
+    }
+
     public static async switchEnvironment(environment: Environment): Promise<boolean> {
         const data = await this.getEnvironmentData();
         data.current_environment = environment;
