@@ -25,3 +25,14 @@ vite.config.ts.timestamp-*
 # Extension
 extension
 extension-firefox
+
+# Local verification evidence and tooling
+/.verification/
+/test-results/
+/playwright-report/
+/playwright/.auth/
+
+# Agent files
+/.agents/
+/.claude/
+skills-lock.json

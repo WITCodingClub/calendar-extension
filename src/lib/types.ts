@@ -10,7 +10,7 @@ interface Course {
     course_number: number;
     schedule_type: string;
     term: Term;
-    professor: Professor;
+    professor: Professor | null;
     meeting_times: MeetingTime[];
 }
 
@@ -31,7 +31,7 @@ interface FeatureFlagsResponse {
 }
 
 interface Location {
-    building: Building;
+    building: Building | null;
     rooms: string[];
 }
 
@@ -39,8 +39,8 @@ interface MeetingTime {
     id: number | string;  // Can be internal ID or public_id
     begin_time: string;
     end_time: string;
-    start_date: string;
-    end_date: string;
+    start_date: string | null;
+    end_date: string | null;
     location: Location;
     monday: boolean;
     tuesday: boolean;
@@ -64,6 +64,8 @@ interface CalendarConfig {
 
 interface isProcessed {
     processed: boolean;
+    status?: 'not_started' | 'pending' | 'processing' | 'processed' | 'failed';
+    error_code?: string | null;
 }
 
 interface FriendIdentity {
@@ -71,20 +73,82 @@ interface FriendIdentity {
     name: string;
 }
 
+type SharingLevel = 'full' | 'availability_only';
+
+interface FriendVisibility {
+    mine: SharingLevel;
+    theirs: SharingLevel;
+}
+
+interface FriendVisibilityResponse extends FriendVisibility {
+    friend_id: string;
+}
+
+interface Friend extends FriendIdentity {
+    expires_at?: string | null;
+    visibility?: FriendVisibility | null;
+}
+
+type FriendRequestInput = ({ friend_id: string } | { friend_email: string }) & {
+    expires_at?: string | null;
+    visibility?: SharingLevel;
+};
+
+interface FriendExpiryResponse {
+    friendship_id: string;
+    status: 'pending' | 'accepted';
+    expires_at: string | null;
+    expiry_change: 'shortened' | 'proposed' | 'unchanged';
+    friend: FriendIdentity;
+}
+
+type MeetingLinkDuration = 15 | 30 | 45 | 60 | 90 | 120;
+interface MeetingLinkInput {
+    starts_on: string;
+    ends_on: string;
+    duration_minutes: MeetingLinkDuration;
+    title?: string;
+    expires_at?: string;
+}
+
+interface MeetingLink {
+    id: string;
+    title: string | null;
+    starts_on: string;
+    ends_on: string;
+    duration_minutes: MeetingLinkDuration;
+    expires_at: string;
+    status: 'active' | 'used' | 'revoked' | 'expired';
+    created_at: string;
+    booking: {
+        meeting_id: string;
+        start_time: string;
+        end_time: string;
+        guest_name: string | null;
+        guest_email: string | null;
+    } | null;
+}
+
+interface MeetingLinkCreateResponse { meeting_link: MeetingLink & { url: string } }
+interface MeetingLinkResponse { meeting_link: MeetingLink }
+interface MeetingLinksResponse { meeting_links: MeetingLink[] }
+
 interface FriendRequestIncoming {
     request_id: string;
     from: FriendIdentity;
     created_at: string;
+    expires_at?: string | null;
 }
 
 interface FriendRequestOutgoing {
     request_id: string;
     to: FriendIdentity;
     created_at: string;
+    expires_at?: string | null;
 }
 
 interface FriendListResponse {
-    friends: FriendIdentity[];
+    friends: Friend[];
 }
 
 interface FriendRequestsResponse {
@@ -94,11 +158,13 @@ interface FriendRequestsResponse {
 
 interface FriendRequestCreateResponse {
     request_id: string;
+    expires_at?: string | null;
 }
 
 interface FriendRequestAcceptResponse {
     friendship_id: string;
     friend: FriendIdentity;
+    expires_at?: string | null;
 }
 
 interface OkResponse {
@@ -179,16 +245,27 @@ interface CurrentTerm {
     name: string;
     id: number;
     pub_id?: string;
-    start_date?: string;
-    end_date?: string;
+    start_date?: string | null;
+    end_date?: string | null;
 }
 
 interface NextTerm {
     name: string;
     id: number;
     pub_id?: string;
+    start_date?: string | null;
+    end_date?: string | null;
+}
+
+// A term as GET /api/v1/catalog/terms/current and /next return it.
+interface CatalogTerm {
+    uid: number;
+    name: string;
+    season: string;
+    year: number;
     start_date?: string;
     end_date?: string;
+    section_count?: number;
 }
 
 interface TermResponse {
@@ -272,9 +349,24 @@ interface NotificationSetting {
 }
 
 export {
+    type Friend, type FriendRequestInput, type FriendExpiryResponse,
+    type SharingLevel, type FriendVisibility, type FriendVisibilityResponse,
+    type MeetingLinkDuration, type MeetingLinkInput, type MeetingLink,
+    type MeetingLinkCreateResponse, type MeetingLinkResponse, type MeetingLinksResponse,
     FEATURE_FLAGS,
     type Building,
     type CalendarConfig, type Course, type CurrentTerm, type DayItem,
-    type EventPreferences, type FeatureFlagsResponse, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location,
+    type EventPreferences, type FeatureFlagsResponse, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location, type CatalogTerm,
     type MeetingTime, type NextTerm, type NotificationMethod, type NotificationSetting, type NotificationType, type OkResponse, type Preview, type ProcessedEvents, type Professor, type ReminderSettings, type ResolvedData, type ResponseData, type TemplateVariables, type Term, type TermResponse, type UniversityCalendarEvent, type UniversityEventCategory, type UniversityEventCategoryWithCount, type UserSettings
+};
+
+export type ProcessingTerm = {
+	term: string;
+	courses: Array<{ crn: string; term: string; courseNumber: string }>;
+};
+
+export type BatchProcessingResponse = {
+	user_pub: string;
+	ics_url: string;
+	terms: Array<{ term: string; status: 'processed' | 'pending' | 'failed'; error?: string }>;
 };

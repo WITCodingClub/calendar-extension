@@ -1,7 +1,40 @@
 import { EnvironmentManager } from "./environment";
 import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
-import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
+import type {
+    CatalogTerm, CurrentTerm, ProcessingTerm, BatchProcessingResponse, FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse,
+    FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse,
+    GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse,
+    UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings,
+    FriendRequestInput, FriendExpiryResponse, MeetingLinkInput, MeetingLinkCreateResponse,
+    MeetingLinkResponse, MeetingLinksResponse, SharingLevel, FriendVisibilityResponse
+} from './types';
+import {
+    friendList, friendRequests, processedStatus, requestCreated, requestAccepted, mutationResult,
+    friendExpiry, meetingLinks, meetingLink, meetingLinkCreated, friendVisibility
+} from './friendData';
+import { validatedTerms, validateCourses, busyBlocks, type BusyBlocksResponse } from './friendSchedule';
 import type { PasskeySummary } from "./passkeys";
+import type { FriendGroup } from './components/friends/types';
+import { friendGroups, friendGroup } from './friendGroups';
+import {
+    savedMeetings, savedMeetingResponse, type SavedMeetingsResponse,
+    type SavedMeetingChanges, type SavedMeeting, type SavedMeetingInput
+} from './savedMeetings';
+
+export class ApiError extends Error {
+    readonly status: number;
+    readonly code?: string;
+
+    constructor(message: string, status: number, body?: unknown) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;
+        if (body && typeof body === 'object') {
+            const fields = body as Record<string, unknown>;
+            if (typeof fields.code === 'string') this.code = fields.code;
+        }
+    }
+}
 
 export class API {
     private static async getBaseUrl(): Promise<string> {
@@ -45,33 +78,39 @@ export class API {
             return response.json();
         }
         let message = `${failureMessage}: ${response.status}`;
+        let body: unknown;
         try {
-            const body = await response.json();
-            if (body?.error) message = String(body.error);
-            else if (body?.message) message = String(body.message);
-            else if (body?.detail) message = String(body.detail);
+            body = await response.json();
+            if (body && typeof body === 'object') {
+                const fields = body as Record<string, unknown>;
+                if (fields.error) message = String(fields.error);
+                else if (fields.message) message = String(fields.message);
+                else if (fields.detail) message = String(fields.detail);
+            }
         } catch {
             /* ignore parse errors */
         }
-        throw new Error(message);
+        throw new ApiError(message, response.status, body);
     }
 
-    public static async checkFeatureFlag(flagName:string) {
+    private static async friendApiRequest(path: string, failureMessage: string, method = 'GET', body?: unknown): Promise<unknown> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/flag_enabled?flag_name=${flagName}`, {
-            method: 'GET',
+        const response = await this.authedFetch(`${baseUrl}${path}`, {
+            method,
             headers: {
-                'Authorization': `Bearer ${token}`
-            }
+                'Authorization': `Bearer ${token}`,
+                ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+            },
+            ...(body === undefined ? {} : { body: JSON.stringify(body) })
         });
+        return this.readJson<unknown>(response, failureMessage);
+    }
 
-        if (!response.ok) {
-            console.error(`Feature flag API error for ${flagName}:`, response.status, response.statusText);
-        }
-
-        const data = await response.json();
-        return data.is_enabled;
+    // Reads one flag from the full list. An unknown flag is off.
+    public static async checkFeatureFlag(flagName: string): Promise<boolean> {
+        const { feature_flags } = await this.getAllFeatureFlags();
+        return feature_flags?.[flagName] ?? false;
     }
 
     public static async getAllFeatureFlags(): Promise<FeatureFlagsResponse> {
@@ -92,26 +131,46 @@ export class API {
         return response.json();
     }
 
+    // The current and the next term from the public catalog API. The catalog
+    // answers 404 when a term does not exist yet, which becomes null here.
     public static async getTerms(): Promise<TermResponse> {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/terms/current_and_next`, {
-            method: 'GET'
-        });
-        return this.readJson(response, 'Failed to fetch terms');
+        const [current_term, next_term] = await Promise.all([
+            this.getCatalogTerm(`${baseUrl}/v1/catalog/terms/current`),
+            this.getCatalogTerm(`${baseUrl}/v1/catalog/terms/next`)
+        ]);
+        return validatedTerms({ current_term, next_term });
     }
 
-    public static async getUserEmail(): Promise<{ email: string }> {
+    private static async getCatalogTerm(url: string): Promise<CurrentTerm | null> {
+        const response = await fetch(url, { method: 'GET' });
+        if (response.status === 404) {
+            await response.text();
+            return null;
+        }
+
+        const { data } = await this.readJson<{ data: CatalogTerm }>(response, 'Failed to fetch terms');
+        return { id: data.uid, name: data.name, start_date: data.start_date, end_date: data.end_date };
+    }
+
+    // GET /api/user returns the public id, the email, and the ICS URL together.
+    public static async getUser(): Promise<{ pub_id: string; email: string; ics_url: string }> {
         const baseUrl = await this.getBaseUrl();
-        const response = await this.authedFetch(`${baseUrl}/user/email`, {
+        const response = await this.authedFetch(`${baseUrl}/user`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${await this.getJwtToken()}`
             }
         });
-        return this.readJson(response, 'Failed to fetch the user email');
+        return this.readJson(response, 'Failed to fetch the user');
     }
 
-    public static async userSettings(settings?: UserSettings): Promise<UserSettings> {
+    public static async getUserEmail(): Promise<{ email: string }> {
+        const { email } = await this.getUser();
+        return { email };
+    }
+
+    public static async userSettings(settings?: Partial<UserSettings>): Promise<UserSettings> {
         const baseUrl = await this.getBaseUrl();
         const url = `${baseUrl}/user/extension_config`;
         const token = await this.getJwtToken();
@@ -141,29 +200,27 @@ export class API {
     public static async userIsProcessed(termUid: string): Promise<isProcessed> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/is_processed`, {
-            method: 'POST',
+        const response = await this.authedFetch(`${baseUrl}/user/processed_events/status?term_uid=${encodeURIComponent(termUid)}`, {
+            method: 'GET',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ term_uid: termUid })
+                'Authorization': `Bearer ${token}`
+            }
         });
-        return response.json();
+        return processedStatus(await this.readJson<isProcessed>(response, 'Failed to check your schedule status'));
     }
 
     public static async getProcessedEvents(termUid: string): Promise<ProcessedEvents> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/processed_events`, {
-            method: 'POST',
+        const response = await this.authedFetch(`${baseUrl}/user/processed_events?term_uid=${encodeURIComponent(termUid)}`, {
+            method: 'GET',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ term_uid: termUid })
+                'Authorization': `Bearer ${token}`
+            }
         });
-        return response.json();
+        const data = await this.readJson<ProcessedEvents>(response, 'Failed to fetch your schedule');
+        validateCourses(data?.classes);
+        return data;
     }
 
     public static async getFriends(): Promise<FriendListResponse> {
@@ -175,7 +232,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return this.readJson(response, 'Failed to fetch friends');
+        return friendList(await this.readJson<FriendListResponse>(response, 'Failed to fetch friends'));
     }
 
     public static async getFriendRequests(): Promise<FriendRequestsResponse> {
@@ -187,11 +244,11 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return friendRequests(await this.readJson<FriendRequestsResponse>(response, 'Failed to fetch friend requests'));
     }
 
     public static async createFriendRequest(
-        payload: { friend_id: string } | { friend_email: string }
+        payload: FriendRequestInput
     ): Promise<FriendRequestCreateResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
@@ -203,19 +260,21 @@ export class API {
             },
             body: JSON.stringify(payload)
         });
-        return this.readJson(response, 'Failed to send the friend request');
+        return requestCreated(await this.readJson<FriendRequestCreateResponse>(response, 'Failed to send the friend request'));
     }
 
-    public static async acceptFriendRequest(requestId: string): Promise<FriendRequestAcceptResponse> {
+    public static async acceptFriendRequest(requestId: string, visibility?: SharingLevel): Promise<FriendRequestAcceptResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}/accept`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`
-            }
+                'Authorization': `Bearer ${token}`,
+                ...(visibility === undefined ? {} : { 'Content-Type': 'application/json' })
+            },
+            ...(visibility === undefined ? {} : { body: JSON.stringify({ visibility }) })
         });
-        return response.json();
+        return requestAccepted(await this.readJson<FriendRequestAcceptResponse>(response, 'Failed to accept the friend request'));
     }
 
     public static async declineFriendRequest(requestId: string): Promise<OkResponse> {
@@ -227,7 +286,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return mutationResult(await this.readJson<OkResponse>(response, 'Failed to decline the friend request'));
     }
 
     public static async cancelFriendRequest(requestId: string): Promise<OkResponse> {
@@ -239,7 +298,7 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return mutationResult(await this.readJson<OkResponse>(response, 'Failed to cancel the friend request'));
     }
 
     public static async removeFriend(friendId: string): Promise<OkResponse> {
@@ -251,47 +310,134 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return mutationResult(await this.readJson<OkResponse>(response, 'Failed to remove the friend'));
     }
 
     public static async friendIsProcessed(friendId: string, termUid: string): Promise<isProcessed> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/is_processed`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ term_uid: termUid })
-        });
-        return response.json();
-    }
-
-    public static async getFriendProcessedEvents(friendId: string, termUid: string): Promise<FriendProcessedEventsResponse> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/processed_events`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ term_uid: termUid })
-        });
-        return this.readJson(response, `Failed to fetch the schedule of friend ${friendId}`);
-    }
-
-    public static async getIcsUrl(): Promise<{ ics_url: string }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/ics_url`, {
+        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/processed_events/status?term_uid=${encodeURIComponent(termUid)}`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
-        return response.json();
+        return processedStatus(await this.readJson<isProcessed>(response, 'Failed to check the friend schedule status'));
+    }
+
+    public static async getFriendProcessedEvents(friendId: string, termUid: string): Promise<FriendProcessedEventsResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/processed_events?term_uid=${encodeURIComponent(termUid)}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        return this.readJson(response, `Failed to fetch the schedule of friend ${friendId}`);
+    }
+
+    public static async setFriendExpiry(friendId: string, expiresAt: string | null): Promise<FriendExpiryResponse> {
+        return friendExpiry(await this.friendApiRequest(
+            `/friends/${encodeURIComponent(friendId)}/expiry`, 'Failed to update friendship expiry',
+            'PATCH', { expires_at: expiresAt }
+        ));
+    }
+
+    public static async getMeetingLinks(): Promise<MeetingLinksResponse> {
+        return meetingLinks(await this.friendApiRequest('/meeting_links', 'Failed to fetch meeting links'));
+    }
+
+    public static async setFriendVisibility(friendId: string, visibility: SharingLevel): Promise<FriendVisibilityResponse> {
+        const result = friendVisibility(await this.friendApiRequest(
+            `/friends/${encodeURIComponent(friendId)}/visibility`, 'Failed to update sharing',
+            'PATCH', { visibility }
+        ));
+        if (result.friend_id !== friendId) throw new Error('The sharing change was not confirmed. Reload friends to try again.');
+        return result;
+    }
+
+    public static async getBusyBlocks(id: string, from: string, until: string): Promise<BusyBlocksResponse> {
+        const range = new URLSearchParams({ start_date: from, end_date: until });
+        const path = id === 'you' ? '/user/busy_blocks' : `/friends/${encodeURIComponent(id)}/busy_blocks`;
+        return busyBlocks(await this.friendApiRequest(`${path}?${range}`, 'Failed to fetch availability'), from, until);
+    }
+
+    public static async getFriendGroups(): Promise<FriendGroup[]> {
+        return friendGroups(await this.friendApiRequest('/friends/groups', 'Failed to fetch groups'));
+    }
+
+    public static async saveFriendGroup(name: string | undefined, memberIds: string[] | undefined, groupId?: string, expiresAt?: string | null): Promise<FriendGroup> {
+        return friendGroup(await this.friendApiRequest(
+            groupId ? `/friends/groups/${encodeURIComponent(groupId)}` : '/friends/groups',
+            'Failed to save group', groupId ? 'PATCH' : 'POST', { name, member_ids: memberIds, expires_at: expiresAt }
+        ));
+    }
+
+    public static async deleteFriendGroup(id: string): Promise<OkResponse> {
+        return mutationResult(await this.friendApiRequest(
+            `/friends/groups/${encodeURIComponent(id)}`, 'Failed to delete group', 'DELETE'
+        ) as OkResponse);
+    }
+
+    public static async getSavedMeetings(start: string, end: string): Promise<SavedMeetingsResponse> {
+        const range = new URLSearchParams({ start, end });
+        return savedMeetings(await this.friendApiRequest(`/friends/meetings?${range}`, 'Failed to fetch saved meetings'));
+    }
+
+    public static async updateSavedMeeting(id: string, changes: SavedMeetingChanges): Promise<{ meeting: SavedMeeting }> {
+        return savedMeetingResponse(await this.friendApiRequest(
+            `/friends/meetings/${encodeURIComponent(id)}`, 'Failed to update meeting', 'PATCH', changes
+        ));
+    }
+
+    public static async createSavedMeeting(payload: SavedMeetingInput, idempotencyKey: string): Promise<{ meeting: SavedMeeting }> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/friends/meetings`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${await this.getJwtToken()}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': idempotencyKey
+            },
+            body: JSON.stringify(payload)
+        });
+        return savedMeetingResponse(await this.readJson(response, 'Failed to create meeting'));
+    }
+
+    public static async leaveSavedMeeting(id: string): Promise<void> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/friends/meetings/${encodeURIComponent(id)}/attendance`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
+        });
+        if (!response.ok) await this.readJson(response, 'Failed to leave meeting');
+    }
+
+    public static async deleteSavedMeeting(id: string): Promise<void> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/friends/meetings/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
+        });
+        if (!response.ok) await this.readJson(response, 'Failed to delete meeting');
+    }
+
+    public static async createMeetingLink(payload: MeetingLinkInput): Promise<MeetingLinkCreateResponse> {
+        return meetingLinkCreated(await this.friendApiRequest(
+            '/meeting_links', 'Failed to create meeting link', 'POST', payload
+        ));
+    }
+
+    public static async revokeMeetingLink(linkId: string): Promise<MeetingLinkResponse> {
+        return meetingLink(await this.friendApiRequest(
+            `/meeting_links/${encodeURIComponent(linkId)}`, 'Failed to revoke meeting link', 'DELETE'
+        ));
+    }
+
+    public static async getIcsUrl(): Promise<{ ics_url: string }> {
+        const { ics_url } = await this.getUser();
+        return { ics_url };
     }
 
     public static async getUniversityEventCategories(): Promise<{ categories: UniversityEventCategoryWithCount[] }> {
@@ -347,6 +493,26 @@ export class API {
     }
 
     // Course processing endpoints
+    public static async processCoursesBatch(terms: ProcessingTerm[]): Promise<BatchProcessingResponse> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await this.authedFetch(`${baseUrl}/process_courses/batch`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ terms })
+        });
+        const data = await this.readJson<BatchProcessingResponse>(response, 'Failed to process terms');
+        if (!Array.isArray(data?.terms) || data.terms.length !== terms.length ||
+            data.terms.some((result, index) => result.term !== terms[index].term ||
+                !['processed', 'pending', 'failed'].includes(result.status))) {
+            throw new Error('Invalid batch processing response');
+        }
+        return data;
+    }
+
     public static async processCourses(courses: any[]): Promise<{ user_pub: string; ics_url: string }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
@@ -389,7 +555,24 @@ export class API {
     }
 
     // Event preferences endpoints
-    public static async getMeetingTimePreference(meetingTimeId: number | string): Promise<any> {
+    public static async getPreferenceVersion(): Promise<string | undefined> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/user/preferences/version`, {
+            method: 'GET',
+            cache: 'no-store',
+            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
+        });
+        if (response.status === 404 || response.status === 405) return undefined;
+        const data = await this.readJson<{ version: unknown }>(response, 'Failed to check preferences');
+        if (typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version)) {
+            throw new Error('Invalid preference version');
+        }
+        return data.version;
+    }
+
+    public static async getMeetingTimePreference(
+        meetingTimeId: number | string
+    ): Promise<GetPreferencesResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
@@ -398,17 +581,16 @@ export class API {
                 'Authorization': `Bearer ${token}`
             }
         });
-        if (!response.ok) {
-            return undefined;
-        }
-        return response.json();
+        return this.readJson(response, 'Failed to load event preferences');
     }
 
     // The same data as getMeetingTimePreference, for many meeting times in one
     // request, keyed by the id that was sent. The backend takes up to 200 ids.
-    // Returns undefined when the request fails, for example on a backend that
-    // does not have this endpoint yet, so the caller can ask for each id instead.
-    public static async getMeetingTimePreferences(meetingTimeIds: Array<number | string>): Promise<Record<string, GetPreferencesResponse> | undefined> {
+    // Only an unsupported endpoint permits fallback. Outages and rate limits
+    // must not multiply one failed batch into a request for every event.
+    public static async getMeetingTimePreferences(
+        meetingTimeIds: Array<number | string>
+    ): Promise<{ preferences: Record<string, GetPreferencesResponse>; version?: string } | undefined> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/meeting_times/preferences`, {
@@ -419,14 +601,24 @@ export class API {
             },
             body: JSON.stringify({ meeting_time_ids: meetingTimeIds.map(String) })
         });
-        if (!response.ok) {
-            return undefined;
+        if (response.status === 404 || response.status === 405) return undefined;
+        const data = await this.readJson<{
+            preferences: Record<string, GetPreferencesResponse>;
+            version?: string;
+        }>(
+            response, 'Failed to load event preferences'
+        );
+        if (data.version !== undefined &&
+            (typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version))) {
+            throw new Error('Invalid preference version');
         }
-        const data = await response.json();
-        return data.preferences;
+        return data;
     }
 
-    public static async updateMeetingTimePreference(meetingTimeId: number | string, preferences: any): Promise<any> {
+    public static async updateMeetingTimePreference(
+        meetingTimeId: number | string,
+        preferences: { event_preference: Partial<GetPreferencesResponse['resolved']> }
+    ): Promise<GetPreferencesResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/meeting_times/${meetingTimeId}/preference`, {
@@ -460,7 +652,7 @@ export class API {
     public static async getNotificationStatus(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string | null }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/notifications_status`, {
+        const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -472,9 +664,9 @@ export class API {
     public static async disableNotifications(duration?: number): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const body = duration ? JSON.stringify({ duration }) : undefined;
-        const response = await this.authedFetch(`${baseUrl}/user/notifications/disable`, {
-            method: 'POST',
+        const body = JSON.stringify(duration ? { disabled: true, duration } : { disabled: true });
+        const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
+            method: 'PATCH',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
@@ -487,12 +679,13 @@ export class API {
     public static async enableNotifications(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: null }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/notifications/enable`, {
-            method: 'POST',
+        const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
+            method: 'PATCH',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify({ disabled: false })
         });
         return this.readJson(response, 'Failed to enable notifications');
     }
@@ -545,7 +738,7 @@ export class API {
     public static async requestOAuthForEmail(email: string): Promise<{ oauth_url?: string, calendar_id?: string, error?: string }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/gcal`, {
+        const response = await this.authedFetch(`${baseUrl}/user/google_calendar`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,

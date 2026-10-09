@@ -88,6 +88,35 @@ export class EnvironmentManager {
         await chrome.storage.local.set({ [this.STORAGE_KEY]: data });
     }
 
+    /**
+     * Checks the Rails health endpoint of an environment. An offline ngrok
+     * tunnel answers with an error page, so a non-2xx status also counts as
+     * offline.
+     */
+    public static async isReachable(environment: Environment, timeoutMs = 5000): Promise<boolean> {
+        try {
+            const response = await fetch(`${ENVIRONMENTS[environment].baseUrl}/up`, {
+                method: 'GET',
+                cache: 'no-store',
+                headers: { 'ngrok-skip-browser-warning': 'true' },
+                signal: AbortSignal.timeout(timeoutMs)
+            });
+            return response.ok;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Returns the current environment when it is not prod and its backend is
+     * down. Production is never reported, because the user cannot leave it.
+     */
+    public static async getOfflineNonProdEnvironment(): Promise<Environment | undefined> {
+        const env = await this.getCurrentEnvironment();
+        if (env === 'prod') return undefined;
+        return (await this.isReachable(env)) ? undefined : env;
+    }
+
     public static async switchEnvironment(environment: Environment): Promise<boolean> {
         const data = await this.getEnvironmentData();
         data.current_environment = environment;
