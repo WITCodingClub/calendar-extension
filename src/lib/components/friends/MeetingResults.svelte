@@ -32,6 +32,12 @@
 	});
 
 	function choose(period: FreePeriod) {
+		if (ui.meetingDraft?.submission) {
+			ui.meetingDetails = true;
+			ui.meetingEditorOpen = true;
+			snackbar('Retry the current meeting before starting another.', undefined, true);
+			return;
+		}
 		const start = starts[period.id];
 		const draft = {
 			period,
@@ -43,7 +49,12 @@
 				duration
 			),
 			title: '',
-			location: ''
+			location: '',
+			destinations: ['ics'] as Array<'google' | 'microsoft' | 'ics'>,
+			destinationDefaultsPending: true,
+			inviteFriends: true,
+			frequency: 'one_time' as const,
+			idempotencyKey: crypto.randomUUID()
 		};
 		const ownCourses = $processedData.find((item) => String(item.termId) === ui.scheduleTerm)
 			?.responseData.classes;

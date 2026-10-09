@@ -1,9 +1,40 @@
 import { EnvironmentManager } from "./environment";
 import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
-import type { FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse, FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse, GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse, UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings } from "./types";
-import { friendList, friendRequests, processedStatus, requestCreated, requestAccepted, mutationResult } from './friendData';
-import { validatedTerms, validateCourses } from './friendSchedule';
+import type {
+    FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse,
+    FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse,
+    GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse,
+    UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings,
+    FriendRequestInput, FriendExpiryResponse, MeetingLinkInput, MeetingLinkCreateResponse,
+    MeetingLinkResponse, MeetingLinksResponse, SharingLevel, FriendVisibilityResponse
+} from './types';
+import {
+    friendList, friendRequests, processedStatus, requestCreated, requestAccepted, mutationResult,
+    friendExpiry, meetingLinks, meetingLink, meetingLinkCreated, friendVisibility
+} from './friendData';
+import { validatedTerms, validateCourses, busyBlocks, type BusyBlocksResponse } from './friendSchedule';
 import type { PasskeySummary } from "./passkeys";
+import type { FriendGroup } from './components/friends/types';
+import { friendGroups, friendGroup } from './friendGroups';
+import {
+    savedMeetings, savedMeetingResponse, type SavedMeetingsResponse,
+    type SavedMeetingChanges, type SavedMeeting, type SavedMeetingInput
+} from './savedMeetings';
+
+export class ApiError extends Error {
+    readonly status: number;
+    readonly code?: string;
+
+    constructor(message: string, status: number, body?: unknown) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;
+        if (body && typeof body === 'object') {
+            const fields = body as Record<string, unknown>;
+            if (typeof fields.code === 'string') this.code = fields.code;
+        }
+    }
+}
 
 export class API {
     private static async getBaseUrl(): Promise<string> {
@@ -47,15 +78,33 @@ export class API {
             return response.json();
         }
         let message = `${failureMessage}: ${response.status}`;
+        let body: unknown;
         try {
-            const body = await response.json();
-            if (body?.error) message = String(body.error);
-            else if (body?.message) message = String(body.message);
-            else if (body?.detail) message = String(body.detail);
+            body = await response.json();
+            if (body && typeof body === 'object') {
+                const fields = body as Record<string, unknown>;
+                if (fields.error) message = String(fields.error);
+                else if (fields.message) message = String(fields.message);
+                else if (fields.detail) message = String(fields.detail);
+            }
         } catch {
             /* ignore parse errors */
         }
-        throw new Error(message);
+        throw new ApiError(message, response.status, body);
+    }
+
+    private static async friendApiRequest(path: string, failureMessage: string, method = 'GET', body?: unknown): Promise<unknown> {
+        const baseUrl = await this.getBaseUrl();
+        const token = await this.getJwtToken();
+        const response = await this.authedFetch(`${baseUrl}${path}`, {
+            method,
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+            },
+            ...(body === undefined ? {} : { body: JSON.stringify(body) })
+        });
+        return this.readJson<unknown>(response, failureMessage);
     }
 
     public static async checkFeatureFlag(flagName:string) {
@@ -195,7 +244,7 @@ export class API {
     }
 
     public static async createFriendRequest(
-        payload: { friend_id: string } | { friend_email: string }
+        payload: FriendRequestInput
     ): Promise<FriendRequestCreateResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
@@ -210,14 +259,16 @@ export class API {
         return requestCreated(await this.readJson<FriendRequestCreateResponse>(response, 'Failed to send the friend request'));
     }
 
-    public static async acceptFriendRequest(requestId: string): Promise<FriendRequestAcceptResponse> {
+    public static async acceptFriendRequest(requestId: string, visibility?: SharingLevel): Promise<FriendRequestAcceptResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
         const response = await this.authedFetch(`${baseUrl}/friends/requests/${requestId}/accept`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`
-            }
+                'Authorization': `Bearer ${token}`,
+                ...(visibility === undefined ? {} : { 'Content-Type': 'application/json' })
+            },
+            ...(visibility === undefined ? {} : { body: JSON.stringify({ visibility }) })
         });
         return requestAccepted(await this.readJson<FriendRequestAcceptResponse>(response, 'Failed to accept the friend request'));
     }
@@ -284,6 +335,104 @@ export class API {
             body: JSON.stringify({ term_uid: termUid })
         });
         return this.readJson(response, `Failed to fetch the schedule of friend ${friendId}`);
+    }
+
+    public static async setFriendExpiry(friendId: string, expiresAt: string | null): Promise<FriendExpiryResponse> {
+        return friendExpiry(await this.friendApiRequest(
+            `/friends/${encodeURIComponent(friendId)}/expiry`, 'Failed to update friendship expiry',
+            'PATCH', { expires_at: expiresAt }
+        ));
+    }
+
+    public static async getMeetingLinks(): Promise<MeetingLinksResponse> {
+        return meetingLinks(await this.friendApiRequest('/meeting_links', 'Failed to fetch meeting links'));
+    }
+
+    public static async setFriendVisibility(friendId: string, visibility: SharingLevel): Promise<FriendVisibilityResponse> {
+        const result = friendVisibility(await this.friendApiRequest(
+            `/friends/${encodeURIComponent(friendId)}/visibility`, 'Failed to update sharing',
+            'PATCH', { visibility }
+        ));
+        if (result.friend_id !== friendId) throw new Error('The sharing change was not confirmed. Reload friends to try again.');
+        return result;
+    }
+
+    public static async getBusyBlocks(id: string, from: string, until: string): Promise<BusyBlocksResponse> {
+        const range = new URLSearchParams({ start_date: from, end_date: until });
+        const path = id === 'you' ? '/user/busy_blocks' : `/friends/${encodeURIComponent(id)}/busy_blocks`;
+        return busyBlocks(await this.friendApiRequest(`${path}?${range}`, 'Failed to fetch availability'), from, until);
+    }
+
+    public static async getFriendGroups(): Promise<FriendGroup[]> {
+        return friendGroups(await this.friendApiRequest('/friends/groups', 'Failed to fetch groups'));
+    }
+
+    public static async saveFriendGroup(name: string, memberIds: string[], groupId?: string): Promise<FriendGroup> {
+        return friendGroup(await this.friendApiRequest(
+            groupId ? `/friends/groups/${encodeURIComponent(groupId)}` : '/friends/groups',
+            'Failed to save group', groupId ? 'PATCH' : 'POST', { name, member_ids: memberIds }
+        ));
+    }
+
+    public static async deleteFriendGroup(id: string): Promise<OkResponse> {
+        return mutationResult(await this.friendApiRequest(
+            `/friends/groups/${encodeURIComponent(id)}`, 'Failed to delete group', 'DELETE'
+        ) as OkResponse);
+    }
+
+    public static async getSavedMeetings(start: string, end: string): Promise<SavedMeetingsResponse> {
+        const range = new URLSearchParams({ start, end });
+        return savedMeetings(await this.friendApiRequest(`/friends/meetings?${range}`, 'Failed to fetch saved meetings'));
+    }
+
+    public static async updateSavedMeeting(id: string, changes: SavedMeetingChanges): Promise<{ meeting: SavedMeeting }> {
+        return savedMeetingResponse(await this.friendApiRequest(
+            `/friends/meetings/${encodeURIComponent(id)}`, 'Failed to update meeting', 'PATCH', changes
+        ));
+    }
+
+    public static async createSavedMeeting(payload: SavedMeetingInput, idempotencyKey: string): Promise<{ meeting: SavedMeeting }> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/friends/meetings`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${await this.getJwtToken()}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': idempotencyKey
+            },
+            body: JSON.stringify(payload)
+        });
+        return savedMeetingResponse(await this.readJson(response, 'Failed to create meeting'));
+    }
+
+    public static async leaveSavedMeeting(id: string): Promise<void> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/friends/meetings/${encodeURIComponent(id)}/attendance`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
+        });
+        if (!response.ok) await this.readJson(response, 'Failed to leave meeting');
+    }
+
+    public static async deleteSavedMeeting(id: string): Promise<void> {
+        const baseUrl = await this.getBaseUrl();
+        const response = await this.authedFetch(`${baseUrl}/friends/meetings/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${await this.getJwtToken()}` }
+        });
+        if (!response.ok) await this.readJson(response, 'Failed to delete meeting');
+    }
+
+    public static async createMeetingLink(payload: MeetingLinkInput): Promise<MeetingLinkCreateResponse> {
+        return meetingLinkCreated(await this.friendApiRequest(
+            '/meeting_links', 'Failed to create meeting link', 'POST', payload
+        ));
+    }
+
+    public static async revokeMeetingLink(linkId: string): Promise<MeetingLinkResponse> {
+        return meetingLink(await this.friendApiRequest(
+            `/meeting_links/${encodeURIComponent(linkId)}`, 'Failed to revoke meeting link', 'DELETE'
+        ));
     }
 
     public static async getIcsUrl(): Promise<{ ics_url: string }> {

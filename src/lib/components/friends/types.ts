@@ -1,7 +1,9 @@
+import type { SavedMeetingInput } from '$lib/savedMeetings';
+
 export type Participant = {
 	id: string;
 	name: string;
-	sharing: 'Full schedule';
+	sharing: 'Full schedule' | 'Availability only' | 'Sharing unavailable';
 	expiry?: string;
 };
 
@@ -43,4 +45,11 @@ export type MeetingDraft = {
 	slot: PreviewSlot;
 	title: string;
 	location: string;
+	destinations: Array<'google' | 'microsoft' | 'ics'>;
+	inviteFriends: boolean;
+	frequency: 'one_time' | 'weekly';
+	idempotencyKey: string;
+	submission?: SavedMeetingInput;
+	submitting?: boolean;
+	error?: string;
 };

@@ -2,9 +2,9 @@
 export const now = '2026-10-06T12:00:00-04:00';
 export const origin = 'https://staging-calendar.witcc.dev';
 export const friends = [
-	{ id: 'friend-ada', name: 'Ada Test' },
-	{ id: 'friend-ben', name: 'Ben Test' },
-	{ id: 'friend-cam', name: 'Cam Test' }
+	{ id: 'friend-ada', name: 'Ada Test', visibility: { mine: 'full', theirs: 'full' } },
+	{ id: 'friend-ben', name: 'Ben Test', visibility: { mine: 'full', theirs: 'full' } },
+	{ id: 'friend-cam', name: 'Cam Test', visibility: { mine: 'full', theirs: 'full' } }
 ];
 export const terms = {
 	current_term: { id: 202610, name: 'Fall 2026', start_date: '2026-09-01', end_date: '2026-12-20' },
@@ -81,8 +81,44 @@ export function preference(id: string) {
 		}
 	};
 }
-export function responseFor(method: string, path: string, body: Record<string, unknown> | null) {
+export function responseFor(
+	method: string,
+	path: string,
+	body: Record<string, unknown> | null,
+	query = new URLSearchParams()
+) {
 	if (method === 'GET') {
+		if (/^\/api\/(?:user|friends\/[^/]+)\/busy_blocks$/.test(path)) {
+			const start = query.get('start_date')!;
+			const end = query.get('end_date')!;
+			const courses = path.includes('/user/') ? ownCourses : schedules[path.split('/')[3]];
+			const busy = [];
+			for (
+				const date = new Date(start + 'T00:00:00Z');
+				date <= new Date(end + 'T00:00:00Z');
+				date.setUTCDate(date.getUTCDate() + 1)
+			) {
+				const weekday = [
+					'sunday',
+					'monday',
+					'tuesday',
+					'wednesday',
+					'thursday',
+					'friday',
+					'saturday'
+				][date.getUTCDay()];
+				if (date.getUTCDay() === 0 || date.getUTCDay() === 6) continue;
+				for (const course of courses ?? [])
+					for (const meeting of course.meeting_times)
+						busy.push({
+							date: date.toISOString().slice(0, 10),
+							weekday,
+							start: meeting.begin_time,
+							end: meeting.end_time
+						});
+			}
+			return { time_zone: 'America/New_York', start_date: start, end_date: end, busy };
+		}
 		switch (path) {
 			case '/api/user/preferences/version':
 				return { version: 'a'.repeat(64) };
@@ -101,6 +137,10 @@ export function responseFor(method: string, path: string, body: Record<string, u
 				};
 			case '/api/friends':
 				return { friends };
+			case '/api/friends/groups':
+				return { groups: [] };
+			case '/api/meeting_links':
+				return { meeting_links: [] };
 			case '/api/friends/requests':
 				return {
 					incoming: [

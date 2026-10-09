@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { API } from '$lib/api';
+	import { API, ApiError } from '$lib/api';
+	import { busyRangeKey, validBusyRange } from '$lib/friendSchedule';
+	import { calendarDateTime, shiftDate } from '$lib/calendarDates';
 	import { processedData as storedProcessedData } from '$lib/store';
-	import type { Course } from '$lib/types';
+	import type { Course, SharingLevel } from '$lib/types';
 	import { mapFriendCourses, validateCourses, validateTermBounds } from '$lib/friendSchedule';
 	import { friendRequestErrorMessage, requestInputMessage } from '$lib/friendData';
 	import { getPanelSession } from '$lib/panelSession';
@@ -13,9 +15,17 @@
 	const ui = getPanelUi();
 	let { loadSchedules = false }: { loadSchedules?: boolean } = $props();
 	const selected = $derived(ui.scheduleTerm);
-	let listsVersion = 0;
+	const friendIds = $derived(
+		ui.friends
+			.map((friend) => `${friend.id}:${friend.visibility?.theirs}:${friend.expires_at}`)
+			.join(',')
+	);
+	let friendsVersion = 0;
+	let requestsVersion = 0;
 	let termsVersion = 0;
+	let groupsVersion = 0;
 	const inFlight = new SvelteMap<string, Promise<void>>();
+	const busyInFlight = new Map<string, Promise<void>>();
 	const generations: Record<string, number> = {};
 	const waiting: Array<() => void> = [];
 	let running = 0;
@@ -40,7 +50,18 @@
 		}
 	}
 
+	function discardBusy(id: string) {
+		session.invalidateBusyBlocks(id);
+		for (const range of new Set([...Object.keys(ui.busyBlocks), ...Object.keys(ui.busyStatus)])) {
+			delete ui.busyBlocks[range]?.[id];
+			delete ui.busyStatus[range]?.[id];
+			delete ui.busyErrors[range]?.[id];
+		}
+		++ui.busyVersion;
+	}
+
 	function discardFriend(id: string) {
+		discardBusy(id);
 		for (const term of new Set([
 			...Object.keys(ui.friendSchedules),
 			...Object.keys(session.schedules),
@@ -56,70 +77,228 @@
 		}
 	}
 
-	async function loadFriendsAndRequests(useCachedFriends = false) {
+	async function handleAccessError(id: string, error: unknown): Promise<boolean> {
+		if (
+			id === 'you' ||
+			!(error instanceof ApiError) ||
+			!['AVAILABILITY_ONLY', 'NOT_FRIENDS'].includes(error.code ?? '')
+		)
+			return false;
+		discardFriend(id);
+		if (error.code === 'NOT_FRIENDS') {
+			ui.invalidateMeetings(session);
+			++friendsVersion;
+			ui.friendsLoading = false;
+			ui.friends = ui.friends.filter((person) => person.id !== id);
+			session.friends = ui.friends;
+			ui.selected = ui.selected.filter((person) => person !== id);
+			ui.groups = ui.groups.map((group) => ({
+				...group,
+				members: group.members.filter((person) => person !== id)
+			}));
+			if (session.groups) session.groups = ui.groups;
+		} else {
+			const term = ui.scheduleTerm;
+			if (term) {
+				ui.scheduleStatus[term] ??= {};
+				ui.scheduleErrors[term] ??= {};
+				ui.scheduleStatus[term][id] = 'error';
+				ui.scheduleErrors[term][id] = 'Sharing changed. Reload friends to update availability.';
+			}
+			await loadFriends();
+		}
+		return true;
+	}
+
+	async function loadBusyRange(from: string, until: string) {
+		if (!session.active || !validBusyRange(from, until)) return;
+		const range = busyRangeKey(from, until);
+		await Promise.all(
+			ui.selected.map((id) => {
+				const person = ui.friends.find((friend) => friend.id === id);
+				if (
+					id !== 'you' &&
+					(!person ||
+						(person.expires_at && Date.parse(person.expires_at) <= Math.max(ui.now, Date.now())))
+				)
+					return;
+				const version = session.busyVersions[id] ?? 0;
+				const key = `${id}:${range}:${version}`;
+				const pending = busyInFlight.get(key);
+				if (pending) return pending;
+				if (ui.busyStatus[range]?.[id] === 'loaded' || ui.busyStatus[range]?.[id] === 'error')
+					return;
+				const fresh = () =>
+					session.active &&
+					(session.busyVersions[id] ?? 0) === version &&
+					ui.selected.includes(id) &&
+					(id === 'you' ||
+						ui.friends.some(
+							(friend) =>
+								friend.id === id &&
+								friend.visibility?.theirs === person?.visibility?.theirs &&
+								(!friend.expires_at || Date.parse(friend.expires_at) > Math.max(ui.now, Date.now()))
+						));
+				ui.busyStatus[range] ??= {};
+				ui.busyErrors[range] ??= {};
+				ui.busyStatus[range][id] = 'loading';
+				const request = withScheduleSlot(async () => {
+					if (!fresh()) return;
+					try {
+						const data = await session.loadBusyBlocks(id, from, until);
+						if (!fresh()) return;
+						ui.busyBlocks[range] ??= {};
+						ui.busyBlocks[range][id] = data;
+						ui.busyStatus[range][id] = 'loaded';
+						delete ui.busyErrors[range][id];
+					} catch (error) {
+						console.error(`Failed to load busy blocks for ${id}`, error);
+						if (!fresh() || (await handleAccessError(id, error))) return;
+						ui.busyStatus[range][id] = 'error';
+						ui.busyErrors[range][id] = errorMessage(
+							'Could not load availability',
+							error,
+							'Reload schedules to try again.'
+						);
+					}
+				});
+				busyInFlight.set(key, request);
+				void request.finally(() => {
+					if (busyInFlight.get(key) === request) busyInFlight.delete(key);
+				});
+				return request;
+			})
+		);
+	}
+
+	async function loadFriends(useCachedFriends = false) {
 		if (!session.active) return;
-		const version = ++listsVersion;
-		const fresh = () => session.active && version === listsVersion;
+		const version = ++friendsVersion;
+		const fresh = () => session.active && version === friendsVersion;
 		const cachedFriends = useCachedFriends ? session.friends : undefined;
-		if (cachedFriends) ui.friends = cachedFriends;
 		ui.friendsLoading = !cachedFriends;
-		ui.requestsLoading = true;
 		ui.friendsError = '';
+		try {
+			const friends = cachedFriends ?? (await API.getFriends()).friends;
+			if (!fresh()) return;
+			const ids = new Set(['you', ...friends.map((friend) => friend.id)]);
+			const removed = ui.selected.some((id) => !ids.has(id));
+			for (const friend of ui.friends) {
+				const updated = friends.find((person) => person.id === friend.id);
+				if (
+					!updated ||
+					updated.visibility?.theirs !== friend.visibility?.theirs ||
+					updated.expires_at !== friend.expires_at
+				)
+					discardFriend(friend.id);
+			}
+			ui.friends = friends;
+			session.friends = friends;
+			ui.selected = ui.selected.filter((id) => ids.has(id));
+			ui.groups = ui.groups.map((group) => ({
+				...group,
+				members: group.members.filter((id) => ids.has(id))
+			}));
+			if (session.groups) session.groups = ui.groups;
+			if (removed)
+				report('A selected friend is no longer available and was removed from planning.');
+		} catch (error) {
+			console.error('Failed to load friends data', error);
+			if (!fresh()) return;
+			ui.friendsError = errorMessage(
+				'Could not load friends',
+				error,
+				'Reload friends to try again.'
+			);
+			report(ui.friendsError);
+		} finally {
+			if (fresh()) ui.friendsLoading = false;
+		}
+	}
+
+	async function loadRequests() {
+		if (!session.active) return;
+		const version = ++requestsVersion;
+		const fresh = () => session.active && version === requestsVersion;
+		ui.requestsLoading = true;
 		ui.requestsError = '';
-		await Promise.all([
-			(async () => {
-				try {
-					const friends = cachedFriends ?? (await API.getFriends()).friends;
-					if (!fresh()) return;
-					const ids = new Set(['you', ...friends.map((friend) => friend.id)]);
-					const removed = ui.selected.some((id) => !ids.has(id));
-					for (const friend of ui.friends) if (!ids.has(friend.id)) discardFriend(friend.id);
-					ui.friends = friends;
-					session.friends = friends;
-					ui.selected = ui.selected.filter((id) => ids.has(id));
-					ui.groups = ui.groups.map((group) => ({
-						...group,
-						members: group.members.filter((id) => ids.has(id))
-					}));
-					if (removed)
-						report('A selected friend is no longer available and was removed from planning.');
-				} catch (error) {
-					console.error('Failed to load friends data', error);
-					if (!fresh()) return;
-					ui.friendsError = errorMessage(
-						'Could not load friends',
-						error,
-						'Reload friends to try again.'
-					);
-					report(ui.friendsError);
-				} finally {
-					if (fresh()) ui.friendsLoading = false;
-				}
-			})(),
-			(async () => {
-				try {
-					const requests = await API.getFriendRequests();
-					if (!fresh()) return;
-					ui.incomingRequests = requests.incoming;
-					ui.outgoingRequests = requests.outgoing;
-				} catch (error) {
-					console.error('Failed to load friends data', error);
-					if (!fresh()) return;
-					ui.requestsError = errorMessage(
-						'Could not load requests',
-						error,
-						'Reload requests to try again.'
-					);
-					report(ui.requestsError);
-				} finally {
-					if (fresh()) ui.requestsLoading = false;
-				}
-			})()
-		]);
+		try {
+			const requests = await API.getFriendRequests();
+			if (!fresh()) return;
+			ui.incomingRequests = requests.incoming;
+			ui.outgoingRequests = requests.outgoing;
+		} catch (error) {
+			console.error('Failed to load friends data', error);
+			if (!fresh()) return;
+			ui.requestsError = errorMessage(
+				'Could not load requests',
+				error,
+				'Reload requests to try again.'
+			);
+			report(ui.requestsError);
+		} finally {
+			if (fresh()) ui.requestsLoading = false;
+		}
+	}
+
+	async function loadFriendsAndRequests(useCachedFriends = false) {
+		await Promise.all([loadFriends(useCachedFriends), loadRequests()]);
+	}
+
+	async function loadGroups(useCachedGroups = false) {
+		if (!session.active || ui.groupLoadingId) return;
+		const version = ++groupsVersion;
+		const fresh = () => session.active && version === groupsVersion;
+		const cached = useCachedGroups ? session.groups : undefined;
+		ui.groupsLoading = !cached;
+		ui.groupsError = '';
+		try {
+			const groups = cached ?? (await API.getFriendGroups());
+			if (!fresh()) return;
+			const ids = session.friends && new Set(session.friends.map((friend) => friend.id));
+			ui.groups = groups.map((group) => ({
+				...group,
+				members: ids ? group.members.filter((id) => ids.has(id)) : group.members
+			}));
+			session.groups = ui.groups;
+		} catch (error) {
+			console.error('Failed to load friend groups', error);
+			if (!fresh()) return;
+			ui.groupsError = errorMessage('Could not load groups', error, 'Reload groups to try again.');
+		} finally {
+			if (fresh()) ui.groupsLoading = false;
+		}
+	}
+
+	async function changeGroup(id: string, action: () => Promise<void>): Promise<boolean> {
+		if (!session.active || ui.groupLoadingId || ui.groupsLoading) return false;
+		++groupsVersion;
+		ui.groupLoadingId = id;
+		ui.groupsError = '';
+		try {
+			await action();
+			return session.active;
+		} catch (error) {
+			console.error('Failed to save friend groups', error);
+			if (session.active)
+				ui.groupsError = errorMessage(
+					'Could not save group',
+					error,
+					'Your edits are kept. Try again.'
+				);
+			return false;
+		} finally {
+			if (session.active) ui.groupLoadingId = '';
+		}
 	}
 
 	function loadSchedule(term: string, id: string): Promise<void> {
 		if (!session.active || ui.scheduleTerm !== term || !ui.selected.includes(id))
+			return Promise.resolve();
+		if (
+			id !== 'you' &&
+			ui.friends.find((friend) => friend.id === id)?.visibility?.theirs === 'availability_only'
+		)
 			return Promise.resolve();
 		const key = `${term}:${id}`;
 		const pending = inFlight.get(key);
@@ -132,7 +311,13 @@
 			ui.selected.includes(id) &&
 			(generations[key] ?? 0) === generation &&
 			(id !== 'you' || (session.ownScheduleVersions[term] ?? 0) === ownVersion) &&
-			(id === 'you' || ui.friends.some((person) => person.id === id));
+			(id === 'you' ||
+				ui.friends.some(
+					(person) =>
+						person.id === id &&
+						person.visibility?.theirs !== 'availability_only' &&
+						(!person.expires_at || Date.parse(person.expires_at) > Math.max(ui.now, Date.now()))
+				));
 		ui.scheduleStatus[term] ??= {};
 		ui.scheduleErrors[term] ??= {};
 		const cached =
@@ -187,6 +372,7 @@
 				// can finish setup later, so the next visit asks again.
 				if (!fresh()) return;
 				let unprocessed = false;
+				if (await handleAccessError(id, error)) return;
 				try {
 					const status =
 						id === 'you' ? await API.userIsProcessed(term) : await API.friendIsProcessed(id, term);
@@ -194,6 +380,7 @@
 					unprocessed = !status.processed;
 				} catch (statusError) {
 					console.error(`Failed to check processed status for ${id}`, statusError);
+					if (fresh() && (await handleAccessError(id, statusError))) return;
 				}
 				if (!fresh()) return;
 				if (id === 'you') console.error('Failed to load your schedule', error);
@@ -231,20 +418,20 @@
 		await loadSchedule(term, 'you');
 	}
 
-	async function performAction(
+	async function performAction<T>(
 		id: string,
 		operation: string,
-		action: () => Promise<unknown>,
-		after?: () => void
+		action: () => Promise<T>,
+		after?: (result: T) => void | Promise<void>
 	) {
 		if (!session.active || ui.actionLoadingId) return;
 		ui.actionLoadingId = id;
 		ui.friendError = '';
+		ui.friendNotice = '';
 		try {
-			await action();
+			const result = await action();
 			if (!session.active) return;
-			after?.();
-			await loadFriendsAndRequests();
+			await after?.(result);
 		} catch (error) {
 			console.error(operation, error);
 			if (!session.active) return;
@@ -267,32 +454,51 @@
 			'send-request',
 			'Failed to send friend request',
 			() =>
-				API.createFriendRequest(
-					value.includes('@') ? { friend_email: value } : { friend_id: value }
-				).catch((error) => {
+				API.createFriendRequest({
+					visibility: ui.sendFriendVisibility,
+					...(value.includes('@') ? { friend_email: value } : { friend_id: value }),
+					...(ui.sendFriendExpiry
+						? {
+								expires_at: new Date(
+									Date.parse(calendarDateTime(shiftDate(ui.sendFriendExpiry, 1), '00:00')) - 1
+								).toISOString()
+							}
+						: {})
+				}).catch((error) => {
 					throw new Error(friendRequestErrorMessage(error));
 				}),
-			() => {
+			async () => {
 				ui.sendFriendIdInput = '';
+				ui.sendFriendExpiry = '';
+				await loadRequests();
 			}
 		);
 	}
 
-	async function acceptRequest(requestId: string) {
-		await performAction(`accept-${requestId}`, 'Failed to accept request', () =>
-			API.acceptFriendRequest(requestId)
+	async function acceptRequest(requestId: string, visibility?: SharingLevel) {
+		await performAction(
+			`accept-${requestId}`,
+			'Failed to accept request',
+			() => API.acceptFriendRequest(requestId, visibility),
+			() => loadFriendsAndRequests()
 		);
 	}
 
 	async function declineRequest(requestId: string) {
-		await performAction(`decline-${requestId}`, 'Failed to decline request', () =>
-			API.declineFriendRequest(requestId)
+		await performAction(
+			`decline-${requestId}`,
+			'Failed to decline request',
+			() => API.declineFriendRequest(requestId),
+			() => loadRequests()
 		);
 	}
 
 	async function cancelRequest(requestId: string) {
-		await performAction(`cancel-${requestId}`, 'Failed to cancel request', () =>
-			API.cancelFriendRequest(requestId)
+		await performAction(
+			`cancel-${requestId}`,
+			'Failed to cancel request',
+			() => API.cancelFriendRequest(requestId),
+			() => loadRequests()
 		);
 	}
 
@@ -302,7 +508,10 @@
 			'Failed to remove friend',
 			() => API.removeFriend(friendId),
 			() => {
+				++friendsVersion;
+				ui.friendsLoading = false;
 				discardFriend(friendId);
+				ui.invalidateMeetings(session);
 				ui.friends = ui.friends.filter((person) => person.id !== friendId);
 				session.friends = ui.friends;
 				if (ui.selected.includes(friendId))
@@ -312,6 +521,7 @@
 					...group,
 					members: group.members.filter((id) => id !== friendId)
 				}));
+				if (session.groups) session.groups = ui.groups;
 			}
 		);
 	}
@@ -355,15 +565,56 @@
 	onMount(() => {
 		void loadTerms();
 		void loadFriendsAndRequests(true);
+		void loadGroups(true);
 	});
 
+	ui.groupActions = {
+		reload: () => loadGroups(),
+		save: (name, members, id) =>
+			changeGroup(id ?? 'new-group', async () => {
+				const group = await API.saveFriendGroup(name, members, id);
+				if (!session.active) return;
+				ui.groups = id
+					? ui.groups.map((existing) => (existing.id === id ? group : existing))
+					: [...ui.groups, group];
+				session.groups = ui.groups;
+			}),
+		remove: (id) =>
+			changeGroup(id, async () => {
+				await API.deleteFriendGroup(id);
+				if (!session.active) return;
+				ui.groups = ui.groups.filter((group) => group.id !== id);
+				session.groups = ui.groups;
+			})
+	};
+
 	ui.friendActions = {
+		setSharing: (id, level) =>
+			performAction(
+				`sharing-${id}`,
+				'Failed to update sharing',
+				() => API.setFriendVisibility(id, level),
+				(result) => {
+					const previous = ui.friends.find((person) => person.id === id);
+					if (previous?.visibility?.theirs !== result.theirs) discardFriend(id);
+					++friendsVersion;
+					ui.friendsLoading = false;
+					ui.friends = ui.friends.map((person) =>
+						person.id === id
+							? { ...person, visibility: { mine: result.mine, theirs: result.theirs } }
+							: person
+					);
+					session.friends = ui.friends;
+					ui.friendNotice = 'Your sharing preference applies now.';
+				}
+			),
 		reload: () => loadFriendsAndRequests(),
 		retrySchedules: async () => {
 			if (ui.termError || !ui.currentTerm) await loadTerms(true);
 			const term = selected;
 			if (!term || !session.active || ui.termError) return;
 			for (const id of ui.selected) {
+				discardBusy(id);
 				const key = `${term}:${id}`;
 				generations[key] = (generations[key] ?? 0) + 1;
 				inFlight.delete(key);
@@ -377,6 +628,7 @@
 				storedProcessedData.update((data) => data.filter((item) => String(item.termId) !== term));
 			}
 			await Promise.all([
+				loadBusyRange(ui.preferences.from, ui.preferences.until),
 				loadFriendSchedules(term),
 				...(ui.selected.includes('you') ? [loadOwnSchedule(term)] : [])
 			]);
@@ -385,16 +637,90 @@
 		accept: acceptRequest,
 		decline: declineRequest,
 		cancel: cancelRequest,
-		remove: unfriend
+		remove: unfriend,
+		setExpiry: (id, value) =>
+			performAction(
+				`expiry-${id}`,
+				'Failed to update expiry',
+				() => API.setFriendExpiry(id, value),
+				(result) => {
+					++friendsVersion;
+					++requestsVersion;
+					ui.friendsLoading = false;
+					ui.requestsLoading = false;
+					ui.friends = ui.friends.map((friend) =>
+						friend.id === id ? { ...friend, expires_at: result.expires_at } : friend
+					);
+					session.friends = ui.friends;
+					ui.incomingRequests = ui.incomingRequests.map((request) =>
+						request.from.id === id ? { ...request, expires_at: result.expires_at } : request
+					);
+					ui.outgoingRequests = ui.outgoingRequests.map((request) =>
+						request.to.id === id ? { ...request, expires_at: result.expires_at } : request
+					);
+					ui.friendNotice =
+						result.expiry_change === 'proposed'
+							? 'Proposal sent by email. Your friend must approve it in the web dashboard before the expiry changes.'
+							: result.expiry_change === 'shortened'
+								? 'The earlier expiry applies now.'
+								: 'The expiry is unchanged.';
+				}
+			)
 	};
+	ui.busyActions = { load: loadBusyRange, invalidate: discardBusy };
+	$effect(() => {
+		const from = ui.preferences.from;
+		const until = ui.preferences.until;
+		const ids = ui.selected.join(',');
+		const friends = friendIds;
+		const version = ui.busyVersion;
+		if (!loadSchedules || !ui.planning || !ids || !friends) return;
+		void version;
+		untrack(() => void loadBusyRange(from, until));
+	});
 	$effect(() => {
 		const term = selected;
 		const ids = ui.selected.join(',');
-		const friends = ui.friends;
-		if (!loadSchedules || !term || !ids || !friends || ui.termError) return;
+		const friends = friendIds;
+		if (!loadSchedules || !term || !ids || ui.termError) return;
+		void friends;
 		untrack(() => {
 			void loadFriendSchedules(term);
 			if (ui.selected.includes('you')) void loadOwnSchedule(term);
+		});
+	});
+	$effect(() => {
+		const expired = ui.friends.filter(
+			(friend) => friend.expires_at && Date.parse(friend.expires_at) <= ui.now
+		);
+		if (!expired.length) return;
+		untrack(() => {
+			for (const friend of expired) discardFriend(friend.id);
+			ui.invalidateMeetings(session);
+			++friendsVersion;
+			ui.friendsLoading = false;
+			const ids = new Set(expired.map((friend) => friend.id));
+			ui.friends = ui.friends.filter((friend) => !ids.has(friend.id));
+			session.friends = ui.friends;
+			ui.selected = ui.selected.filter((id) => !ids.has(id));
+			ui.groups = ui.groups.map((group) => ({
+				...group,
+				members: group.members.filter((id) => !ids.has(id))
+			}));
+			if (session.groups) session.groups = ui.groups;
+		});
+	});
+	$effect(() => {
+		const now = ui.now;
+		const incoming = ui.incomingRequests.filter(
+			(request) => !(request.expires_at && Date.parse(request.expires_at) <= now)
+		);
+		const outgoing = ui.outgoingRequests.filter(
+			(request) => !(request.expires_at && Date.parse(request.expires_at) <= now)
+		);
+		untrack(() => {
+			if (incoming.length !== ui.incomingRequests.length) ui.incomingRequests = incoming;
+			if (outgoing.length !== ui.outgoingRequests.length) ui.outgoingRequests = outgoing;
 		});
 	});
 	$effect(() => {

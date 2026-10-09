@@ -1,5 +1,15 @@
 import { getContext, setContext } from 'svelte';
-import type { Course, FriendIdentity, FriendRequestIncoming, FriendRequestOutgoing } from './types';
+import { SvelteSet } from 'svelte/reactivity';
+import type {
+	Course,
+	Friend,
+	FriendRequestIncoming,
+	FriendRequestOutgoing,
+	SharingLevel
+} from './types';
+import type { BusyBlocksResponse } from './friendSchedule';
+import type { PanelSession } from './panelSession';
+import { sharingLabel } from './friendData';
 import { schoolDays, weekDates } from './calendarDates';
 import type {
 	MeetingPreferences,
@@ -30,20 +40,47 @@ export class PanelUi {
 	now = $state(Date.now());
 
 	termBounds = $state<Record<string, { start?: string; end?: string }>>({});
-	friends = $state<FriendIdentity[]>([]);
+	friends = $state<Friend[]>([]);
 	hasSelectedFriends = $derived(this.friends.some((friend) => this.selected.includes(friend.id)));
+	hasAvailabilityOnly = $derived(
+		this.friends.some(
+			(friend) =>
+				this.selected.includes(friend.id) && friend.visibility?.theirs === 'availability_only'
+		)
+	);
 	people = $derived<Participant[]>([
 		{ id: 'you', name: 'You', sharing: 'Full schedule' },
-		...this.friends.map((person) => ({ ...person, sharing: 'Full schedule' as const }))
+		...this.friends.map((person) => ({
+			...person,
+			sharing: sharingLabel(person.visibility?.theirs),
+			expiry: person.expires_at ?? undefined
+		}))
 	]);
 	groups = $state<FriendGroup[]>([]);
+	groupsLoading = $state(false);
+	groupsError = $state('');
+	groupLoadingId = $state('');
+	groupActions = $state.raw<{
+		reload: () => Promise<void>;
+		save: (name: string, members: string[], id?: string) => Promise<boolean>;
+		remove: (id: string) => Promise<boolean>;
+	}>();
 	friendSchedules = $state<Record<string, Record<string, Course[]>>>({});
+	busyBlocks = $state<Record<string, Record<string, BusyBlocksResponse>>>({});
+	busyStatus = $state<Record<string, Record<string, 'loading' | 'loaded' | 'error'>>>({});
+	busyErrors = $state<Record<string, Record<string, string>>>({});
+	busyVersion = $state(0);
+	busyActions = $state.raw<{
+		load: (from: string, until: string) => Promise<void>;
+		invalidate: (id: string) => void;
+	}>();
 	scheduleStatus = $state<
 		Record<string, Record<string, 'loading' | 'loaded' | 'unprocessed' | 'error'>>
 	>({});
 	incomingRequests = $state<FriendRequestIncoming[]>([]);
 	outgoingRequests = $state<FriendRequestOutgoing[]>([]);
 	friendError = $state('');
+	friendNotice = $state('');
 	friendsError = $state('');
 	requestsError = $state('');
 	termError = $state('');
@@ -53,14 +90,19 @@ export class PanelUi {
 	requestsLoading = $state(false);
 	actionLoadingId = $state('');
 	sendFriendIdInput = $state('');
+	sendFriendExpiry = $state('');
+	sendFriendVisibility = $state<SharingLevel>('full');
+	acceptFriendVisibility = $state<Record<string, SharingLevel>>({});
 	friendActions = $state.raw<{
 		reload: () => Promise<void>;
 		retrySchedules: () => Promise<void>;
 		send: () => Promise<void>;
-		accept: (id: string) => Promise<void>;
+		accept: (id: string, visibility?: SharingLevel) => Promise<void>;
 		decline: (id: string) => Promise<void>;
 		cancel: (id: string) => Promise<void>;
 		remove: (id: string) => Promise<void>;
+		setExpiry: (id: string, value: string | null) => Promise<void>;
+		setSharing: (id: string, visibility: SharingLevel) => Promise<void>;
 	}>();
 	comparison = $state(false);
 	comparisonDisplay = $state<'group' | 'detailed'>();
@@ -73,6 +115,7 @@ export class PanelUi {
 	meetingDraft = $state<MeetingDraft>();
 	meetingEditorOpen = $state(false);
 	meetingDetails = $state(false);
+	meetingVersion = $state(0);
 	starts = $state<Record<string, number>>({});
 	preferences = $state<MeetingPreferences>({
 		from: schoolDays()[0],
@@ -83,6 +126,25 @@ export class PanelUi {
 		buffer: '10',
 		betweenClasses: false
 	});
+
+	invalidateMeetings(session: PanelSession): void {
+		session.savedMeetings.clear();
+		session.pendingSavedMeetings.clear();
+		const ids = new SvelteSet([
+			'you',
+			...this.friends.map((friend) => friend.id),
+			...Object.keys(session.busyVersions),
+			...[...session.busyBlocks.keys(), ...session.pendingBusyBlocks.keys()].map(
+				(key) => key.split(':')[0]
+			)
+		]);
+		for (const id of ids) session.invalidateBusyBlocks(id);
+		this.busyBlocks = {};
+		this.busyStatus = {};
+		this.busyErrors = {};
+		++this.busyVersion;
+		++this.meetingVersion;
+	}
 
 	constructor() {
 		if (!browser) return;

@@ -77,6 +77,7 @@ export async function restorePanelHandoff(
 			.map((field) => [field, saved.state[field]])
 	);
 	Object.assign(ui, state);
+	if (ui.meetingDraft) ui.meetingDraft.submitting = false;
 	ui.datedTerm = ui.term;
 	ui.restoredPreview = saved.preview;
 }

@@ -39,9 +39,10 @@
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import WeekNavigation from '$lib/components/WeekNavigation.svelte';
 	import CalendarComparison from '$lib/components/friends/CalendarComparison.svelte';
+	import SavedMeetings from '$lib/components/friends/SavedMeetings.svelte';
+	import { savedMeetingCourses, type SavedMeetingsResponse } from '$lib/savedMeetings';
 	import ParticipantPicker from '$lib/components/friends/ParticipantPicker.svelte';
 	import { getPanelUi } from '$lib/panelUi.svelte';
-	import { scheduleMessage } from '$lib/components/friends/availability';
 	import { todayDate, weekDates } from '$lib/calendarDates';
 	import { userSettings as storedUserSettings } from '$lib/store';
 	import { browser } from '$app/environment';
@@ -73,7 +74,15 @@
 	);
 	let jwt_token: string | undefined = $state(undefined);
 	let processedData: Course[] | undefined = $derived(responseData?.classes);
-	const comparisonMessage = $derived(scheduleMessage(ui, processedData));
+	let savedData = $state.raw<SavedMeetingsResponse>({ meetings: [], occurrences: [] });
+	let selectedSavedOccurrence = $state('');
+	const comparisonMessage = $derived(
+		ui.hasSelectedFriends
+			? undefined
+			: ui.friendsLoading
+				? 'Loading friends…'
+				: ui.friendsError || 'Select some friends to compare calendars.'
+	);
 	let terms = $state<TermResponse | undefined>(undefined);
 	const termDates = $derived.by(() => {
 		const meetings = (processedData ?? []).flatMap((course) => course.meeting_times ?? []);
@@ -87,22 +96,29 @@
 			.sort();
 		return { start: starts[0], end: ends.at(-1) };
 	});
-	const historicSchedule = $derived(
-		Boolean(
-			(termDates.end && termDates.end < todayDate()) ||
-				(selected && terms?.current_term && Number(selected) < terms.current_term.id)
-		)
-	);
+	const historicSchedule = $derived.by(() => {
+		const currentTerm = terms?.current_term?.id ?? ui.currentTerm;
+		return Boolean(
+			selected && currentTerm != null
+				? Number(selected) < Number(currentTerm)
+				: !ui.comparison && termDates.end && termDates.end < todayDate()
+		);
+	});
+	const calendarCourses = $derived([
+		...(processedData ?? []),
+		...(historicSchedule ? [] : savedMeetingCourses(savedData, dates))
+	]);
 	$effect(() => {
-		if (historicSchedule) {
+		if (historicSchedule && (!ui.comparison || displayTerms.some((term) => term.id === selected))) {
 			ui.comparison = false;
 			ui.highlightedSlot = undefined;
 		}
-		if (!selected || !processedData || ui.datedTerm === selected) return;
+		if (!selected || (!processedData && !ui.comparison) || ui.datedTerm === selected) return;
 		ui.datedTerm = selected;
+		const start = ui.comparison ? ui.termBounds[selected]?.start : termDates.start;
 		ui.week = weekDates(
 			ui.highlightedSlot?.date ??
-				(termDates.start && termDates.start > todayDate() ? termDates.start : todayDate())
+				(start && start > todayDate() ? start : ui.comparison ? ui.week : todayDate())
 		)[0];
 	});
 	let activeCourse: Course | undefined = $state(undefined);
@@ -118,15 +134,22 @@
 	let showHistoricTerms = $derived($storedUserSettings?.show_historic_terms ?? false);
 	let displayTerms = $derived(
 		(() => {
-			const currentTermId = terms?.current_term?.id;
+			const currentTermId = terms?.current_term?.id ?? ui.currentTerm;
 			const fromEnrolled = $enrolledTerms.filter((t) => t?.id);
 			const fromApi = [
 				terms?.current_term && { id: String(terms.current_term.id), name: terms.current_term.name },
 				terms?.next_term && { id: String(terms.next_term.id), name: terms.next_term.name }
 			].filter((t): t is { id: string; name: string } => !!t);
-			const base = fromEnrolled.length > 0 ? fromEnrolled : fromApi;
+			const base = fromEnrolled.length > 0 ? [...fromEnrolled] : fromApi;
+			const planningTermId =
+				ui.currentTerm ??
+				(terms?.current_term?.id != null ? String(terms.current_term.id) : undefined);
+			const planningTerm = fromApi.find((term) => term.id === planningTermId);
+			if (ui.comparison && planningTerm && !base.some((term) => term.id === planningTerm.id)) {
+				base.push(planningTerm);
+			}
 			if (!showHistoricTerms && currentTermId != null) {
-				return base.filter((t) => parseInt(t.id) >= currentTermId);
+				return base.filter((t) => parseInt(t.id) >= Number(currentTermId));
 			}
 			return base;
 		})()
@@ -383,20 +406,19 @@
 	const calendarStartHour = $derived(
 		Math.min(
 			8,
-			...(processedData ?? []).flatMap((course) =>
+			...calendarCourses.flatMap((course) =>
 				course.meeting_times.map((meeting) => Number(meeting.begin_time.split(':')[0]))
 			)
 		)
 	);
 	let stackedMeetings = $derived.by(() => {
-		if (!processedData) return { byDay: {}, maxStacksByDay: {} };
 		const byDay: Record<string, PositionedMeeting[]> = {};
 		const maxStacksByDay: Record<string, number> = {};
 		for (const { key } of dayOrder) {
 			byDay[key] = [];
 			maxStacksByDay[key] = 1;
 		}
-		for (const course of processedData) {
+		for (const course of calendarCourses) {
 			if (!course) continue;
 			const isLab = (course.schedule_type ?? '').toLowerCase() === 'laboratory';
 			const bgColorBase = isLab ? labColor : lectureColor;
@@ -469,6 +491,19 @@
 		}
 		return { byDay, maxStacksByDay };
 	});
+	function selectCalendarEvent(item: { course: Course; meeting: MeetingTime }, day: DayItem) {
+		const occurrence = savedData.occurrences.find(
+			(occurrence) => occurrence.id === item.meeting.id
+		);
+		if (occurrence) {
+			selectedSavedOccurrence = occurrence.id;
+			return;
+		}
+		activeCourse = item.course;
+		activeMeeting = item.meeting;
+		activeDay = day;
+		getEventPerfs(item.meeting.id);
+	}
 
 	let earliestClassOffsetRem = $derived.by(() => {
 		let min = Infinity;
@@ -690,7 +725,7 @@
 					else next.push({ termId: tid, responseData: response });
 					return next;
 				});
-			} else {
+			} else if (!ui.comparison) {
 				loading = false;
 				await runScrapeAndProcess(termId);
 			}
@@ -786,9 +821,7 @@
 	// Asks for the preferences of every meeting time in one request per 200 ids,
 	// instead of one request per meeting time. If the backend has no batch
 	// endpoint yet, it asks for each id on its own, as before.
-	async function fetchPreferencesFor(
-		ids: Array<number | string>
-	): Promise<{
+	async function fetchPreferencesFor(ids: Array<number | string>): Promise<{
 		preferences: Map<number | string, GetPreferencesResponse>;
 		version?: string;
 	}> {
@@ -936,11 +969,13 @@
 			if (!actualTermId) {
 				throw new Error('Could not determine which term to load');
 			}
+			if (ui.comparison && actualTermId !== termId) return;
 			if (actualTermId !== termId) {
 				ui.term = actualTermId;
 			}
 			expectedTerm = actualTermId;
 			session.invalidateOwnSchedule(actualTermId);
+			ui.busyActions?.invalidate('you');
 			version = session.ownScheduleVersions[actualTermId];
 			const events = await session.loadProcessedEvents(actualTermId);
 			if (!fresh()) return;
@@ -1083,6 +1118,7 @@
 			const actualRefreshTermId = String(eventsToReprocess[0]?.term ?? termId);
 
 			session.invalidateOwnSchedule(actualRefreshTermId);
+			ui.busyActions?.invalidate('you');
 			version = session.ownScheduleVersions[termId] ?? 0;
 			const events = await session.loadProcessedEvents(actualRefreshTermId);
 			if (!fresh()) return;
@@ -1370,7 +1406,7 @@
 	});
 
 	$effect(() => {
-		if (selected && !loading && !session.attemptedTerms.has(selected)) {
+		if (!ui.comparison && selected && !loading && !session.attemptedTerms.has(selected)) {
 			session.attemptedTerms.add(selected);
 			if ($storedProcessedData.some((d) => String(d.termId) === selected)) {
 				syncProcessedEventsForTerm(selected);
@@ -1438,7 +1474,7 @@
 </script>
 
 <div class="min-w-0 gap-3 @container box-border flex h-full w-full flex-col">
-	{#if !processedData && tab === 'a'}
+	{#if !ui.comparison && !processedData && tab === 'a'}
 		<div
 			class="gap-6 p-6 bg-surface-container rounded-2xl shadow-md max-w-lg mx-auto flex w-full flex-col items-center"
 		>
@@ -1528,14 +1564,9 @@
 					date={ui.week}
 					bind:week={ui.week}
 					slot={ui.highlightedSlot}
-					ownEvents={processedData ? stackedMeetings : undefined}
+					ownEvents={stackedMeetings}
 					friendSchedules={ui.term ? (ui.friendSchedules[ui.term] ?? {}) : {}}
-					onownselect={(item, day) => {
-						activeCourse = item.course;
-						activeMeeting = item.meeting;
-						activeDay = day;
-						getEventPerfs(item.meeting.id);
-					}}
+					onownselect={selectCalendarEvent}
 					onedit={() => {
 						ui.meetingDetails = true;
 						ui.meetingEditorOpen = true;
@@ -1546,22 +1577,28 @@
 					}}
 				/>
 			{/if}
-		{:else if processedData}
+		{:else}
 			{#if !historicSchedule}<WeekNavigation bind:week={ui.week} />{/if}
-			<CalendarGrid
-				{stackedMeetings}
-				{dayOrder}
-				dates={historicSchedule ? undefined : dates}
-				startHour={calendarStartHour}
-				latestHour={getLatestEndHour(processedData)}
+			{#if processedData || savedData.occurrences.length}
+				<CalendarGrid
+					{stackedMeetings}
+					{dayOrder}
+					dates={historicSchedule ? undefined : dates}
+					startHour={calendarStartHour}
+					latestHour={getLatestEndHour(calendarCourses)}
+					{militaryTime}
+					{earliestClassOffsetRem}
+					onselect={selectCalendarEvent}
+				/>
+			{/if}
+		{/if}
+		{#if jwt_token}
+			<SavedMeetings
+				week={ui.week}
 				{militaryTime}
-				{earliestClassOffsetRem}
-				onselect={(item, day) => {
-					activeCourse = item.course;
-					activeMeeting = item.meeting;
-					activeDay = day;
-					getEventPerfs(item.meeting.id);
-				}}
+				showList={false}
+				bind:selectedOccurrence={selectedSavedOccurrence}
+				ondata={(data) => (savedData = data)}
 			/>
 		{/if}
 	{:else if tab === 'settings'}

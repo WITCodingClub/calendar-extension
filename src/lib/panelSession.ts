@@ -2,7 +2,10 @@ import { getContext, setContext } from 'svelte';
 import { API } from './api';
 import { PreferenceCache } from './preferenceCache';
 import type { PasskeySummary } from './passkeys';
-import type { Course, FriendIdentity, ProcessedEvents, TermResponse } from './types';
+import type { Course, Friend, ProcessedEvents, TermResponse } from './types';
+import type { FriendGroup } from './components/friends/types';
+import type { SavedMeetingsResponse } from './savedMeetings';
+import { busyRangeKey, type BusyBlocksResponse } from './friendSchedule';
 
 export type ConnectedAccount = {
     id: string;
@@ -45,15 +48,53 @@ export class PanelSession {
 
     // Accepted friends. Friend requests are not kept, because they change when
     // other users act.
-    friends: FriendIdentity[] | undefined;
+    friends: Friend[] | undefined;
+    groups: FriendGroup[] | undefined;
+    readonly savedMeetings = new Map<string, SavedMeetingsResponse>();
+    readonly pendingSavedMeetings = new Map<string, Promise<SavedMeetingsResponse>>();
     // Mapped courses by term id, then by friend id.
     readonly schedules: Record<string, Record<string, Course[]>> = {};
+    readonly busyBlocks = new Map<string, BusyBlocksResponse>();
+    readonly pendingBusyBlocks = new Map<string, Promise<BusyBlocksResponse>>();
+    readonly busyVersions: Record<string, number> = {};
+
+    invalidateBusyBlocks(id: string): void {
+        this.busyVersions[id] = (this.busyVersions[id] ?? 0) + 1;
+        for (const cache of [this.busyBlocks, this.pendingBusyBlocks]) {
+            for (const key of cache.keys()) if (key.startsWith(`${id}:`)) cache.delete(key);
+        }
+    }
+
+    loadBusyBlocks(id: string, from: string, until: string): Promise<BusyBlocksResponse> {
+        const key = `${id}:${busyRangeKey(from, until)}`;
+        const cached = this.busyBlocks.get(key);
+        if (cached) return Promise.resolve(cached);
+        for (const [cachedKey, data] of this.busyBlocks) {
+            if (cachedKey.startsWith(`${id}:`) && data.start_date <= from && data.end_date >= until) return Promise.resolve({ ...data, start_date: from, end_date: until, busy: data.busy.filter((block) => block.date >= from && block.date <= until) });
+        }
+        const pending = this.pendingBusyBlocks.get(key);
+        if (pending) return pending;
+        for (const [pendingKey, request] of this.pendingBusyBlocks) {
+            const [person, start, end] = pendingKey.split(':');
+            if (person === id && start <= from && end >= until) return request.then((data) => ({ ...data, start_date: from, end_date: until, busy: data.busy.filter((block) => block.date >= from && block.date <= until) }));
+        }
+        const version = this.busyVersions[id] ?? 0;
+        const request = API.getBusyBlocks(id, from, until).then((data) => {
+            if (this.active && (this.busyVersions[id] ?? 0) === version) this.busyBlocks.set(key, data);
+            return data;
+        }).finally(() => {
+            if (this.pendingBusyBlocks.get(key) === request) this.pendingBusyBlocks.delete(key);
+        });
+        this.pendingBusyBlocks.set(key, request);
+        return request;
+    }
 
     #terms: Promise<TermResponse> | undefined;
     #processed = new Map<string, Promise<ProcessedEvents>>();
     readonly ownScheduleVersions: Record<string, number> = {};
 
     invalidateOwnSchedule(term: string): void {
+        this.invalidateBusyBlocks('you');
         this.ownScheduleVersions[term] = (this.ownScheduleVersions[term] ?? 0) + 1;
         this.#processed.delete(term);
         this.preferences.invalidateTerm(term);

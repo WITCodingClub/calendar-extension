@@ -8,6 +8,7 @@
 	import MeetingPreferences from './MeetingPreferences.svelte';
 	import MeetingResults from './MeetingResults.svelte';
 	import MeetingLinks from './MeetingLinks.svelte';
+	import SavedMeetings from './SavedMeetings.svelte';
 	import { scheduleAvailability } from './availability';
 	const ui = getPanelUi();
 	const militaryTime = $derived($userSettings?.military_time ?? true);
@@ -49,7 +50,6 @@
 		<Button variant="text" onclick={() => ui.friendActions?.retrySchedules()}
 			>Reload schedules</Button
 		>
-		<MeetingLinks />
 	{:else}
 		{#if ui.friendsError}<p class="text-sm text-error" role="alert">{ui.friendsError}</p>
 			<Button variant="text" onclick={() => ui.friendActions?.reload()}>Reload friends</Button>
@@ -75,4 +75,6 @@
 				>{/if}
 		</div>
 	{/if}
+	<MeetingLinks />
+	<SavedMeetings week={ui.week} {militaryTime} />
 </main>

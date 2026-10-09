@@ -71,20 +71,82 @@ interface FriendIdentity {
     name: string;
 }
 
+type SharingLevel = 'full' | 'availability_only';
+
+interface FriendVisibility {
+    mine: SharingLevel;
+    theirs: SharingLevel;
+}
+
+interface FriendVisibilityResponse extends FriendVisibility {
+    friend_id: string;
+}
+
+interface Friend extends FriendIdentity {
+    expires_at?: string | null;
+    visibility?: FriendVisibility | null;
+}
+
+type FriendRequestInput = ({ friend_id: string } | { friend_email: string }) & {
+    expires_at?: string | null;
+    visibility?: SharingLevel;
+};
+
+interface FriendExpiryResponse {
+    friendship_id: string;
+    status: 'pending' | 'accepted';
+    expires_at: string | null;
+    expiry_change: 'shortened' | 'proposed' | 'unchanged';
+    friend: FriendIdentity;
+}
+
+type MeetingLinkDuration = 15 | 30 | 45 | 60 | 90 | 120;
+interface MeetingLinkInput {
+    starts_on: string;
+    ends_on: string;
+    duration_minutes: MeetingLinkDuration;
+    title?: string;
+    expires_at?: string;
+}
+
+interface MeetingLink {
+    id: string;
+    title: string | null;
+    starts_on: string;
+    ends_on: string;
+    duration_minutes: MeetingLinkDuration;
+    expires_at: string;
+    status: 'active' | 'used' | 'revoked' | 'expired';
+    created_at: string;
+    booking: {
+        meeting_id: string;
+        start_time: string;
+        end_time: string;
+        guest_name: string | null;
+        guest_email: string | null;
+    } | null;
+}
+
+interface MeetingLinkCreateResponse { meeting_link: MeetingLink & { url: string } }
+interface MeetingLinkResponse { meeting_link: MeetingLink }
+interface MeetingLinksResponse { meeting_links: MeetingLink[] }
+
 interface FriendRequestIncoming {
     request_id: string;
     from: FriendIdentity;
     created_at: string;
+    expires_at?: string | null;
 }
 
 interface FriendRequestOutgoing {
     request_id: string;
     to: FriendIdentity;
     created_at: string;
+    expires_at?: string | null;
 }
 
 interface FriendListResponse {
-    friends: FriendIdentity[];
+    friends: Friend[];
 }
 
 interface FriendRequestsResponse {
@@ -94,11 +156,13 @@ interface FriendRequestsResponse {
 
 interface FriendRequestCreateResponse {
     request_id: string;
+    expires_at?: string | null;
 }
 
 interface FriendRequestAcceptResponse {
     friendship_id: string;
     friend: FriendIdentity;
+    expires_at?: string | null;
 }
 
 interface OkResponse {
@@ -272,6 +336,10 @@ interface NotificationSetting {
 }
 
 export {
+    type Friend, type FriendRequestInput, type FriendExpiryResponse,
+    type SharingLevel, type FriendVisibility, type FriendVisibilityResponse,
+    type MeetingLinkDuration, type MeetingLinkInput, type MeetingLink,
+    type MeetingLinkCreateResponse, type MeetingLinkResponse, type MeetingLinksResponse,
     FEATURE_FLAGS,
     type Building,
     type CalendarConfig, type Course, type CurrentTerm, type DayItem,
