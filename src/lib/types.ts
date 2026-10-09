@@ -257,6 +257,17 @@ interface NextTerm {
     end_date?: string | null;
 }
 
+// A term as GET /api/v1/catalog/terms/current and /next return it.
+interface CatalogTerm {
+    uid: number;
+    name: string;
+    season: string;
+    year: number;
+    start_date?: string;
+    end_date?: string;
+    section_count?: number;
+}
+
 interface TermResponse {
     current_term: CurrentTerm | null;
     next_term: NextTerm | null;
@@ -345,7 +356,7 @@ export {
     FEATURE_FLAGS,
     type Building,
     type CalendarConfig, type Course, type CurrentTerm, type DayItem,
-    type EventPreferences, type FeatureFlagsResponse, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location,
+    type EventPreferences, type FeatureFlagsResponse, type FriendIdentity, type FriendListResponse, type FriendProcessedEventsResponse, type FriendRequestAcceptResponse, type FriendRequestCreateResponse, type FriendRequestIncoming, type FriendRequestOutgoing, type FriendRequestsResponse, type GetPreferencesResponse, type isProcessed, type Location, type CatalogTerm,
     type MeetingTime, type NextTerm, type NotificationMethod, type NotificationSetting, type NotificationType, type OkResponse, type Preview, type ProcessedEvents, type Professor, type ReminderSettings, type ResolvedData, type ResponseData, type TemplateVariables, type Term, type TermResponse, type UniversityCalendarEvent, type UniversityEventCategory, type UniversityEventCategoryWithCount, type UserSettings
 };
 

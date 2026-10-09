@@ -1,7 +1,7 @@
 import { EnvironmentManager } from "./environment";
 import { AuthError, handleUnauthorized, isUsableJwt } from "./auth";
 import type {
-    ProcessingTerm, BatchProcessingResponse, FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse,
+    CatalogTerm, CurrentTerm, ProcessingTerm, BatchProcessingResponse, FeatureFlagsResponse, FriendListResponse, FriendProcessedEventsResponse,
     FriendRequestAcceptResponse, FriendRequestCreateResponse, FriendRequestsResponse,
     GetPreferencesResponse, isProcessed, OkResponse, ProcessedEvents, TermResponse,
     UniversityCalendarEvent, UniversityEventCategoryWithCount, UserSettings,
@@ -107,22 +107,10 @@ export class API {
         return this.readJson<unknown>(response, failureMessage);
     }
 
-    public static async checkFeatureFlag(flagName:string) {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/flag_enabled?flag_name=${flagName}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-
-        if (!response.ok) {
-            console.error(`Feature flag API error for ${flagName}:`, response.status, response.statusText);
-        }
-
-        const data = await response.json();
-        return data.is_enabled;
+    // Reads one flag from the full list. An unknown flag is off.
+    public static async checkFeatureFlag(flagName: string): Promise<boolean> {
+        const { feature_flags } = await this.getAllFeatureFlags();
+        return feature_flags?.[flagName] ?? false;
     }
 
     public static async getAllFeatureFlags(): Promise<FeatureFlagsResponse> {
@@ -143,23 +131,40 @@ export class API {
         return response.json();
     }
 
+    // The current and the next term from the public catalog API. The catalog
+    // answers 404 when a term does not exist yet, which becomes null here.
     public static async getTerms(): Promise<TermResponse> {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/terms/current_and_next`, {
-            method: 'GET'
-        });
-        return validatedTerms(await this.readJson<TermResponse>(response, 'Failed to fetch terms'));
+        const [current_term, next_term] = await Promise.all([
+            this.getCatalogTerm(`${baseUrl}/v1/catalog/terms/current`),
+            this.getCatalogTerm(`${baseUrl}/v1/catalog/terms/next`)
+        ]);
+        return validatedTerms({ current_term, next_term });
     }
 
-    public static async getUserEmail(): Promise<{ email: string }> {
+    private static async getCatalogTerm(url: string): Promise<CurrentTerm | null> {
+        const response = await fetch(url, { method: 'GET' });
+        if (response.status === 404) return null;
+
+        const { data } = await this.readJson<{ data: CatalogTerm }>(response, 'Failed to fetch terms');
+        return { id: data.uid, name: data.name, start_date: data.start_date, end_date: data.end_date };
+    }
+
+    // GET /api/user returns the public id, the email, and the ICS URL together.
+    public static async getUser(): Promise<{ pub_id: string; email: string; ics_url: string }> {
         const baseUrl = await this.getBaseUrl();
-        const response = await this.authedFetch(`${baseUrl}/user/email`, {
+        const response = await this.authedFetch(`${baseUrl}/user`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${await this.getJwtToken()}`
             }
         });
-        return this.readJson(response, 'Failed to fetch the user email');
+        return this.readJson(response, 'Failed to fetch the user');
+    }
+
+    public static async getUserEmail(): Promise<{ email: string }> {
+        const { email } = await this.getUser();
+        return { email };
     }
 
     public static async userSettings(settings?: Partial<UserSettings>): Promise<UserSettings> {
@@ -192,13 +197,11 @@ export class API {
     public static async userIsProcessed(termUid: string): Promise<isProcessed> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/is_processed`, {
-            method: 'POST',
+        const response = await this.authedFetch(`${baseUrl}/user/processed_events/status?term_uid=${encodeURIComponent(termUid)}`, {
+            method: 'GET',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ term_uid: termUid })
+                'Authorization': `Bearer ${token}`
+            }
         });
         return processedStatus(await this.readJson<isProcessed>(response, 'Failed to check your schedule status'));
     }
@@ -206,13 +209,11 @@ export class API {
     public static async getProcessedEvents(termUid: string): Promise<ProcessedEvents> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/processed_events`, {
-            method: 'POST',
+        const response = await this.authedFetch(`${baseUrl}/user/processed_events?term_uid=${encodeURIComponent(termUid)}`, {
+            method: 'GET',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ term_uid: termUid })
+                'Authorization': `Bearer ${token}`
+            }
         });
         const data = await this.readJson<ProcessedEvents>(response, 'Failed to fetch your schedule');
         validateCourses(data?.classes);
@@ -312,13 +313,11 @@ export class API {
     public static async friendIsProcessed(friendId: string, termUid: string): Promise<isProcessed> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/is_processed`, {
-            method: 'POST',
+        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/processed_events/status?term_uid=${encodeURIComponent(termUid)}`, {
+            method: 'GET',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ term_uid: termUid })
+                'Authorization': `Bearer ${token}`
+            }
         });
         return processedStatus(await this.readJson<isProcessed>(response, 'Failed to check the friend schedule status'));
     }
@@ -326,13 +325,11 @@ export class API {
     public static async getFriendProcessedEvents(friendId: string, termUid: string): Promise<FriendProcessedEventsResponse> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/processed_events`, {
-            method: 'POST',
+        const response = await this.authedFetch(`${baseUrl}/friends/${friendId}/processed_events?term_uid=${encodeURIComponent(termUid)}`, {
+            method: 'GET',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ term_uid: termUid })
+                'Authorization': `Bearer ${token}`
+            }
         });
         return this.readJson(response, `Failed to fetch the schedule of friend ${friendId}`);
     }
@@ -436,15 +433,8 @@ export class API {
     }
 
     public static async getIcsUrl(): Promise<{ ics_url: string }> {
-        const baseUrl = await this.getBaseUrl();
-        const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/ics_url`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        return response.json();
+        const { ics_url } = await this.getUser();
+        return { ics_url };
     }
 
     public static async getUniversityEventCategories(): Promise<{ categories: UniversityEventCategoryWithCount[] }> {
@@ -659,7 +649,7 @@ export class API {
     public static async getNotificationStatus(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string | null }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/notifications_status`, {
+        const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -671,9 +661,9 @@ export class API {
     public static async disableNotifications(duration?: number): Promise<{ notifications_disabled: boolean; notifications_disabled_until: string }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const body = duration ? JSON.stringify({ duration }) : undefined;
-        const response = await this.authedFetch(`${baseUrl}/user/notifications/disable`, {
-            method: 'POST',
+        const body = JSON.stringify(duration ? { disabled: true, duration } : { disabled: true });
+        const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
+            method: 'PATCH',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
@@ -686,12 +676,13 @@ export class API {
     public static async enableNotifications(): Promise<{ notifications_disabled: boolean; notifications_disabled_until: null }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/notifications/enable`, {
-            method: 'POST',
+        const response = await this.authedFetch(`${baseUrl}/user/notifications`, {
+            method: 'PATCH',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify({ disabled: false })
         });
         return this.readJson(response, 'Failed to enable notifications');
     }
@@ -744,7 +735,7 @@ export class API {
     public static async requestOAuthForEmail(email: string): Promise<{ oauth_url?: string, calendar_id?: string, error?: string }> {
         const baseUrl = await this.getBaseUrl();
         const token = await this.getJwtToken();
-        const response = await this.authedFetch(`${baseUrl}/user/gcal`, {
+        const response = await this.authedFetch(`${baseUrl}/user/google_calendar`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
