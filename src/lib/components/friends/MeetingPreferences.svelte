@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { Switch, TextFieldOutlined } from 'm3-svelte';
-	import { formatTime } from './formatTime';
-	import { timeMinutes, minutesTime } from './availability';
-	import { type MeetingPreferences as Preferences } from './types';
-	import { validDate } from '$lib/friendSchedule';
-	import { getPanelUi } from '$lib/panelUi.svelte';
+	import { normalizeTime, timeMinutes } from '$lib/datetime';
+	import { validDate } from '$lib/friends/schedule';
+	import type { MeetingPreferences as Preferences } from '$lib/friends/types';
+	import { getPanelUi } from '$lib/panel/ui.svelte';
 	const ui = getPanelUi();
 	$effect(() => {
 		if (ui.hasAvailabilityOnly) preferences.betweenClasses = false;
@@ -29,11 +28,6 @@
 	const start = $derived(timeMinutes(preferences.dailyStart));
 	const end = $derived(timeMinutes(preferences.dailyEnd));
 	const timeError = $derived(start === undefined || end === undefined || start >= end);
-
-	function normalizeTime(value: string, format = militaryTime) {
-		const minutes = timeMinutes(value);
-		return minutes === undefined ? value : formatTime(minutesTime(minutes), format);
-	}
 
 	$effect(() => {
 		const format = militaryTime;
@@ -82,13 +76,13 @@
 			label="Daily start"
 			error={timeError}
 			bind:value={preferences.dailyStart}
-			onblur={() => (preferences.dailyStart = normalizeTime(preferences.dailyStart))}
+			onblur={() => (preferences.dailyStart = normalizeTime(preferences.dailyStart, militaryTime))}
 		/>
 		<TextFieldOutlined
 			label="Daily end"
 			error={timeError}
 			bind:value={preferences.dailyEnd}
-			onblur={() => (preferences.dailyEnd = normalizeTime(preferences.dailyEnd))}
+			onblur={() => (preferences.dailyEnd = normalizeTime(preferences.dailyEnd, militaryTime))}
 		/>
 	</div>
 	<details

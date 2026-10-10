@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import PanelShell from '$lib/components/PanelShell.svelte';
-	import { PanelUi, setPanelUi } from '$lib/panelUi.svelte';
+	import PanelShell from '$lib/components/panel/PanelShell.svelte';
+	import { PanelUi, setPanelUi } from '$lib/panel/ui.svelte';
 	import { featureFlags } from '$lib/featureFlags';
-	import { PanelSession, setPanelSession } from '$lib/panelSession';
-	import { enrolledTerms, icsUrl, processedData, userSettings } from '$lib/store';
+	import { PanelSession, setPanelSession } from '$lib/panel/session';
+	import { resetStores } from '$lib/stores';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
-	import { restorePanelHandoff } from '$lib/panelHandoff';
+	import { restorePanelHandoff } from '$lib/panel/handoff';
 	import { snackbar } from 'm3-svelte';
 
 	let { children } = $props();
@@ -60,10 +60,7 @@
 			// Drop the data of the environment that the user left, then start a
 			// new session. The pages mount again and load for the new environment.
 			session.active = false;
-			processedData.set([]);
-			userSettings.set(undefined);
-			icsUrl.set(undefined);
-			enrolledTerms.set([]);
+			resetStores();
 			featureFlags.clearCache();
 			session = new PanelSession();
 			ui = new PanelUi();

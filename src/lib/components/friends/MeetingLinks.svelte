@@ -2,16 +2,22 @@
 	import { Button, SelectOutlined, TextFieldOutlined } from 'm3-svelte';
 	import { onMount } from 'svelte';
 	import { API, ApiError } from '$lib/api';
-	import { getPanelUi } from '$lib/panelUi.svelte';
-	import { getPanelSession } from '$lib/panelSession';
+	import { getPanelUi } from '$lib/panel/ui.svelte';
+	import { getPanelSession } from '$lib/panel/session';
 	import type { MeetingLink, MeetingLinkDuration } from '$lib/types';
-	import PreviewDialog from './PreviewDialog.svelte';
-	import { calendarDateTime, shiftDate, todayDate } from '$lib/calendarDates';
+	import PreviewDialog from '$lib/components/ui/PreviewDialog.svelte';
+	import {
+		CAMPUS_TIME_ZONE,
+		calendarDateTime,
+		endOfCampusDay,
+		shiftDate,
+		todayDate
+	} from '$lib/datetime';
 	const ui = getPanelUi();
 	const session = getPanelSession();
 	let creating = $state(false);
 	let title = $state('');
-	let expiry = $state(shiftDate(todayDate('America/New_York'), 7));
+	let expiry = $state(shiftDate(todayDate(CAMPUS_TIME_ZONE), 7));
 	let startsOn = $state('');
 	let endsOn = $state('');
 	let duration = $state('30');
@@ -56,7 +62,7 @@
 
 	function openCreate() {
 		title = '';
-		expiry = shiftDate(todayDate('America/New_York'), 7);
+		expiry = shiftDate(todayDate(CAMPUS_TIME_ZONE), 7);
 		startsOn = ui.preferences.from;
 		endsOn = ui.preferences.until;
 		duration = durations.includes(Number(ui.preferences.duration)) ? ui.preferences.duration : '30';
@@ -71,15 +77,13 @@
 	async function generate() {
 		if (submitting || attempted || !session.active) return;
 		try {
-			const today = todayDate('America/New_York');
+			const today = todayDate(CAMPUS_TIME_ZONE);
 			calendarDateTime(startsOn, '00:00');
 			calendarDateTime(endsOn, '00:00');
 			if (startsOn < today || endsOn < startsOn || endsOn > shiftDate(startsOn, 29))
 				throw new Error('Choose a future date range of 30 days or fewer.');
 			if (!durations.includes(Number(duration))) throw new Error('Choose a supported duration.');
-			const expiresAt = new Date(
-				Date.parse(calendarDateTime(shiftDate(expiry, 1), '00:00')) - 1
-			).toISOString();
+			const expiresAt = endOfCampusDay(expiry);
 			if (Date.parse(expiresAt) <= Date.now() || Date.parse(expiresAt) > Date.now() + 60 * 86400000)
 				throw new Error('Choose an expiry within the next 60 days.');
 			if (title.trim().length > 200)

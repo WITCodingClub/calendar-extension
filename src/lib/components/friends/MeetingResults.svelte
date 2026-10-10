@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { Button, snackbar } from 'm3-svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import type { FreePeriod } from './types';
-	import { minutesTime, meetingSlot, meetingMessage } from './availability';
-	import { processedData } from '$lib/store';
-	import { formatTime } from './formatTime';
-	import { getPanelUi } from '$lib/panelUi.svelte';
+	import { formatTime, minutesTime } from '$lib/datetime';
+	import { meetingMessage, meetingSlot } from '$lib/friends/availability';
+	import type { CalendarDestination } from '$lib/friends/savedMeetings';
+	import type { FreePeriod } from '$lib/friends/types';
+	import { getPanelUi } from '$lib/panel/ui.svelte';
+	import { processedData, termClasses } from '$lib/stores';
 	const ui = getPanelUi();
 	let {
 		periods,
@@ -50,14 +51,13 @@
 			),
 			title: '',
 			location: '',
-			destinations: ['ics'] as Array<'google' | 'microsoft' | 'ics'>,
+			destinations: ['ics'] as CalendarDestination[],
 			destinationDefaultsPending: true,
 			inviteFriends: true,
 			frequency: 'one_time' as const,
 			idempotencyKey: crypto.randomUUID()
 		};
-		const ownCourses = $processedData.find((item) => String(item.termId) === ui.scheduleTerm)
-			?.responseData.classes;
+		const ownCourses = termClasses($processedData, ui.scheduleTerm);
 		const error = meetingMessage(ui, ownCourses, draft.slot);
 		if (error) {
 			snackbar(error, undefined, true);

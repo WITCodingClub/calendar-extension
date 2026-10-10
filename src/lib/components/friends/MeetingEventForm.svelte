@@ -1,14 +1,13 @@
 <script lang="ts">
 	import { Button, Checkbox, SelectOutlined, TextFieldOutlined } from 'm3-svelte';
-	import type { Participant, PreviewSlot } from './types';
-	import { dateLabel } from '$lib/calendarDates';
-	import { minutesTime, timeMinutes } from './availability';
-	import { formatTime } from './formatTime';
+	import { dateLabel, normalizeTime } from '$lib/datetime';
+	import type { CalendarDestination } from '$lib/friends/savedMeetings';
+	import type { Participant, PreviewSlot } from '$lib/friends/types';
 	let {
 		slot,
 		title = $bindable(''),
 		location = $bindable(''),
-		destinations = $bindable<Array<'google' | 'microsoft' | 'ics'>>(['ics']),
+		destinations = $bindable<CalendarDestination[]>(['ics']),
 		inviteFriends = $bindable(true),
 		frequency = $bindable<'one_time' | 'weekly'>('one_time'),
 		availableDestinations,
@@ -27,10 +26,10 @@
 		slot: PreviewSlot;
 		title?: string;
 		location?: string;
-		destinations?: Array<'google' | 'microsoft' | 'ics'>;
+		destinations?: CalendarDestination[];
 		inviteFriends?: boolean;
 		frequency?: 'one_time' | 'weekly';
-		availableDestinations: Array<'google' | 'microsoft' | 'ics'>;
+		availableDestinations: CalendarDestination[];
 		accountsLoading: boolean;
 		accountsError: string;
 		submitting: boolean;
@@ -43,11 +42,6 @@
 		militaryTime: boolean;
 		message?: string;
 	} = $props();
-
-	function normalize(value: string, format = militaryTime): string {
-		const minutes = timeMinutes(value);
-		return minutes === undefined ? value : formatTime(minutesTime(minutes), format);
-	}
 </script>
 
 <div class="gap-4 grid">
@@ -58,7 +52,7 @@
 		<div class="min-w-0">
 			<p class="text-sm font-medium">{dateLabel(slot.date)}</p>
 			<p class="mt-1 text-lg font-semibold tabular-nums">
-				{normalize(slot.start)}–{normalize(slot.end)}
+				{normalizeTime(slot.start, militaryTime)}–{normalizeTime(slot.end, militaryTime)}
 			</p>
 		</div>
 		<div class="shrink-0">
