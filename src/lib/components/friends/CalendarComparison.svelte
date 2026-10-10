@@ -1,21 +1,27 @@
 <script lang="ts">
+	import { CALENDAR_ICON } from '$lib/icons';
 	import { Button, ConnectedButtons } from 'm3-svelte';
-	import WeekNavigation from '$lib/components/WeekNavigation.svelte';
-	import { todayDate } from '$lib/calendarDates';
-	import CalendarGrid, { type CalendarGridEvent } from '$lib/components/CalendarGrid.svelte';
-	import type { Course, DayItem } from '$lib/types';
-	import PreviewDialog from './PreviewDialog.svelte';
-	import { type Participant, type PreviewSlot } from './types';
-	import { dateLabel, mergeBusy, minutesTime, timeMinutes, weekDates } from './availability';
-	import { formatTime } from './formatTime';
-	import { getPanelUi } from '$lib/panelUi.svelte';
 	import { untrack } from 'svelte';
-	import { busyForRange } from '$lib/friendSchedule';
-	import { availabilityMessage } from './availability';
+	import { dayFlags, DAYS } from '$lib/calendar/days';
+	import { positionEvents, syntheticCourse, type CalendarGridEvent } from '$lib/calendar/layout';
+	import {
+		dateLabel,
+		formatTime,
+		minutesTime,
+		timeMinutes,
+		todayDate,
+		weekDates
+	} from '$lib/datetime';
+	import { availabilityMessage, mergeBusy } from '$lib/friends/availability';
+	import { busyEndMinutes, busyForRange } from '$lib/friends/schedule';
+	import type { Participant, PreviewSlot } from '$lib/friends/types';
+	import { getPanelUi } from '$lib/panel/ui.svelte';
+	import type { Course, DayItem } from '$lib/types';
+	import CalendarGrid from '$lib/components/calendar/CalendarGrid.svelte';
+	import PreviewDialog from '$lib/components/ui/PreviewDialog.svelte';
+	import WeekNavigation from '$lib/components/ui/WeekNavigation.svelte';
 	const ui = getPanelUi();
-	function endMinutes(value: string): number {
-		return value === '24:00' ? 1440 : timeMinutes(value)!;
-	}
+	const endMinutes = (value: string) => busyEndMinutes(value)!;
 
 	let {
 		participants,
@@ -50,13 +56,7 @@
 	const visiblePeople = $derived(
 		comparison ? participants : participants.filter((person) => person.id === 'you')
 	);
-	const days: DayItem[] = [
-		{ key: 'monday', label: 'Monday', abbr: 'M', order: 0 },
-		{ key: 'tuesday', label: 'Tuesday', abbr: 'T', order: 1 },
-		{ key: 'wednesday', label: 'Wednesday', abbr: 'W', order: 2 },
-		{ key: 'thursday', label: 'Thursday', abbr: 'Th', order: 3 },
-		{ key: 'friday', label: 'Friday', abbr: 'F', order: 4 }
-	];
+	const days = DAYS.slice(0, 5);
 	const dates = $derived(weekDates(week));
 	const busyMessage = $derived(availabilityMessage(ui, dates[0], dates[4]));
 	$effect(() => {
@@ -104,37 +104,15 @@
 		end: string,
 		id: string
 	): CalendarGridEvent {
-		const course: Course = {
-			title,
-			prefix: '',
-			course_number: 0,
-			schedule_type: '',
-			term: { uid: 0, season: '', year: 0 },
-			professor: { first_name: '', last_name: '', email: '' },
-			meeting_times: [
-				{
-					id,
-					begin_time: start,
-					end_time: end,
-					start_date: dates[day.order],
-					end_date: dates[day.order],
-					monday: day.key === 'monday',
-					tuesday: day.key === 'tuesday',
-					wednesday: day.key === 'wednesday',
-					thursday: day.key === 'thursday',
-					friday: day.key === 'friday',
-					saturday: false,
-					sunday: false,
-					location: {
-						building: {
-							name: '',
-							abbreviation: ''
-						},
-						rooms: []
-					}
-				}
-			]
-		};
+		const course = syntheticCourse(title, {
+			id,
+			begin_time: start,
+			end_time: end,
+			start_date: dates[day.order],
+			end_date: dates[day.order],
+			...dayFlags(day.key),
+			location: { building: { name: '', abbreviation: '' }, rooms: [] }
+		});
 		return {
 			course,
 			meeting: course.meeting_times[0],
@@ -240,31 +218,6 @@
 		return result;
 	}
 
-	function positionEvents(events: CalendarGridEvent[]) {
-		const sorted = events.toSorted((a, b) => a.startOffset - b.startOffset);
-		let cluster: CalendarGridEvent[] = [];
-		let clusterEnd = -Infinity;
-		let laneEnds: number[] = [];
-		function finishCluster() {
-			for (const item of cluster) item.overlapCount = laneEnds.length;
-		}
-		for (const item of sorted) {
-			if (item.startOffset >= clusterEnd) {
-				finishCluster();
-				cluster = [];
-				laneEnds = [];
-			}
-			let lane = laneEnds.findIndex((end) => end <= item.startOffset);
-			if (lane < 0) lane = laneEnds.length;
-			laneEnds[lane] = item.startOffset + item.width;
-			item.stackIndex = lane;
-			cluster.push(item);
-			clusterEnd = Math.max(...laneEnds);
-		}
-		finishCluster();
-		return sorted;
-	}
-
 	const stackedMeetings = $derived.by(() => {
 		const byDay: Record<string, CalendarGridEvent[]> = {};
 		for (const day of days) {
@@ -354,10 +307,7 @@
 			class="gap-3 rounded-xl border-primary bg-primary-container p-3 text-on-primary-container flex items-center border-2 border-dashed"
 		>
 			<svg aria-hidden="true" class="h-6 w-6 shrink-0" viewBox="0 0 24 24"
-				><path
-					fill="currentColor"
-					d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2m0 16H5V9h14z"
-				/></svg
+				><path fill="currentColor" d={CALENDAR_ICON} /></svg
 			>
 			<div class="min-w-0 flex-1">
 				<h3>Planned meeting</h3>
@@ -392,7 +342,6 @@
 			{militaryTime}
 			{startHour}
 			{latestHour}
-			dayOrder={days}
 			{dates}
 			earliestClassOffsetRem={0}
 			focusOffsetRem={proposedOffset}

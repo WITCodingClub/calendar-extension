@@ -1,5 +1,24 @@
 import { test, expect } from './extension.fixture';
 import { chooseRadio, fitsViewport } from './helpers';
+import { origin } from './backend';
+
+test('Settings starts Google account connection without an email', async ({ extension }) => {
+	const { page, context } = extension;
+	const endpoint = `${origin}/api/user/google_calendar`;
+	await context.route(endpoint, async (route) => {
+		if (route.request().method() !== 'POST') return route.fallback();
+		await route.fulfill({ json: { error: 'Google connection is temporarily unavailable' } });
+	});
+	await extension.open();
+	await chooseRadio(page, 'Settings');
+	await expect(page.getByLabel('Google account email')).toHaveCount(0);
+	const request = page.waitForRequest(
+		(request) => request.url() === endpoint && request.method() === 'POST'
+	);
+	await page.getByRole('button', { name: 'Add Account', exact: true }).click();
+	expect((await request).postDataJSON()).toEqual({});
+	await expect(page.getByText('Google connection is temporarily unavailable')).toBeVisible();
+});
 
 test('Settings loads and scrolls every section without changing values', async ({ extension }) => {
 	const { page, network } = extension;

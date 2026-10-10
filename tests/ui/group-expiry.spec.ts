@@ -2,7 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { test, expect } from './extension.fixture';
 import { friends, now, origin } from './backend';
 import { chooseRadio, fitsViewport, toggle } from './helpers';
-import { calendarDateTime, shiftDate } from '../../src/lib/calendarDates';
+import { calendarDateTime, shiftDate } from '../../src/lib/datetime';
 
 function studyGroup(expires_at: string | null = '2026-10-20T03:45:00Z') {
 	return { id: 'group-study', name: 'Study group', members: [friends[0]], expires_at };

@@ -1,23 +1,31 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { getPanelUi } from '$lib/panelUi.svelte';
-	import { getPanelSession } from '$lib/panelSession';
+	import { getPanelUi } from '$lib/panel/ui.svelte';
+	import { getPanelSession } from '$lib/panel/session';
 	import { API, ApiError } from '$lib/api';
-	import type { SavedMeetingInput } from '$lib/savedMeetings';
-	import type { MeetingDraft } from './types';
-	import { processedData, userSettings } from '$lib/store';
-	import { calendarDateTime, dateLabel, shiftDate, weekDates } from '$lib/calendarDates';
-	import { meetingMessage, minutesTime, timeMinutes } from './availability';
+	import type { CalendarDestination, SavedMeetingInput } from '$lib/friends/savedMeetings';
+	import type { MeetingDraft } from '$lib/friends/types';
+	import { processedData, termClasses, userSettings } from '$lib/stores';
+	import {
+		calendarDateTime,
+		dateLabel,
+		minutesTime,
+		shiftDate,
+		timeMinutes,
+		weekDates
+	} from '$lib/datetime';
+	import { meetingMessage } from '$lib/friends/availability';
+	import { busyEndMinutes } from '$lib/friends/schedule';
+	import PreviewDialog from '$lib/components/ui/PreviewDialog.svelte';
 	import FreePeriodResult from './FreePeriodResult.svelte';
 	import MeetingEventForm from './MeetingEventForm.svelte';
-	import PreviewDialog from './PreviewDialog.svelte';
 	import { Button, snackbar } from 'm3-svelte';
 	import { untrack } from 'svelte';
 
 	const ui = getPanelUi();
 	const session = getPanelSession();
-	let availableDestinations = $state<Array<'google' | 'microsoft' | 'ics'>>(['ics']);
+	let availableDestinations = $state<CalendarDestination[]>(['ics']);
 	let accountsLoading = $state(false);
 	let accountsError = $state('');
 	const submitting = $derived(ui.meetingDraft?.submitting ?? false);
@@ -40,9 +48,7 @@
 				: ui.selected.includes(person.id)
 		)
 	);
-	const ownCourses = $derived(
-		$processedData.find((item) => String(item.termId) === ui.scheduleTerm)?.responseData.classes
-	);
+	const ownCourses = $derived(termClasses($processedData, ui.scheduleTerm));
 
 	async function loadDestinations() {
 		const draft = ui.meetingDraft as
@@ -70,7 +76,7 @@
 							!account.needs_reauth &&
 							!account.token_revoked
 					)
-			) as Array<'google' | 'microsoft' | 'ics'>;
+			) as CalendarDestination[];
 		} catch (failure) {
 			if (
 				session.active &&
@@ -123,7 +129,7 @@
 				)
 					throw new Error('Choose an available destination calendar.');
 				const start = timeMinutes(draft.slot.start)!;
-				const end = draft.slot.end === '24:00' ? 1440 : timeMinutes(draft.slot.end)!;
+				const end = busyEndMinutes(draft.slot.end)!;
 				if (end - start > 720) throw new Error('Meetings can last up to 12 hours.');
 				const payload: SavedMeetingInput = {
 					title,

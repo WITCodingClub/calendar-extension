@@ -1,137 +1,73 @@
-import { derived, writable } from 'svelte/store';
 import { API } from './api';
 import { FEATURE_FLAGS } from './types';
 
-type FeatureFlagName = typeof FEATURE_FLAGS[number];
+type FeatureFlagName = (typeof FEATURE_FLAGS)[number];
 type FeatureFlagsState = Record<FeatureFlagName, boolean>;
 
-
-const featureFlagsStore = writable<FeatureFlagsState | null>(null);
-export const isLoadingFeatureFlags = writable<boolean>(false);
-export const featureFlagsError = writable<Error | null>(null);
-
 class FeatureFlagsService {
-    private cache: FeatureFlagsState | null = null;
-    private loadPromise: Promise<void> | null = null;
-    // clearCache() moves this on. A load that started before then must not
-    // write its flags, because they can belong to another environment.
-    private epoch = 0;
+	private cache: FeatureFlagsState | null = null;
+	private loadPromise: Promise<void> | null = null;
+	// clearCache() moves this on. A load that started before then must not
+	// write its flags, because they can belong to another environment.
+	private epoch = 0;
 
-    async loadFlags(force: boolean = false): Promise<void> {
-        if (this.loadPromise && !force) {
-            return this.loadPromise;
-        }
+	async loadFlags(force: boolean = false): Promise<void> {
+		if (this.loadPromise && !force) {
+			return this.loadPromise;
+		}
 
-        if (this.cache && !force) {
-            featureFlagsStore.set(this.cache);
-            return;
-        }
+		if (this.cache && !force) {
+			return;
+		}
 
-        this.loadPromise = this._fetchFlags();
-        return this.loadPromise;
-    }
+		this.loadPromise = this._fetchFlags();
+		return this.loadPromise;
+	}
 
-    private async _fetchFlags(): Promise<void> {
-        const epoch = this.epoch;
-        isLoadingFeatureFlags.set(true);
-        featureFlagsError.set(null);
+	private async _fetchFlags(): Promise<void> {
+		const epoch = this.epoch;
 
-        try {
-            const response = await API.getAllFeatureFlags();
-            if (epoch !== this.epoch) return;
-            const flags: FeatureFlagsState = {} as FeatureFlagsState;
+		try {
+			const response = await API.getAllFeatureFlags();
+			if (epoch !== this.epoch) return;
+			const flags: FeatureFlagsState = {} as FeatureFlagsState;
 
-            // Map the response to our FeatureFlagsState type
-            for (const flagName of FEATURE_FLAGS) {
-                flags[flagName as FeatureFlagName] = response.feature_flags[flagName] ?? false;
-            }
+			// Map the response to our FeatureFlagsState type
+			for (const flagName of FEATURE_FLAGS) {
+				flags[flagName as FeatureFlagName] = response.feature_flags[flagName] ?? false;
+			}
 
-            this.cache = flags;
-            featureFlagsStore.set(flags);
-        } catch (error) {
-            if (epoch !== this.epoch) return;
-            const err = error instanceof Error ? error : new Error('Failed to load feature flags');
-            featureFlagsError.set(err);
-            console.error('Error loading feature flags:', error);
+			this.cache = flags;
+		} catch (error) {
+			if (epoch !== this.epoch) return;
+			console.error('Error loading feature flags:', error);
 
-            // Set all flags to false on error
-            const flags: FeatureFlagsState = {} as FeatureFlagsState;
-            for (const flagName of FEATURE_FLAGS) {
-                flags[flagName as FeatureFlagName] = false;
-            }
-            this.cache = flags;
-            featureFlagsStore.set(flags);
-        } finally {
-            if (epoch === this.epoch) {
-                isLoadingFeatureFlags.set(false);
-                this.loadPromise = null;
-            }
-        }
-    }
+			// Set all flags to false on error
+			const flags: FeatureFlagsState = {} as FeatureFlagsState;
+			for (const flagName of FEATURE_FLAGS) {
+				flags[flagName as FeatureFlagName] = false;
+			}
+			this.cache = flags;
+		} finally {
+			if (epoch === this.epoch) {
+				this.loadPromise = null;
+			}
+		}
+	}
 
-    async isEnabled(flagName: FeatureFlagName): Promise<boolean> {
-        if (!this.cache) {
-            await this.loadFlags();
-        }
-        return this.cache?.[flagName] ?? false;
-    }
+	isEnabledSync(flagName: FeatureFlagName): boolean {
+		return this.cache?.[flagName] ?? false;
+	}
 
-    isEnabledSync(flagName: FeatureFlagName): boolean {
-        return this.cache?.[flagName] ?? false;
-    }
+	clearCache(): void {
+		this.epoch++;
+		this.loadPromise = null;
+		this.cache = null;
+	}
 
-    async checkMultiple(flagNames: FeatureFlagName[]): Promise<Record<string, boolean>> {
-        if (!this.cache) {
-            await this.loadFlags();
-        }
-
-        const results: Record<string, boolean> = {};
-        for (const flagName of flagNames) {
-            results[flagName] = this.cache?.[flagName] ?? false;
-        }
-        return results;
-    }
-
-    async getAllFlags(): Promise<FeatureFlagsState> {
-        if (!this.cache) {
-            await this.loadFlags();
-        }
-        return this.cache ?? ({} as FeatureFlagsState);
-    }
-
-    clearCache(): void {
-        this.epoch++;
-        this.loadPromise = null;
-        isLoadingFeatureFlags.set(false);
-        this.cache = null;
-        featureFlagsStore.set(null);
-    }
-
-    async reload(): Promise<void> {
-        return this.loadFlags(true);
-    }
+	async reload(): Promise<void> {
+		return this.loadFlags(true);
+	}
 }
 
 export const featureFlags = new FeatureFlagsService();
-
-export const featureFlagsStore$ = derived(
-    featureFlagsStore,
-    ($flags) => $flags ?? ({} as FeatureFlagsState)
-);
-
-export function createFeatureFlagStore(flagName: FeatureFlagName) {
-    return derived(
-        featureFlagsStore,
-        ($flags) => $flags?.[flagName] ?? false
-    );
-}
-
-export function useFeatureFlag(flagName: FeatureFlagName) {
-    const isEnabled = createFeatureFlagStore(flagName);
-
-    return {
-        isEnabled,
-        isLoading: isLoadingFeatureFlags,
-        error: featureFlagsError
-    };
-}

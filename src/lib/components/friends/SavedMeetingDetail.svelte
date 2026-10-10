@@ -1,13 +1,12 @@
 <script lang="ts">
 	import { Button, TextFieldOutlined } from 'm3-svelte';
 	import { API } from '$lib/api';
-	import { calendarDateTime, dateLabel } from '$lib/calendarDates';
+	import { calendarDateTime, dateLabel, formatTime } from '$lib/datetime';
 	import type {
 		SavedMeeting,
 		SavedMeetingChanges,
 		SavedMeetingOccurrence
-	} from '$lib/savedMeetings';
-	import { formatTime } from './formatTime';
+	} from '$lib/friends/savedMeetings';
 	let {
 		meeting,
 		occurrence,
@@ -102,38 +101,34 @@
 		}
 	}
 
-	async function remove() {
-		if (busy || !meeting.can_delete || meeting.role !== 'owner') return;
+	async function endMeeting(
+		action: (id: string) => Promise<void>,
+		done: (id: string) => void,
+		fallback: string
+	) {
 		const id = meeting.id;
 		busy = true;
 		onbusy(true);
 		error = '';
 		try {
-			await API.deleteSavedMeeting(id);
-			ondelete(id);
+			await action(id);
+			done(id);
 		} catch (failure) {
-			error = failure instanceof Error ? failure.message : 'Could not delete the meeting.';
+			error = failure instanceof Error ? failure.message : fallback;
 		} finally {
 			busy = false;
 			onbusy(false);
 		}
 	}
 
+	async function remove() {
+		if (busy || !meeting.can_delete || meeting.role !== 'owner') return;
+		await endMeeting((id) => API.deleteSavedMeeting(id), ondelete, 'Could not delete the meeting.');
+	}
+
 	async function leave() {
 		if (busy || !meeting.can_leave || meeting.role !== 'invitee') return;
-		const id = meeting.id;
-		busy = true;
-		onbusy(true);
-		error = '';
-		try {
-			await API.leaveSavedMeeting(id);
-			onleave(id);
-		} catch (failure) {
-			error = failure instanceof Error ? failure.message : 'Could not leave the meeting.';
-		} finally {
-			busy = false;
-			onbusy(false);
-		}
+		await endMeeting((id) => API.leaveSavedMeeting(id), onleave, 'Could not leave the meeting.');
 	}
 </script>
 
