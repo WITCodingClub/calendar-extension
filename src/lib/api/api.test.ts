@@ -29,6 +29,19 @@ beforeEach(() => {
 	vi.stubGlobal('fetch', fetchMock);
 });
 
+describe('API.requestOAuthForEmail', () => {
+	it.each([undefined, 'linked@example.test'])('starts OAuth with email %s', async (email) => {
+		const response = { oauth_url: 'https://calendar.example.test/auth/google_oauth2' };
+		fetchMock.mockImplementation(async () => json(response));
+
+		expect(await API.requestOAuthForEmail(email)).toEqual(response);
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe('https://calendar.example.test/api/user/google_calendar');
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(String(init?.body))).toEqual(email ? { email } : {});
+	});
+});
+
 describe('API.getTerms', () => {
 	it('reads the current and the next term from the catalog API', async () => {
 		fetchMock.mockImplementation(async (url) =>

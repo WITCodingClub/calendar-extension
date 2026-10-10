@@ -530,7 +530,7 @@ export class API {
 	}
 
 	public static async requestOAuthForEmail(
-		email: string
+		email?: string
 	): Promise<{ oauth_url?: string; calendar_id?: string; error?: string }> {
 		const response = await request('/user/google_calendar', { method: 'POST', body: { email } });
 		return response.json();
