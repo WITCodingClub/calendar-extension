@@ -13,9 +13,7 @@ if (!existsSync(extDir)) {
 }
 
 const manifestPath = join(extDir, 'manifest.json');
-const manifest = JSON.parse(
-	readFileSync(manifestPath, 'utf8').replace(/,\s*([\]}])/g, '$1')
-);
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8').replace(/,\s*([\]}])/g, '$1'));
 
 const patched = {};
 for (const [key, value] of Object.entries(manifest)) {
