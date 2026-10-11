@@ -135,6 +135,15 @@
 	.date-field :global(input::-webkit-calendar-picker-indicator) {
 		display: none;
 	}
+	@supports (-moz-appearance: none) {
+		.date-field :global(input) {
+			padding-inline-end: 0.75rem;
+			clip-path: inset(0 3.25rem 0 0);
+		}
+		.date-field :global(input:dir(rtl)) {
+			clip-path: inset(0 0 0 3.25rem);
+		}
+	}
 	.picker {
 		border: 0;
 		padding: 0;
