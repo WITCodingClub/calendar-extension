@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DateField from '$lib/components/ui/DateField.svelte';
 	import { ADD_PERSON_ICON, REFRESH_ICON } from '$lib/icons';
 	import {
 		Button,
@@ -291,9 +292,8 @@
 								: [{ text: 'Choose sharing', value: '' }, ...sharingOptions]}
 							disabled={ui.actionLoadingId !== ''}
 						/>
-						<TextFieldOutlined
+						<DateField
 							label="Friendship expires (optional)"
-							type="date"
 							min={todayDate(CAMPUS_TIME_ZONE)}
 							bind:value={expiryDate}
 						/>
@@ -360,9 +360,8 @@
 						options={sharingOptions}
 						disabled={ui.actionLoadingId !== ''}
 					/>
-					<TextFieldOutlined
+					<DateField
 						label="Friendship expires (optional)"
-						type="date"
 						min={todayDate(CAMPUS_TIME_ZONE)}
 						bind:value={ui.sendFriendExpiry}
 					/>
@@ -439,9 +438,8 @@
 							disabled={!!ui.groupLoadingId || unavailableGroup}
 							bind:value={groupName}
 						/>
-						<TextFieldOutlined
+						<DateField
 							label="Group end date (optional)"
-							type="date"
 							min={todayDate(CAMPUS_TIME_ZONE)}
 							disabled={!!ui.groupLoadingId || unavailableGroup}
 							bind:value={groupExpiryDate}
@@ -569,12 +567,13 @@
 									ui.acceptFriendVisibility[request.request_id] = event.currentTarget.value;
 							}}
 						/>
-						<TextFieldOutlined
+						<DateField
 							label={`New expiry for ${request.from.name} (optional)`}
-							type="date"
 							min={todayDate(CAMPUS_TIME_ZONE)}
-							value={requestExpiry[request.request_id] ?? ''}
-							onchange={(event) => (requestExpiry[request.request_id] = event.currentTarget.value)}
+							bind:value={
+								() => requestExpiry[request.request_id] ?? '',
+								(value) => (requestExpiry[request.request_id] = value)
+							}
 						/>
 						<Button
 							variant="text"
@@ -620,13 +619,13 @@
 						</ListItem>
 
 						<li class="preview-form-stack min-w-0 gap-2 pb-3 grid">
-							<TextFieldOutlined
+							<DateField
 								label={`New expiry for ${request.to.name} (optional)`}
-								type="date"
 								min={todayDate(CAMPUS_TIME_ZONE)}
-								value={requestExpiry[request.request_id] ?? ''}
-								onchange={(event) =>
-									(requestExpiry[request.request_id] = event.currentTarget.value)}
+								bind:value={
+									() => requestExpiry[request.request_id] ?? '',
+									(value) => (requestExpiry[request.request_id] = value)
+								}
 							/>
 							<Button
 								variant="text"

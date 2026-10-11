@@ -14,9 +14,23 @@ test('picker, planning preferences, meeting validation, draft, preview and link 
 		await fitsViewport(page, preferences);
 	}
 	await preferences.getByLabel('From', { exact: true }).fill('2026-10-07');
-	await preferences.getByLabel('Until', { exact: true }).fill('2026-10-06');
+	await preferences.getByRole('button', { name: 'Pick until', exact: true }).click();
+	const untilCalendar = preferences.getByRole('dialog', { name: 'Date picker', exact: true });
+	await untilCalendar.getByRole('button', { name: '2026-10-06', exact: true }).click();
+	await untilCalendar.getByRole('button', { name: 'OK', exact: true }).click();
+	await expect(preferences.getByLabel('Until', { exact: true })).toHaveValue('2026-10-06');
+	await expect(preferences.getByLabel('Until', { exact: true })).toHaveAttribute(
+		'aria-invalid',
+		'true'
+	);
+	await expect(preferences.getByText('This date is invalid. Pick a different date.')).toHaveCount(
+		2
+	);
 	await expect(page.getByText('Choose a valid date range.', { exact: true })).toBeVisible();
 	await preferences.getByLabel('Until', { exact: true }).fill('2026-10-23');
+	await expect(preferences.getByText('This date is invalid. Pick a different date.')).toHaveCount(
+		0
+	);
 	await preferences.getByLabel('Duration (minutes)', { exact: true }).fill('0');
 	await expect(
 		page.getByText('Enter a positive duration and a buffer of zero or more minutes.', {
@@ -68,6 +82,43 @@ test('picker, planning preferences, meeting validation, draft, preview and link 
 	}
 	await editor.getByLabel('Date', { exact: true }).fill('2026-10-08');
 	await editor.getByLabel('Date', { exact: true }).fill('2026-10-07');
+	await editor.getByRole('button', { name: 'Pick date', exact: true }).click();
+	const calendar = editor.getByRole('dialog', { name: 'Date picker', exact: true });
+	for (const width of [320, 480, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		await fitsViewport(page, calendar);
+	}
+	await expect(calendar.getByRole('button', { name: 'Previous year', exact: true })).toBeDisabled();
+	await expect(calendar.getByRole('button', { name: 'Next year', exact: true })).toBeDisabled();
+	await expect(
+		calendar.getByRole('button', { name: 'Choose year, 2026', exact: true })
+	).toBeDisabled();
+	await expect(
+		calendar.getByRole('button', { name: 'Previous month', exact: true })
+	).toBeDisabled();
+	await expect(calendar.getByRole('button', { name: '2026-10-01', exact: true })).toBeDisabled();
+	await calendar.getByRole('button', { name: 'Choose month, October', exact: true }).click();
+	const months = calendar.getByRole('group', { name: 'Months', exact: true });
+	await expect(months.getByRole('button', { name: 'September', exact: true })).toBeDisabled();
+	await expect(months.getByRole('button', { name: 'November', exact: true })).toBeEnabled();
+	await months.getByRole('button', { name: 'December', exact: true }).click();
+	await expect(calendar.getByRole('button', { name: '2026-12-21', exact: true })).toBeDisabled();
+	await expect(calendar.getByRole('button', { name: 'Next month', exact: true })).toBeDisabled();
+	await calendar.getByRole('button', { name: 'Cancel', exact: true }).click();
+	await editor.getByLabel('Date', { exact: true }).fill('2026-10-01');
+	await expect(editor.getByLabel('Date', { exact: true })).toHaveValue('2026-10-01');
+	await expect(editor.getByText('This date is invalid. Pick a different date.')).toBeVisible();
+	await expect(editor.getByRole('button', { name: 'Continue' })).toBeDisabled();
+	await editor.getByRole('button', { name: 'Pick date', exact: true }).click();
+	await calendar.getByRole('button', { name: '2026-10-07', exact: true }).click();
+	await editor.getByRole('button', { name: 'OK', exact: true }).click();
+	await expect(editor.getByLabel('Date', { exact: true })).toHaveValue('2026-10-07');
+	await expect(editor.getByText('This date is invalid. Pick a different date.')).toHaveCount(0);
+	await editor.getByRole('button', { name: 'Pick date', exact: true }).click();
+	await calendar.getByRole('button', { name: '2026-10-07', exact: true }).focus();
+	await page.keyboard.press('Escape');
+	await expect(calendar).toBeHidden();
+	await expect(editor).toBeVisible();
 	await editor.getByLabel('Duration (min)', { exact: true }).fill('30');
 	const slider = editor.getByRole('slider', { name: 'Meeting start time' });
 	await slider.focus();
@@ -109,6 +160,33 @@ test('picker, planning preferences, meeting validation, draft, preview and link 
 	const link = page.getByRole('dialog', { name: 'Create meeting link' });
 	await link.getByLabel('Meeting name (optional)').fill('Test link draft');
 	await link.getByLabel('Link expires').fill('2026-10-20');
+	await link.getByRole('button', { name: 'Pick link expires', exact: true }).click();
+	const linkCalendar = link.getByRole('dialog', { name: 'Date picker', exact: true });
+	await linkCalendar.getByRole('button', { name: 'Choose month, October', exact: true }).click();
+	await linkCalendar
+		.getByRole('group', { name: 'Months', exact: true })
+		.getByRole('button', { name: 'December', exact: true })
+		.click();
+	await expect(linkCalendar.getByRole('button', { name: '2026-12-04', exact: true })).toBeEnabled();
+	await expect(
+		linkCalendar.getByRole('button', { name: '2026-12-05', exact: true })
+	).toBeDisabled();
+	await linkCalendar.getByRole('button', { name: 'Cancel', exact: true }).click();
+	await link.getByLabel('From', { exact: true }).fill('2026-12-15');
+	await expect(link.getByText('This date is invalid. Pick a different date.')).toHaveCount(2);
+	await link.getByRole('button', { name: 'Pick until', exact: true }).click();
+	await linkCalendar.getByRole('button', { name: 'Next year', exact: true }).click();
+	await expect(
+		linkCalendar.getByRole('button', { name: 'Choose year, 2027', exact: true })
+	).toBeVisible();
+	await expect(linkCalendar.getByRole('button', { name: '2027-01-13', exact: true })).toBeEnabled();
+	await expect(
+		linkCalendar.getByRole('button', { name: '2027-01-14', exact: true })
+	).toBeDisabled();
+	await linkCalendar.getByRole('button', { name: '2027-01-13', exact: true }).click();
+	await linkCalendar.getByRole('button', { name: 'OK', exact: true }).click();
+	await expect(link.getByLabel('Until', { exact: true })).toHaveValue('2027-01-13');
+	await expect(link.getByText('This date is invalid. Pick a different date.')).toHaveCount(0);
 	await expect(link.getByRole('button', { name: 'Generate link' })).toBeEnabled();
 	for (const width of [320, 480, 1280]) {
 		await page.setViewportSize({ width, height: 900 });

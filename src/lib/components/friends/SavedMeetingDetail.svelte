@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DateField from '$lib/components/ui/DateField.svelte';
 	import { Button, TextFieldOutlined } from 'm3-svelte';
 	import { API } from '$lib/api';
 	import { calendarDateTime, dateLabel, formatTime } from '$lib/datetime';
@@ -197,15 +198,13 @@
 					term's repeat end date.
 				</p>{/if}
 			<div class="gap-3 grid grid-cols-2">
-				<label class="gap-1 text-sm grid"
-					>Start date<input
-						class="rounded border-outline bg-surface p-2 border"
-						type="date"
-						bind:value={startDate}
-						disabled={busy}
-						required
-					/></label
-				>
+				<DateField
+					label="Start date"
+					bind:value={startDate}
+					error={!!startDate && !!endDate && startDate > endDate}
+					disabled={busy}
+					required
+				/>
 				<label class="gap-1 text-sm grid"
 					>Start time<input
 						class="rounded border-outline bg-surface p-2 border"
@@ -215,15 +214,13 @@
 						required
 					/></label
 				>
-				<label class="gap-1 text-sm grid"
-					>End date<input
-						class="rounded border-outline bg-surface p-2 border"
-						type="date"
-						bind:value={endDate}
-						disabled={busy}
-						required
-					/></label
-				>
+				<DateField
+					label="End date"
+					bind:value={endDate}
+					error={!!startDate && !!endDate && startDate > endDate}
+					disabled={busy}
+					required
+				/>
 				<label class="gap-1 text-sm grid"
 					>End time<input
 						class="rounded border-outline bg-surface p-2 border"

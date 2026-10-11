@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DateField from '$lib/components/ui/DateField.svelte';
 	import { Button, SelectOutlined, TextFieldOutlined } from 'm3-svelte';
 	import { onMount } from 'svelte';
 	import { API, ApiError } from '$lib/api';
@@ -9,10 +10,12 @@
 	import {
 		CAMPUS_TIME_ZONE,
 		calendarDateTime,
+		campusDate,
 		endOfCampusDay,
 		shiftDate,
 		todayDate
 	} from '$lib/datetime';
+	import { validDate } from '$lib/friends/schedule';
 	const ui = getPanelUi();
 	const session = getPanelSession();
 	let creating = $state(false);
@@ -33,6 +36,12 @@
 	let revoking = $state('');
 	let version = 0;
 	const durations = [15, 30, 45, 60, 90, 120];
+	const dateOrderError = $derived(!!startsOn && !!endsOn && startsOn > endsOn);
+	const maxExpiryDate = $derived.by(() => {
+		const deadline = ui.now + 60 * 86400000;
+		const date = campusDate(new Date(deadline).toISOString());
+		return Date.parse(endOfCampusDay(date)) <= deadline ? date : shiftDate(date, -1);
+	});
 
 	export function isBusy() {
 		return loading || submitting || Boolean(revoking);
@@ -203,14 +212,35 @@
 					disabled={attempted}
 					bind:value={title}
 				/>
-				<TextFieldOutlined
+				<DateField
 					label="Link expires"
-					type="date"
+					required
+					min={todayDate(CAMPUS_TIME_ZONE)}
+					max={maxExpiryDate}
+					validate={(date) => {
+						const expiresAt = Date.parse(endOfCampusDay(date));
+						return expiresAt > Date.now() && expiresAt <= Date.now() + 60 * 86400000;
+					}}
 					disabled={attempted}
 					bind:value={expiry}
 				/>
-				<TextFieldOutlined label="From" type="date" disabled={attempted} bind:value={startsOn} />
-				<TextFieldOutlined label="Until" type="date" disabled={attempted} bind:value={endsOn} />
+				<DateField
+					label="From"
+					required
+					min={todayDate(CAMPUS_TIME_ZONE)}
+					error={dateOrderError}
+					disabled={attempted}
+					bind:value={startsOn}
+				/>
+				<DateField
+					label="Until"
+					required
+					min={todayDate(CAMPUS_TIME_ZONE)}
+					max={validDate(startsOn) ? shiftDate(startsOn, 29) : undefined}
+					error={dateOrderError}
+					disabled={attempted}
+					bind:value={endsOn}
+				/>
 				<SelectOutlined
 					label="Duration"
 					disabled={attempted}

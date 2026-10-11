@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DateField from '$lib/components/ui/DateField.svelte';
 	import { untrack } from 'svelte';
 	import { Switch, TextFieldOutlined } from 'm3-svelte';
 	import { normalizeTime, timeMinutes } from '$lib/datetime';
@@ -45,18 +46,18 @@
 	<div
 		class="preview-fields min-w-0 gap-4 pt-1 grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))]"
 	>
-		<TextFieldOutlined
+		<DateField
 			label="From"
+			required
 			error={dateError}
-			type="date"
 			bind:value={preferences.from}
 			min={bounds?.start}
 			max={bounds?.end}
 		/>
-		<TextFieldOutlined
+		<DateField
 			label="Until"
+			required
 			error={dateError}
-			type="date"
 			bind:value={preferences.until}
 			min={bounds?.start}
 			max={bounds?.end}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DateField from '$lib/components/ui/DateField.svelte';
 	import { untrack } from 'svelte';
 	import { Button, Slider, TextFieldOutlined } from 'm3-svelte';
 	import type { FreePeriod, PreviewSlot } from '$lib/friends/types';
@@ -79,9 +80,9 @@
 			</p>{/if}
 	</div>
 	<div class="preview-fields min-w-0 pt-1 grid">
-		<TextFieldOutlined
+		<DateField
 			label="Date"
-			type="date"
+			required
 			bind:value={slot.date}
 			min={bounds?.start && bounds.start > todayDate() ? bounds.start : todayDate()}
 			max={bounds?.end}
