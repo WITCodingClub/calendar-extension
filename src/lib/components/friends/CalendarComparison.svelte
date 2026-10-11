@@ -312,7 +312,7 @@
 			<div class="min-w-0 flex-1">
 				<h3>Planned meeting</h3>
 				<p class="text-sm">
-					{upcomingSlot.day} · {formatTime(upcomingSlot.start, militaryTime)}–{formatTime(
+					{upcomingSlot.day} · {formatTime(upcomingSlot.start, militaryTime)} - {formatTime(
 						upcomingSlot.end,
 						militaryTime
 					)}
@@ -370,7 +370,7 @@
 					{dateLabel(detail.date)} · {formatTime(
 						detail.item.meeting.begin_time,
 						militaryTime
-					)}–{formatTime(detail.item.meeting.end_time, militaryTime)}
+					)} - {formatTime(detail.item.meeting.end_time, militaryTime)}
 				</p>
 				{#if detail.item.preview}<p class="text-sm">
 						{participants.map((person) => person.name).join(', ')}
@@ -380,7 +380,7 @@
 						{#each busyDetails as item (`${item.ownerId}:${item.meeting.id}`)}<li>
 								<p>{item.ownerLabel} · {item.course.title}</p>
 								<p class="text-xs text-on-surface-variant">
-									{formatTime(item.meeting.begin_time, militaryTime)}–{formatTime(
+									{formatTime(item.meeting.begin_time, militaryTime)} - {formatTime(
 										item.meeting.end_time,
 										militaryTime
 									)}

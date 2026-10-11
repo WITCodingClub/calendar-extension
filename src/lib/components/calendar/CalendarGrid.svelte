@@ -140,10 +140,10 @@
 								class:outline-dashed={item.preview}
 								class:outline-primary={item.preview}
 								aria-label={item.preview
-									? `Planned meeting, ${day.label}, ${formatTime(item.meeting.begin_time, militaryTime)}–${formatTime(item.meeting.end_time, militaryTime)}`
+									? `Planned meeting, ${day.label}, ${formatTime(item.meeting.begin_time, militaryTime)} - ${formatTime(item.meeting.end_time, militaryTime)}`
 									: undefined}
 								title={item.preview
-									? `Planned meeting · ${formatTime(item.meeting.begin_time, militaryTime)}–${formatTime(item.meeting.end_time, militaryTime)}`
+									? `Planned meeting · ${formatTime(item.meeting.begin_time, militaryTime)} - ${formatTime(item.meeting.end_time, militaryTime)}`
 									: undefined}
 								style={`background-color:${item.bgColor}; color:${item.textColor}; left:${item.startOffset}rem; width:${item.width}rem; top:${topPct}%; height:${heightPct}%; border-color:${item.bgColor};`}
 								onclick={() => onselect(item, day)}

@@ -167,7 +167,7 @@
 					: link.status}
 			</p>
 			<p class="text-sm text-on-surface-variant">
-				{link.starts_on}–{link.ends_on} · {link.duration_minutes} min · Expires {new Date(
+				{link.starts_on} - {link.ends_on} · {link.duration_minutes} min · Expires {new Date(
 					link.expires_at
 				).toLocaleString()}
 			</p>
@@ -222,7 +222,7 @@
 				/>
 			</div>
 			<p class="text-sm text-on-surface-variant">
-				Guests can book one meeting during your free periods on weekdays, 8am–9pm Eastern.
+				Guests can book one meeting during your free periods on weekdays, 8am - 9pm Eastern.
 			</p>
 			{#if formError}<p class="text-sm text-error" role="alert">{formError}</p>{/if}
 			{#if url}

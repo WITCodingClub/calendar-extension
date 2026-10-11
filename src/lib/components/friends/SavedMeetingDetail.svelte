@@ -137,7 +137,7 @@
 		{dateLabel(occurrence.start_time.slice(0, 10))} · {formatTime(
 			occurrence.start_time.slice(11, 16),
 			militaryTime
-		)}–{formatTime(occurrence.end_time.slice(11, 16), militaryTime)}
+		)} - {formatTime(occurrence.end_time.slice(11, 16), militaryTime)}
 		{#if occurrence.end_time.slice(0, 10) !== occurrence.start_time.slice(0, 10)}
 			· ends {dateLabel(occurrence.end_time.slice(0, 10))}{/if}
 		· Eastern time

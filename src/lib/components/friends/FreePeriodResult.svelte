@@ -72,7 +72,7 @@
 		{#if period.date === slot.date && windowAvailable && !message}<p
 				class="mt-1 text-sm text-on-surface-variant"
 			>
-				Everyone free {formatTime(minutesTime(period.start), militaryTime)}–{formatTime(
+				Everyone free {formatTime(minutesTime(period.start), militaryTime)} - {formatTime(
 					minutesTime(period.end),
 					militaryTime
 				)}
@@ -94,7 +94,7 @@
 			<div class="min-w-0">
 				<p class="text-xs text-on-surface-variant">Meeting time</p>
 				<p class="mt-1 text-lg font-semibold tabular-nums" aria-live="polite" aria-atomic="true">
-					{normalizeTime(slot.start, militaryTime)}–{normalizeTime(slot.end, militaryTime)}
+					{normalizeTime(slot.start, militaryTime)} - {normalizeTime(slot.end, militaryTime)}
 				</p>
 			</div>
 			<div class="preview-fields min-w-0 w-28 pt-1 grid">

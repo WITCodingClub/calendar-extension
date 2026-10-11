@@ -52,7 +52,7 @@
 		<div class="min-w-0">
 			<p class="text-sm font-medium">{dateLabel(slot.date)}</p>
 			<p class="mt-1 text-lg font-semibold tabular-nums">
-				{normalizeTime(slot.start, militaryTime)}–{normalizeTime(slot.end, militaryTime)}
+				{normalizeTime(slot.start, militaryTime)} - {normalizeTime(slot.end, militaryTime)}
 			</p>
 		</div>
 		<div class="shrink-0">

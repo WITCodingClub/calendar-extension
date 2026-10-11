@@ -110,7 +110,7 @@
 								onclick={() => choose(period)}
 							>
 								<span class="font-medium tabular-nums">
-									{formatTime(minutesTime(period.start), militaryTime)}–{formatTime(
+									{formatTime(minutesTime(period.start), militaryTime)} - {formatTime(
 										minutesTime(period.end),
 										militaryTime
 									)}

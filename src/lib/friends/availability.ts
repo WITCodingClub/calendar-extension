@@ -165,7 +165,7 @@ export function meetingSlot(period: FreePeriod, start: number, duration: number)
 		day: period.day,
 		start: minutesTime(start),
 		end: minutesTime(start + duration),
-		window: `${minutesTime(period.start)}–${minutesTime(period.end)}`
+		window: `${minutesTime(period.start)} - ${minutesTime(period.end)}`
 	};
 }
 
