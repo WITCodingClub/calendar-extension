@@ -73,11 +73,11 @@ function waitForPopupRedirect(
     popup: chrome.windows.Window,
     tabId: number,
     redirectUri: string
-): Promise<URLSearchParams | null> {
+): Promise<URL | null> {
     return new Promise((resolve, reject) => {
         let settled = false;
 
-        const finish = (result: URLSearchParams | null, err?: unknown) => {
+        const finish = (result: URL | null, err?: unknown) => {
             if (settled) {
                 return;
             }
@@ -103,7 +103,7 @@ function waitForPopupRedirect(
                 return;
             }
             try {
-                finish(new URL(href!).searchParams);
+                finish(new URL(href!));
             } catch (err) {
                 finish(null, err);
             }
@@ -123,7 +123,7 @@ function waitForPopupRedirect(
 async function waitForFollowedTabRedirect(
     createdUrl: string,
     redirectUri: string
-): Promise<URLSearchParams | null> {
+): Promise<URL | null> {
     const existing = await chrome.tabs.query({});
     const ignore = new Set<number>();
     for (const tab of existing) {
@@ -137,7 +137,7 @@ async function waitForFollowedTabRedirect(
         let settled = false;
         let cancelTimer: ReturnType<typeof setTimeout> | undefined;
 
-        const finish = (result: URLSearchParams | null, err?: unknown) => {
+        const finish = (result: URL | null, err?: unknown) => {
             if (settled) {
                 return;
             }
@@ -177,7 +177,7 @@ async function waitForFollowedTabRedirect(
             if (isRedirect(href, redirectUri)) {
                 tracked.add(tabId);
                 try {
-                    finish(new URL(href!).searchParams);
+                    finish(new URL(href!));
                 } catch (err) {
                     finish(null, err);
                 }
@@ -220,8 +220,13 @@ async function waitForFollowedTabRedirect(
 }
 
 export async function openCenteredAuthWindow(url: string): Promise<URLSearchParams | null> {
-    const redirectUri = chrome.identity.getRedirectURL();
+    const landed = await openAuthWindowUntil(url, chrome.identity.getRedirectURL());
+    return landed?.searchParams ?? null;
+}
 
+// Opens url in a sign-in popup (a followed tab on Firefox). Resolves with the first
+// URL that starts with redirectUri, or null when the user closes the window first.
+export async function openAuthWindowUntil(url: string, redirectUri: string): Promise<URL | null> {
     if (navigator.userAgent.includes('Firefox')) {
         return waitForFollowedTabRedirect(url, redirectUri);
     }

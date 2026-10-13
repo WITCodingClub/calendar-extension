@@ -1,15 +1,9 @@
 import { getContext, setContext } from 'svelte';
 import { API } from './api';
 import type { PasskeySummary } from './passkeys';
-import type { Course, FriendIdentity, TermResponse } from './types';
+import type { Course, FriendIdentity, OAuthCredential, TermResponse } from './types';
 
-export type ConnectedAccount = {
-    id: string;
-    email: string;
-    provider: string;
-    needs_reauth: boolean;
-    token_revoked: boolean;
-};
+export type ConnectedAccount = OAuthCredential;
 
 export type SettingsData = {
     email: string | undefined;
