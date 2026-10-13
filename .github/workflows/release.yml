@@ -42,15 +42,11 @@ jobs:
           cd extension
           zip -r "../wit-calendar-${VERSION}.zip" .
 
-      - name: Build Firefox extension
-        working-directory: .
-        run: npm run build-firefox
-
       - name: Create Firefox zip artifact
         env:
           VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: |
-          cd extension
+          cd extension-firefox
           zip -r "../wit-calendar-${VERSION}-firefox.zip" .
 
       - name: Create GitHub Release

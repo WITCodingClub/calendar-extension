@@ -1,14 +1,22 @@
 <script lang="ts">
 	import '../main.css';
 	import '../app.css';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { NewSnackbar } from 'm3-svelte';
 	import { clearLocalData, guardCurrentRoute } from '$lib/auth';
+	import { extensionPageUrl } from '$lib/openPageInTab';
 
 	let { children } = $props();
 
 	afterNavigate(() => {
 		void guardCurrentRoute();
+		if (!['chrome-extension:', 'moz-extension:'].includes(window.location.protocol)) return;
+		void chrome.tabs.getCurrent().then((tab) => {
+			if (!tab) return;
+			const url = extensionPageUrl(window.location.href);
+			if (url !== window.location.href) replaceState(url, page.state);
+		}).catch((error) => console.error('Error updating extension page URL:', error));
 	});
 
 	function onWindowKeyDown(event: KeyboardEvent) {

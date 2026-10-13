@@ -4,6 +4,8 @@
     import type { Course, DayItem, FriendIdentity, FriendProcessedEventsResponse, FriendRequestIncoming, FriendRequestOutgoing, MeetingTime } from '$lib/types';
     import { goto } from '$app/navigation';
     import { resolve } from '$app/paths';
+    import { page } from '$app/state';
+    import { browser } from '$app/environment';
     import { getPanelSession } from '$lib/panelSession';
     import { onMount } from 'svelte';
     import { on } from 'svelte/events';
@@ -285,7 +287,7 @@
     type MeetWindow = { start: number; end: number; duration: number };
     type MeetInterval = { start: number; end: number };
 
-    let tab = $state<'calendar' | 'meeting'>('meeting');
+    let tab = $state<'calendar' | 'meeting'>(browser && page.url.searchParams.get('view') === 'calendar' ? 'calendar' : 'meeting');
     let manageOpen = $state(false);
     let manageOpenedForPending = false;
 
@@ -725,8 +727,7 @@
             }
             incomingRequests = requestsResponse.incoming ?? [];
             outgoingRequests = requestsResponse.outgoing ?? [];
-            const pending = incomingRequests.length + outgoingRequests.length;
-            if (!manageOpenedForPending && pending > 0) {
+            if (!manageOpenedForPending && incomingRequests.length > 0) {
                 manageOpen = true;
                 manageOpenedForPending = true;
             }
@@ -793,6 +794,20 @@
         }
     }
 
+    // The server reports an existing friendship and a pending request with the
+    // same "already exists" message, and records only expose id and name, so an
+    // email can only be told apart by whether any request is pending at all.
+    function friendRequestErrorMessage(error: unknown, value: string): string {
+        const message = error instanceof Error ? error.message : '';
+        if (/RecordNotFound|not found/i.test(message)) {
+            return 'No account associated with the email or user ID entered was found.';
+        }
+        if (/already exists/i.test(message)) {
+            return "You're already friends with this user or have a pending friend request with them.";
+        }
+        return message || 'Failed to send friend request.';
+    }
+
     async function sendFriendRequest() {
         const value = sendFriendIdInput.trim();
         if (!value) return;
@@ -807,7 +822,7 @@
             await loadFriendsAndRequests();
         } catch (error) {
             console.error('Failed to send friend request', error);
-            pageError = error instanceof Error ? error.message : 'Failed to send friend request.';
+            pageError = friendRequestErrorMessage(error, value);
         } finally {
             actionLoadingId = '';
         }
@@ -906,13 +921,13 @@
 <div class="@container flex h-full w-full min-w-0 flex-col gap-3 box-border p-3 @max-[20rem]:p-2">
     <section class="w-full flex-none overflow-hidden rounded-2xl bg-surface-container shadow-[0_0.2rem_0.75rem_rgb(var(--m3-scheme-shadow)/0.12)]">
         <header class="flex min-w-0 items-center justify-between gap-4 bg-secondary-container px-[1.125rem] pt-4 pb-3.5 text-on-secondary-container">
-            <div class="min-w-0">
+            <div class="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3">
                 <h1 class="m-0 text-[clamp(1.35rem,5cqi,1.8rem)] leading-[1.15] font-[750] tracking-[-0.025em] text-on-secondary-container">Friends</h1>
-            </div>
-            <div class="shrink-0">
-                <Button variant="elevated" square onclick={() => goto(resolve('/calendar'))}>
-                    Back to Calendar
-                </Button>
+                <div class="shrink-0">
+                    <Button variant="elevated" square onclick={() => goto(resolve('/calendar'))}>
+                        Back to Calendar
+                    </Button>
+                </div>
             </div>
         </header>
         <div class="bg-surface-container-lowest">
@@ -937,7 +952,10 @@
             {pendingRequestCount}
             ontoggleFriend={toggleFriend}
             onsetPrimary={setPrimary}
-            ontoggleManage={() => { manageOpen = !manageOpen; }}
+            ontoggleManage={() => {
+                manageOpen = !manageOpen;
+                if (!manageOpen) pageError = '';
+            }}
         />
         </div>
     </section>

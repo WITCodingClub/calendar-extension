@@ -1,6 +1,7 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
     import { resolve } from '$app/paths';
+    import { page } from '$app/state';
     import { processedData as storedProcessedData, icsUrl as storedIcsUrl, enrolledTerms } from '$lib/store';
     import type { Course, MeetingTime, ResponseData, TermResponse, DayItem, GetPreferencesResponse, TemplateVariables, ResolvedData, NotificationSetting, ReminderSettings, NotificationMethod } from '$lib/types';
     import { Button, LoadingIndicator, SelectOutlined, VariableTabs, TextFieldOutlined, ConnectedButtons, TextFieldOutlinedMultiline, Chip } from 'm3-svelte';
@@ -12,6 +13,7 @@
     import Settings from '$lib/components/Settings.svelte';
     import Help from '$lib/components/Help.svelte';
     import ColorPicker from '$lib/components/ColorPicker.svelte';
+    import OpenInTabButton from '$lib/components/OpenInTabButton.svelte';
     import { userSettings as storedUserSettings } from '$lib/store';
     import { browser } from '$app/environment';
     import { snackbar } from 'm3-svelte';
@@ -1103,7 +1105,8 @@
     // Check if returning to settings after environment switch (before render)
     let shouldReturnToSettings = browser && sessionStorage.getItem('returnToSettings') === 'true';
     let shouldClearData = browser && sessionStorage.getItem('clearCalendarData') === 'true';
-    let tab = $state(shouldReturnToSettings ? "settings" : "a");
+    let initialView = browser ? page.url.searchParams.get('view') : null;
+    let tab = $state(shouldReturnToSettings || initialView === 'settings' ? "settings" : initialView === 'help' ? "help" : "a");
 
     $effect(() => {
         if (tab === 'friends') {
@@ -1255,9 +1258,9 @@
 <div class="@container flex h-full w-full min-w-0 flex-col gap-3 p-3 box-border @max-[20rem]:p-2">
     {#if !processedData && tab === "a"}
         <div class="w-full flex flex-col items-center gap-6 p-6 bg-surface-container rounded-2xl shadow-md max-w-lg mx-auto">
-            <div class="flex flex-col gap-1 items-center">
-                <div class="flex items-center w-full justify-center relative">
-                    <div class="absolute left-0 unpeak">
+            <div class="flex w-full flex-col gap-1 items-center">
+                <div class="flex items-center w-full justify-between gap-2">
+                    <div class="unpeak">
                         <Button variant="tonal" square onclick={async () => { await goto('/'); }} >
                             <span class="flex flex-row gap-2 items-center">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M9.184 4.457c.3.286.311.76.026 1.06L3.75 11.25H22a.75.75 0 0 1 0 1.5H3.75l5.46 5.733a.75.75 0 1 1-1.086 1.034l-6.667-7a.75.75 0 0 1 0-1.034l6.667-7a.75.75 0 0 1 1.06-.026"/></svg>
@@ -1265,6 +1268,7 @@
                         </Button>
                     </div>
                     <h1 class="text-xl font-bold text-primary text-center mb-1">Get Your Calendar</h1>
+                    <OpenInTabButton view={tab} />
                 </div>
                 <p class="text-md text-secondary text-center">
                     Click the button below to fetch your classes and generate your calendar.
@@ -1294,17 +1298,18 @@
         </div>
     {:else if processedData || tab !== "a"}
         <section class="w-full flex-none overflow-hidden rounded-2xl bg-surface-container shadow-[0_0.2rem_0.75rem_rgb(var(--m3-scheme-shadow)/0.12)]">
-            <header class="flex min-w-0 items-center justify-between gap-4 bg-secondary-container px-[1.125rem] pt-4 pb-3.5 text-on-primary-container @max-[30rem]:flex-col @max-[30rem]:items-start @max-[30rem]:gap-3 @max-[30rem]:p-3.5">
-                <div class="min-w-0">
+            <header class="flex min-w-0 items-center justify-between gap-4 bg-secondary-container px-[1.125rem] pt-4 pb-3.5 text-on-primary-container @max-[30rem]:gap-3 @max-[30rem]:p-3.5">
+                <div class="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3">
                     <h1 class="m-0 text-[clamp(1.35rem,5cqi,1.8rem)] leading-[1.15] font-[750] tracking-[-0.025em] text-on-secondary-container">
                         {tab === "settings" ? "Settings" : tab === "help" ? "Help" : "Your Calendar"}
                     </h1>
+                    {#if isOtherCalendar}
+                        <div class="shrink-0">
+                            <Button variant="tonal" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
+                        </div>
+                    {/if}
                 </div>
-                {#if isOtherCalendar}
-                    <div class="shrink-0 @max-[30rem]:w-full @max-[30rem]:[&_.m3-container]:w-full">
-                        <Button variant="tonal" square onclick={copyIcsToClipboard}>Copy Calendar Link</Button>
-                    </div>
-                {/if}
+                <OpenInTabButton view={tab} />
             </header>
             <div class="not-peak bg-surface-container-lowest">
                 <VariableTabs secondary={true}

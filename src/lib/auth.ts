@@ -61,7 +61,7 @@ export function isUsableJwt(token: string | undefined | null): token is string {
 }
 
 function routeKey(pathname: string): string {
-    return pathname.replace(/\/index\.html$/, '').replace(/\/+$/, '') || '/';
+    return pathname.replace(/\/index\.html$/, '').replace(/\.html$/, '').replace(/\/+$/, '') || '/';
 }
 
 export function isPublicAuthPath(pathname: string): boolean {

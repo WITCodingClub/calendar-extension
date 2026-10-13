@@ -34,10 +34,10 @@
 	<div class="flex flex-row items-center justify-between gap-2">
 		<div class="text-xs font-bold uppercase tracking-wide text-primary">Schedule overlay</div>
 		<Button variant={manageOpen ? 'tonal' : 'outlined'} square onclick={ontoggleManage}>
-			{pendingRequestCount > 0
-				? `Add friends (${pendingRequestCount})`
-				: manageOpen
-					? 'Hide'
+			{manageOpen
+				? 'Hide'
+				: pendingRequestCount > 0
+					? `Add friends (${pendingRequestCount})`
 					: 'Add friends'}
 		</Button>
 	</div>
