@@ -775,25 +775,27 @@
 				onownselect={selectCalendarEvent}
 			/>
 		{:else}
-			{#if !historicSchedule}<WeekNavigation bind:week={ui.week} />{/if}
-			<ConnectedButtons>
-				<input
-					type="radio"
-					name="calendar-presentation"
-					id="calendar-week-view"
-					aria-label="Calendar view"
-					checked={calendarDisplay === 'calendar'}
-					onchange={() => (ui.calendarPresentation = 'calendar')}
-				/><Button for="calendar-week-view">Calendar</Button>
-				<input
-					type="radio"
-					name="calendar-presentation"
-					id="calendar-list-view"
-					aria-label="List view"
-					checked={calendarDisplay === 'list'}
-					onchange={() => (ui.calendarPresentation = 'list')}
-				/><Button for="calendar-list-view">List</Button>
-			</ConnectedButtons>
+			{#if processedData}
+				{#if !historicSchedule}<WeekNavigation bind:week={ui.week} />{/if}
+				<ConnectedButtons>
+					<input
+						type="radio"
+						name="calendar-presentation"
+						id="calendar-week-view"
+						aria-label="Calendar view"
+						checked={calendarDisplay === 'calendar'}
+						onchange={() => (ui.calendarPresentation = 'calendar')}
+					/><Button for="calendar-week-view">Calendar</Button>
+					<input
+						type="radio"
+						name="calendar-presentation"
+						id="calendar-list-view"
+						aria-label="List view"
+						checked={calendarDisplay === 'list'}
+						onchange={() => (ui.calendarPresentation = 'list')}
+					/><Button for="calendar-list-view">List</Button>
+				</ConnectedButtons>
+			{/if}
 			{#if (processedData || savedData.occurrences.length) && calendarDisplay === 'list'}
 				<nav class="gap-2 flex flex-wrap" aria-label="Schedule day">
 					{#each dates as date (date)}<Chip
