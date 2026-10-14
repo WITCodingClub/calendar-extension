@@ -44,7 +44,7 @@ Host permissions are required for three specific domains:
 
 1. selfservice.wit.edu - WIT's student portal where class schedules are retrieved. The extension fetches enrolled courses and student information from this authenticated portal.
 
-2. *.witcc.dev - The extension's backend API servers (production and staging environments) that process schedule data, manage authentication, generate calendar events, and handle Google Calendar OAuth.
+2. \*.witcc.dev - The extension's backend API servers (production and staging environments) that process schedule data, manage authentication, generate calendar events, and handle Google Calendar OAuth.
 
 3. heron-selected-literally.ngrok-free.app - Development backend server used for testing new features before production deployment.
 

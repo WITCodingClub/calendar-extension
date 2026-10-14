@@ -1,0 +1,152 @@
+export type Environment = 'dev' | 'staging' | 'prod';
+
+export interface EnvironmentConfig {
+	name: Environment;
+	displayName: string;
+	baseUrl: string;
+	/**
+	 * OAuth client used for the WIT sign-in flow. This must be a **Web
+	 * application** client with `https://<extension-id>.chromiumapp.org/`
+	 * registered as a redirect URI — chrome.identity.launchWebAuthFlow does not
+	 * work with a Chrome App client. The same id has to appear in the backend's
+	 * GOOGLE_OAUTH_CLIENT_IDS, or the token's audience check fails.
+	 */
+	googleClientId: string;
+}
+
+export const ENVIRONMENTS: Record<Environment, EnvironmentConfig> = {
+	dev: {
+		name: 'dev',
+		displayName: 'Development',
+		baseUrl: 'https://heron-selected-literally.ngrok-free.app',
+		googleClientId: '542377189189-hofk41jk6e2nada4ia4g2rmqfatmlitv.apps.googleusercontent.com'
+	},
+	staging: {
+		name: 'staging',
+		displayName: 'Staging',
+		baseUrl: 'https://staging-calendar.witcc.dev',
+		googleClientId: '542377189189-hofk41jk6e2nada4ia4g2rmqfatmlitv.apps.googleusercontent.com'
+	},
+	prod: {
+		name: 'prod',
+		displayName: 'Production',
+		baseUrl: 'https://calendar.witcc.dev',
+		googleClientId: '542377189189-hofk41jk6e2nada4ia4g2rmqfatmlitv.apps.googleusercontent.com'
+	}
+};
+
+interface StoredEnvironmentData {
+	current_environment: Environment;
+	jwt_tokens: Partial<Record<Environment, string>>;
+}
+
+export class EnvironmentManager {
+	private static readonly STORAGE_KEY = 'environment_data';
+
+	public static async getEnvironmentData(): Promise<StoredEnvironmentData> {
+		const result = await chrome.storage.local.get(this.STORAGE_KEY);
+		const stored = result[this.STORAGE_KEY] as Partial<StoredEnvironmentData> | undefined;
+		const current_environment =
+			stored?.current_environment && stored.current_environment in ENVIRONMENTS
+				? stored.current_environment
+				: 'prod';
+		return {
+			current_environment,
+			jwt_tokens: stored?.jwt_tokens ?? {}
+		};
+	}
+
+	public static async getCurrentEnvironment(): Promise<Environment> {
+		const data = await this.getEnvironmentData();
+		return data.current_environment;
+	}
+
+	public static async getCurrentEnvironmentConfig(): Promise<EnvironmentConfig> {
+		const env = await this.getCurrentEnvironment();
+		return ENVIRONMENTS[env];
+	}
+
+	public static async getBaseUrl(): Promise<string> {
+		const config = await this.getCurrentEnvironmentConfig();
+		return config.baseUrl;
+	}
+
+	public static async getGoogleClientId(): Promise<string> {
+		const config = await this.getCurrentEnvironmentConfig();
+		return config.googleClientId;
+	}
+
+	public static async getJwtToken(environment?: Environment): Promise<string | undefined> {
+		const data = await this.getEnvironmentData();
+		const env = environment || data.current_environment;
+		return data.jwt_tokens[env];
+	}
+
+	public static async setJwtToken(token: string, environment?: Environment): Promise<void> {
+		const data = await this.getEnvironmentData();
+		const env = environment || data.current_environment;
+		data.jwt_tokens[env] = token;
+		await chrome.storage.local.set({ [this.STORAGE_KEY]: data });
+	}
+
+	/**
+	 * Checks the Rails health endpoint of an environment. An offline ngrok
+	 * tunnel answers with an error page, so a non-2xx status also counts as
+	 * offline.
+	 */
+	public static async isReachable(environment: Environment, timeoutMs = 5000): Promise<boolean> {
+		try {
+			const response = await fetch(`${ENVIRONMENTS[environment].baseUrl}/up`, {
+				method: 'GET',
+				cache: 'no-store',
+				headers: { 'ngrok-skip-browser-warning': 'true' },
+				signal: AbortSignal.timeout(timeoutMs)
+			});
+			return response.ok;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Returns the current environment when it is not prod and its backend is
+	 * down. Production is never reported, because the user cannot leave it.
+	 */
+	public static async getOfflineNonProdEnvironment(): Promise<Environment | undefined> {
+		const env = await this.getCurrentEnvironment();
+		if (env === 'prod') return undefined;
+		return (await this.isReachable(env)) ? undefined : env;
+	}
+
+	public static async switchEnvironment(environment: Environment): Promise<boolean> {
+		const data = await this.getEnvironmentData();
+		data.current_environment = environment;
+		await chrome.storage.local.set({ [this.STORAGE_KEY]: data });
+
+		return !!data.jwt_tokens[environment];
+	}
+
+	public static async clearJwtToken(environment?: Environment): Promise<void> {
+		const data = await this.getEnvironmentData();
+		const env = environment || data.current_environment;
+		delete data.jwt_tokens[env];
+		await chrome.storage.local.set({ [this.STORAGE_KEY]: data });
+	}
+
+	public static async clearAllData(): Promise<void> {
+		await chrome.storage.local.remove(this.STORAGE_KEY);
+	}
+
+	public static async getAuthenticatedEnvironments(): Promise<Environment[]> {
+		const data = await this.getEnvironmentData();
+		return Object.keys(data.jwt_tokens) as Environment[];
+	}
+
+	public static async migrateOldJwtToken(): Promise<void> {
+		const result = await chrome.storage.local.get('jwt_token');
+		if (result.jwt_token) {
+			await this.setJwtToken(result.jwt_token, 'prod');
+			await chrome.storage.local.remove('jwt_token');
+		}
+	}
+}

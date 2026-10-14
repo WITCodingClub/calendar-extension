@@ -10,7 +10,6 @@
     {
       "matches": [
         "https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory",
-        "https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory",
         "https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/reset?term=",
         "https://selfservice.wit.edu/StudentRegistrationSsb/ssb/classRegistration/getRegistrationEvents?termFilter=",
         "https://selfservice.wit.edu/BannerGeneralSsb/ssb/PersonalInformationDetails/getEmails"

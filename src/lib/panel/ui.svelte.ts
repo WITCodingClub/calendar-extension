@@ -1,0 +1,217 @@
+import { getContext, setContext } from 'svelte';
+import { SvelteSet } from 'svelte/reactivity';
+import type {
+	Course,
+	Friend,
+	FriendRequestIncoming,
+	FriendRequestOutgoing,
+	SharingLevel
+} from '../types';
+import type { BusyBlocksResponse } from '../friends/schedule';
+import type { PanelSession } from './session';
+import type { ManagementState } from '../friends/management';
+import type { ComparisonMode } from '../friends/comparison';
+import type { CalendarPresentation } from '../calendar/layout';
+import type { SavedMeetingSelection } from '../friends/savedMeetings';
+import { sharingLabel } from '../friends/parse';
+import { timeMinutes, weekDates } from '../datetime';
+import type {
+	MeetingPreferences,
+	MeetingDraft,
+	Participant,
+	FriendGroup,
+	PreviewSlot
+} from '../friends/types';
+
+import { browser } from '$app/environment';
+
+const PLANNING_KEY = 'friendsPlanning';
+
+export class PanelUi {
+	term = $state<string>();
+	datedTerm = $state<string>();
+	termOptions = $state<Array<{ id: string; name: string }>>([]);
+	week = $state(weekDates()[0]);
+	selected = $state(['you']);
+	calendarActions = $state.raw<{
+		refresh: () => void;
+		copyLink?: () => void;
+		refreshing: boolean;
+		loading: boolean;
+	}>();
+	currentTerm = $state<string>();
+	now = $state(Date.now());
+
+	termBounds = $state<Record<string, { start?: string; end?: string }>>({});
+	friends = $state<Friend[]>([]);
+	hasSelectedFriends = $derived(this.friends.some((friend) => this.selected.includes(friend.id)));
+	hasAvailabilityOnly = $derived(
+		this.friends.some(
+			(friend) =>
+				this.selected.includes(friend.id) && friend.visibility?.theirs === 'availability_only'
+		)
+	);
+	people = $derived<Participant[]>([
+		{ id: 'you', name: 'You', sharing: 'Full schedule' },
+		...this.friends.map((person) => ({
+			...person,
+			sharing: sharingLabel(person.visibility?.theirs),
+			expiry: person.expires_at ?? undefined
+		}))
+	]);
+	groups = $state<FriendGroup[]>([]);
+	groupsLoading = $state(false);
+	groupsError = $state('');
+	groupLoadingId = $state('');
+	groupActions = $state.raw<ManagementState['groupActions']>();
+	friendSchedules = $state<Record<string, Record<string, Course[]>>>({});
+	busyBlocks = $state<Record<string, Record<string, BusyBlocksResponse>>>({});
+	busyStatus = $state<Record<string, Record<string, 'loading' | 'loaded' | 'error'>>>({});
+	busyErrors = $state<Record<string, Record<string, string>>>({});
+	busyVersion = $state(0);
+	busyActions = $state.raw<{
+		load: (from: string, until: string) => Promise<void>;
+		invalidate: (id: string) => void;
+	}>();
+	scheduleStatus = $state<
+		Record<string, Record<string, 'loading' | 'loaded' | 'unprocessed' | 'error'>>
+	>({});
+	incomingRequests = $state<FriendRequestIncoming[]>([]);
+	outgoingRequests = $state<FriendRequestOutgoing[]>([]);
+	friendError = $state('');
+	friendNotice = $state('');
+	friendsError = $state('');
+	requestsError = $state('');
+	termError = $state('');
+	planning = $state(false);
+	scheduleErrors = $state<Record<string, Record<string, string>>>({});
+	friendsLoading = $state(false);
+	requestsLoading = $state(false);
+	actionLoadingId = $state('');
+	sendFriendIdInput = $state('');
+	sendFriendExpiry = $state('');
+	sendFriendVisibility = $state<SharingLevel>('full');
+	acceptFriendVisibility = $state<Record<string, SharingLevel>>({});
+	friendActions = $state.raw<
+		ManagementState['friendActions'] & {
+			refresh: () => Promise<void>;
+			retrySchedules: () => Promise<void>;
+		}
+	>();
+	comparison = $state(false);
+	comparisonDisplay = $state<ComparisonMode>('detailed');
+	comparisonPresentation = $state<CalendarPresentation>('auto');
+	comparisonDay = $state('');
+	calendarPresentation = $state<CalendarPresentation>('auto');
+	calendarDay = $state('');
+	filtersManual = $state(false);
+	meetingEventsEnabled = $state(false);
+	meetingLinksEnabled = $state(false);
+	featuresLoading = $state(true);
+	featuresError = $state('');
+	featureActions = $state.raw<{ reload: () => Promise<void> }>();
+	linkUncertain = $state(false);
+	linkBusy = $state(false);
+	savedMeetingBusy = $state(false);
+	savedMeetingDetail = $state<SavedMeetingSelection>();
+	meetingActions = $state.raw<{ review: () => void; edit: () => void }>();
+	friendsReturnTarget: HTMLElement | null = null;
+	editorReturnTarget: HTMLElement | null = null;
+	friendsScroll = 0;
+	scheduleTerm = $derived(
+		this.planning ? this.currentTerm : this.comparison ? this.term : this.currentTerm
+	);
+	manageOpen = $state(false);
+	highlightedSlot = $state<PreviewSlot>();
+	restoredPreview = $state<PreviewSlot>();
+	meetingDraft = $state<MeetingDraft>();
+	savedDraft = $state<MeetingDraft>();
+	meetingEditorOpen = $state(false);
+	meetingVersion = $state(0);
+	preferences = $state<MeetingPreferences>({
+		preset: 'this-week',
+		from: weekDates()[0],
+		until: weekDates()[4],
+		duration: '30',
+		dailyStart: '09:00',
+		dailyEnd: '17:00',
+		buffer: '10',
+		betweenClasses: false
+	});
+
+	invalidateMeetings(session: PanelSession): void {
+		session.savedMeetings.clear();
+		session.pendingSavedMeetings.clear();
+		const ids = new SvelteSet([
+			'you',
+			...this.friends.map((friend) => friend.id),
+			...Object.keys(session.busyVersions),
+			...[...session.busyBlocks.keys(), ...session.pendingBusyBlocks.keys()].map(
+				(key) => key.split(':')[0]
+			)
+		]);
+		for (const id of ids) session.invalidateBusyBlocks(id);
+		this.busyBlocks = {};
+		this.busyStatus = {};
+		this.busyErrors = {};
+		++this.busyVersion;
+		++this.meetingVersion;
+	}
+
+	constructor() {
+		if (!browser) return;
+		try {
+			const saved = JSON.parse(localStorage.getItem(PLANNING_KEY) ?? '{}') as {
+				selected?: unknown;
+				duration?: unknown;
+				dailyStart?: unknown;
+				dailyEnd?: unknown;
+			};
+			if (!saved || typeof saved !== 'object') return;
+			if (Array.isArray(saved.selected))
+				this.selected = saved.selected
+					.filter((id): id is string => typeof id === 'string')
+					.filter((id, index, ids) => ids.indexOf(id) === index);
+			if (
+				typeof saved.duration === 'string' &&
+				Number.isInteger(Number(saved.duration)) &&
+				Number(saved.duration) > 0
+			)
+				this.preferences.duration = saved.duration;
+			for (const key of ['dailyStart', 'dailyEnd'] as const) {
+				const value = saved[key];
+				if (typeof value === 'string' && timeMinutes(value) !== undefined)
+					this.preferences[key] = value;
+			}
+		} catch (error) {
+			console.error('Failed to load saved friend planning preferences', error);
+		}
+	}
+
+	savePlanning(): void {
+		if (!browser) return;
+		try {
+			localStorage.setItem(
+				PLANNING_KEY,
+				JSON.stringify({
+					selected: this.selected,
+					duration: this.preferences.duration,
+					dailyStart: this.preferences.dailyStart,
+					dailyEnd: this.preferences.dailyEnd
+				})
+			);
+		} catch (error) {
+			console.error('Failed to save friend planning preferences', error);
+		}
+	}
+}
+
+const KEY = Symbol('panelUi');
+
+export function setPanelUi(current: () => PanelUi): void {
+	setContext(KEY, current);
+}
+
+export function getPanelUi(): PanelUi {
+	return getContext<() => PanelUi>(KEY)();
+}
