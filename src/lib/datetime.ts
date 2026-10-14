@@ -96,7 +96,9 @@ export function campusDate(value: string): string {
 }
 
 export function formatCampusDate(value: string): string {
-	return new Date(value).toLocaleDateString(undefined, { timeZone: CAMPUS_TIME_ZONE });
+	return new Date(
+		/^\d{4}-\d{2}-\d{2}$/.test(value) ? calendarDateTime(value, '12:00') : value
+	).toLocaleDateString(undefined, { timeZone: CAMPUS_TIME_ZONE });
 }
 
 export function hasExpired(expiresAt: string | null | undefined, now: number): boolean {
