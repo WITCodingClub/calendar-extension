@@ -10,10 +10,15 @@ const fields = [
 	'groups',
 	'comparison',
 	'comparisonDisplay',
+	'comparisonPresentation',
+	'comparisonDay',
+	'calendarPresentation',
+	'calendarDay',
+	'filtersManual',
+	'savedDraft',
+	'linkUncertain',
 	'meetingDraft',
 	'meetingEditorOpen',
-	'meetingDetails',
-	'starts',
 	'preferences'
 ] as const;
 

@@ -55,16 +55,19 @@ async function openGroups(page: Page) {
 
 async function selectStudyGroup(page: Page) {
 	await chooseRadio(page, 'Friends');
-	await page.getByRole('button', { name: /^People:/ }).click();
+	await page.getByRole('button', { name: /^(?:Edit people|Choose people)/ }).click();
 	const picker = page.getByRole('dialog', { name: 'Select people' });
 	await toggle(picker, 'Study group', true);
 	await toggle(picker, /Ben Test/, true);
-	await picker.getByRole('button', { name: 'Close', exact: true }).click();
+	await picker.getByRole('button', { name: 'Done', exact: true }).click();
 	await expect(
-		page.getByRole('button', { name: 'People: You + 2 friends', exact: true })
+		page.getByRole('button', { name: 'Edit people · You, Ada Test, Ben Test', exact: true })
 	).toBeVisible();
 	await expect(
-		page.getByRole('region', { name: 'Shared free periods' }).getByRole('button').first()
+		page
+			.getByRole('region', { name: 'Friends planning' })
+			.getByRole('button', { name: /to.*\d{2}:\d{2}/ })
+			.first()
 	).toBeVisible();
 }
 
@@ -161,6 +164,8 @@ test('name and membership edits omit unchanged timestamps, including friend deta
 	await chooseRadio(drawer, 'People');
 	await drawer.getByText('Cam Test', { exact: true }).click();
 	await toggle(drawer, 'Renamed group', true);
+	await expect.poll(() => state.bodies.length).toBe(1);
+	await drawer.getByRole('button', { name: 'Save changes', exact: true }).click();
 	await expect.poll(() => state.bodies.length).toBe(2);
 	await expect(drawer.getByRole('checkbox', { name: 'Renamed group' })).toBeEnabled();
 	expect(state.bodies[1]).toEqual({
@@ -224,6 +229,8 @@ for (const action of ['Save group', 'Delete group']) {
 		state.status = 404;
 		state.group = null;
 		await drawer.getByRole('button', { name: action }).click();
+		if (action === 'Delete group')
+			await page.getByRole('button', { name: 'Confirm', exact: true }).click();
 		await expect(drawer.getByRole('button', { name: 'Save group' })).toBeDisabled();
 		await expect(drawer.getByRole('button', { name: 'Delete group' })).toBeDisabled();
 		await expect(drawer.getByLabel('Group name')).toHaveValue('Kept draft');
@@ -231,7 +238,10 @@ for (const action of ['Save group', 'Delete group']) {
 		await expect(
 			drawer.getByText('This group is no longer available. Your friendships remain.').first()
 		).toBeVisible();
+		if (action === 'Delete group')
+			await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
 		await drawer.getByRole('button', { name: 'All groups' }).click();
+		await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
 		await expect(drawer.getByText('Study group', { exact: true })).toHaveCount(0);
 		await chooseRadio(drawer, 'People');
 		for (const friend of friends)
@@ -242,7 +252,7 @@ for (const action of ['Save group', 'Delete group']) {
 			scheduleReads
 		);
 		await chooseRadio(page, 'Friends');
-		await page.getByRole('button', { name: /^People:/ }).click();
+		await page.getByRole('button', { name: /^(?:Edit people|Choose people)/ }).click();
 		const picker = page.getByRole('dialog', { name: 'Select people' });
 		await expect(picker.getByRole('checkbox', { name: 'Study group' })).toHaveCount(0);
 		await expect(picker.getByRole('checkbox', { name: /Ada Test/ })).toBeChecked();
@@ -267,16 +277,17 @@ test('clock expiry removes a group from an open editor and picker without droppi
 	await expect(drawer.getByRole('button', { name: 'Save group' })).toBeDisabled();
 	await expect(drawer.getByLabel('Group name')).toHaveValue('Unsaved name');
 	await drawer.getByRole('button', { name: 'All groups' }).click();
+	await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
 	await expect(drawer.getByText('Study group', { exact: true })).toHaveCount(0);
 	await drawer.getByRole('button', { name: 'Close manage friends' }).click();
-	await page.getByRole('button', { name: /^People:/ }).click();
+	await page.getByRole('button', { name: /^(?:Edit people|Choose people)/ }).click();
 	const picker = page.getByRole('dialog', { name: 'Select people' });
 	await expect(picker.getByRole('checkbox', { name: 'Study group' })).toHaveCount(0);
 	await expect(picker.getByRole('checkbox', { name: /Ada Test/ })).toBeChecked();
 	await expect(picker.getByRole('checkbox', { name: /Ben Test/ })).toBeChecked();
 });
 
-test('refresh removes unavailable groups and stale editors, and initial loads filter expired groups', async ({
+test('refresh removes unavailable groups after guarded discard and filters expired groups', async ({
 	extension
 }) => {
 	const { page, context } = extension;
@@ -286,14 +297,15 @@ test('refresh removes unavailable groups and stale editors, and initial loads fi
 	await drawer.getByText('Study group', { exact: true }).click();
 	await drawer.getByLabel('Group name').fill('Kept on refresh');
 	await drawer.getByRole('button', { name: 'Close manage friends' }).click();
+	await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
+	await expect(drawer.getByLabel('Group name')).toHaveValue('Kept on refresh');
+	await drawer.getByRole('button', { name: 'Close manage friends' }).click();
+	await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
 	state.group = null;
 	await page.getByRole('button', { name: 'Manage friends', exact: true }).click();
 	await chooseRadio(drawer, /^Requests/);
-	await drawer.getByRole('button', { name: 'Refresh friends', exact: true }).click();
+	await drawer.getByRole('button', { name: 'Refresh', exact: true }).click();
 	await chooseRadio(drawer, 'Groups');
-	await expect(drawer.getByRole('button', { name: 'Save group' })).toBeDisabled();
-	await expect(drawer.getByLabel('Group name')).toHaveValue('Kept on refresh');
-	await drawer.getByRole('button', { name: 'All groups' }).click();
 	await expect(drawer.getByText('Study group', { exact: true })).toHaveCount(0);
 	state.group = studyGroup('2026-10-06T11:59:59-04:00');
 	await page.reload();

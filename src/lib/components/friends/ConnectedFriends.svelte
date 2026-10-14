@@ -615,8 +615,7 @@
 			await loadGroups();
 			if (!session.active) return;
 			for (const friend of ui.friends) discardFriend(friend.id);
-			for (const item of $storedProcessedData) session.invalidateOwnSchedule(String(item.termId));
-			storedProcessedData.set([]);
+			ui.invalidateMeetings(session);
 			await ui.friendActions?.retrySchedules();
 		},
 		setSharing: (id, level) =>

@@ -82,13 +82,15 @@ test('comparison waits for terms before choosing among historical enrollments', 
 	try {
 		await page.goto(extension.baseUrl + '/friends.html?view=calendar');
 		await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Exit comparison', exact: true })).toBeVisible();
+		await expect(
+			page.getByRole('button', { name: '← Back to Friends', exact: true })
+		).toBeVisible();
 		await expect(page.getByRole('radio', { name: 'Fall 2025', exact: true })).toHaveCount(0);
 	} finally {
 		release();
 	}
 	await expect(page.getByRole('radio', { name: 'Fall 2026', exact: true })).toBeChecked();
-	await expect(page.getByRole('button', { name: 'Exit comparison', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: '← Back to Friends', exact: true })).toBeVisible();
 });
 
 test('two distinct event dialogs reuse loaded preferences; UI and startup request timings are separate', async ({

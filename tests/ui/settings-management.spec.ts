@@ -61,9 +61,9 @@ test('Manage friends People/Groups/Requests and safe forms/routes without relati
 		await expect(drawer.getByRole('button', { name: 'Remove friend' })).toBeVisible();
 		await drawer.getByRole('button', { name: 'All people' }).click();
 	}
-	await drawer.getByLabel('Search friends').fill('Ada');
+	await drawer.getByLabel('Search people').fill('Ada');
 	await expect(drawer.getByText('Ben Test', { exact: true })).toHaveCount(0);
-	await drawer.getByLabel('Search friends').fill('');
+	await drawer.getByLabel('Search people').fill('');
 	await drawer.getByRole('button', { name: 'Add friend', exact: true }).click();
 	await expect(drawer.getByRole('button', { name: 'Send request' })).toBeDisabled();
 	await drawer.getByLabel('Email or user ID').fill('someone@example.invalid');
@@ -72,22 +72,27 @@ test('Manage friends People/Groups/Requests and safe forms/routes without relati
 	await chooseRadio(drawer, 'Groups');
 	await drawer.getByRole('button', { name: 'Create group', exact: true }).click();
 	await drawer.getByLabel('Group name').fill('Unsaved group');
-	await drawer.getByLabel('Search members').fill('Ben');
+	await drawer.getByLabel('Search friends to add').fill('Ben');
 	await expect(drawer.getByRole('checkbox', { name: 'Ben Test' })).toBeVisible();
 	await expect(drawer.getByRole('button', { name: 'Save group' })).toBeEnabled();
 	await drawer.getByRole('button', { name: 'All groups' }).click();
+	await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
 	await expect(drawer.getByText('Unsaved group', { exact: true })).toHaveCount(0);
 	await chooseRadio(drawer, /^Requests/);
 	await expect(drawer.getByRole('heading', { name: 'Incoming Test' })).toBeVisible();
 	await expect(drawer.getByText('Outgoing Test', { exact: true })).toBeVisible();
-	await expect(drawer.getByRole('button', { name: 'Accept', exact: true })).toBeVisible();
-	await expect(drawer.getByRole('button', { name: 'Decline', exact: true })).toBeVisible();
+	await expect(
+		drawer.getByRole('button', { name: 'Accept friend request from Incoming Test', exact: true })
+	).toBeVisible();
+	await expect(
+		drawer.getByRole('button', { name: 'Decline friend request from Incoming Test', exact: true })
+	).toBeVisible();
 	for (const width of [320, 480, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		await fitsViewport(page, drawer);
 	}
 	await chooseRadio(drawer, 'People');
-	await drawer.getByLabel('Search friends').fill('');
+	await drawer.getByLabel('Search people').fill('');
 	await drawer.getByText('Ada Test', { exact: true }).click();
 	await drawer.getByRole('button', { name: 'Find a time together' }).click();
 	await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
@@ -96,7 +101,7 @@ test('Manage friends People/Groups/Requests and safe forms/routes without relati
 	await drawer.getByRole('button', { name: 'All people' }).click();
 	await drawer.getByText('Ben Test', { exact: true }).click();
 	await drawer.getByRole('button', { name: 'Compare calendars', exact: true }).click();
-	await expect(page.getByRole('button', { name: 'Exit comparison' })).toBeVisible();
+	await expect(page.getByRole('button', { name: '← Back to Friends' })).toBeVisible();
 	await page.getByRole('button', { name: 'Manage friends', exact: true }).click();
 	await drawer.press('Escape');
 	await expect(drawer).toBeHidden();

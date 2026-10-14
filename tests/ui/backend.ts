@@ -160,7 +160,9 @@ export function responseFor(
 						debugMode: false,
 						envSwitcher: false,
 						finalsRetroactive: false,
-						bypassRateLimits: false
+						bypassRateLimits: false,
+						friendMeetingEvents: true,
+						meetingLinks: true
 					}
 				};
 			case '/api/friends':

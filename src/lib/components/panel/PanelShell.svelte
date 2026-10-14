@@ -9,16 +9,47 @@
 	import { meetingMessage, scheduleMessage } from '$lib/friends/availability';
 	import { savePanelHandoff } from '$lib/panel/handoff';
 	import { getPanelSession } from '$lib/panel/session';
-	import { onMount, type Snippet } from 'svelte';
+	import { onMount, tick, type Snippet } from 'svelte';
+	import { featureFlags } from '$lib/featureFlags';
+	import FriendsWorkspace from '$lib/components/friends/FriendsWorkspace.svelte';
+	import SavedMeetingDialogs from '$lib/components/friends/SavedMeetingDialogs.svelte';
 	import OpenInTabButton from './OpenInTabButton.svelte';
 	import ManageFriendsDrawer from '$lib/components/friends/ManageFriendsDrawer.svelte';
 	import ConnectedFriends from '$lib/components/friends/ConnectedFriends.svelte';
 	import MeetingEditor from '$lib/components/friends/MeetingEditor.svelte';
 	import { getPanelUi } from '$lib/panel/ui.svelte';
-	import '$lib/components/friends/preview.css';
+	import '$lib/components/friends/friends.css';
 	let { children }: { children: Snippet } = $props();
 	const ui = getPanelUi();
 	const session = getPanelSession();
+	let friendsMounted = $state(false);
+	let previousTab = '';
+	$effect(() => {
+		if (activeTab === 'friends') {
+			friendsMounted = true;
+			if (previousTab === 'calendar')
+				void tick().then(() => {
+					ui.friendsReturnTarget?.focus({ preventScroll: true });
+					window.scrollTo(0, ui.friendsScroll);
+				});
+		}
+		previousTab = activeTab;
+	});
+
+	async function loadFeatures(force = false) {
+		ui.featuresLoading = true;
+		await featureFlags.loadFlags(force);
+		if (!session.active) return;
+		ui.meetingEventsEnabled = featureFlags.isEnabledSync('friendMeetingEvents');
+		ui.meetingLinksEnabled = featureFlags.isEnabledSync('meetingLinks');
+		ui.featuresError = featureFlags.error;
+		ui.featuresLoading = false;
+	}
+	ui.featureActions = { reload: () => loadFeatures(true) };
+	onMount(() => {
+		void loadFeatures();
+	});
+
 	onMount(() => {
 		const timer = setInterval(() => {
 			const now = Date.now();
@@ -59,18 +90,6 @@
 		)
 			ui.highlightedSlot = slot;
 		ui.restoredPreview = undefined;
-	});
-	$effect(() => {
-		const slot = ui.highlightedSlot;
-		if (!slot) return;
-		if (ui.meetingDraft && JSON.stringify(ui.meetingDraft.slot) !== JSON.stringify(slot)) {
-			ui.highlightedSlot = undefined;
-			return;
-		}
-		const ownCourses = ui.scheduleTerm
-			? termClasses($processedData, ui.scheduleTerm)
-			: $processedData.at(-1)?.responseData.classes;
-		if (meetingMessage(ui, ownCourses, slot)) ui.highlightedSlot = undefined;
 	});
 </script>
 
@@ -193,9 +212,13 @@
 		{/if}
 	</section>
 	{@render children()}
+	{#if friendsMounted}<div hidden={activeTab !== 'friends'} class="min-w-0 w-full">
+			<FriendsWorkspace />
+		</div>{/if}
 	<ConnectedFriends
-		loadSchedules={(activeTab === 'friends' || ui.comparison) && ui.hasSelectedFriends}
+		loadSchedules={activeTab === 'friends' ? ui.hasSelectedFriends : ui.comparison}
 	/>
 	<ManageFriendsDrawer bind:open={ui.manageOpen} />
 	<MeetingEditor />
+	<SavedMeetingDialogs />
 </div>

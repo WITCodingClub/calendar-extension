@@ -17,7 +17,7 @@ export async function toggle(scope: Page | Locator, name: string | RegExp, check
 export async function selectFriends(page: Page) {
 	await chooseRadio(page, 'Friends');
 	await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
-	await page.getByRole('button', { name: /^People:/ }).click();
+	await page.getByRole('button', { name: /^(?:Edit people|Choose people)/ }).click();
 	const picker = page.getByRole('dialog', { name: 'Select people' });
 	await expect(picker.getByRole('checkbox', { name: /Ada Test/ })).toBeVisible();
 	await picker.getByLabel('Search people').fill('no-match');
@@ -32,12 +32,15 @@ export async function selectFriends(page: Page) {
 	await expect(picker.getByRole('checkbox', { name: /Ada Test/ })).not.toBeChecked();
 	await toggle(picker, /Ada Test/, true);
 	await toggle(picker, /Ben Test/, true);
-	await picker.getByRole('button', { name: 'Close', exact: true }).click();
+	await picker.getByRole('button', { name: 'Done', exact: true }).click();
 	await expect(
-		page.getByRole('button', { name: 'People: You + 2 friends', exact: true })
+		page.getByRole('button', { name: 'Edit people · You, Ada Test, Ben Test', exact: true })
 	).toBeVisible();
 	await expect(
-		page.getByRole('region', { name: 'Shared free periods' }).getByRole('button').first()
+		page
+			.getByRole('region', { name: 'Friends planning' })
+			.getByRole('button', { name: /to.*\d{2}:\d{2}/ })
+			.first()
 	).toBeVisible();
 }
 export async function fitsViewport(page: Page, target?: Locator) {

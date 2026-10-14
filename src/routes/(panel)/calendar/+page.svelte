@@ -16,7 +16,7 @@
 		ResponseData,
 		TermResponse
 	} from '$lib/types';
-	import { Button, LoadingIndicator, snackbar } from 'm3-svelte';
+	import { Button, Chip, ConnectedButtons, LoadingIndicator, snackbar } from 'm3-svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { API } from '$lib/api';
@@ -36,7 +36,10 @@
 		mergeProcessedClasses,
 		upsertProcessedTerm
 	} from '$lib/calendar/processedTerms';
-	import { todayDate, weekDates } from '$lib/datetime';
+	import { todayDate, weekDates, dateLabel } from '$lib/datetime';
+	import { DAYS } from '$lib/calendar/days';
+	import ComparisonList from '$lib/components/friends/ComparisonList.svelte';
+	import type { ComparisonGridEvent } from '$lib/friends/comparison';
 	import { savedMeetingCourses, type SavedMeetingsResponse } from '$lib/friends/savedMeetings';
 	import { getPanelSession } from '$lib/panel/session';
 	import { getPanelUi } from '$lib/panel/ui.svelte';
@@ -45,15 +48,12 @@
 		type EventPreferenceChanges
 	} from '$lib/components/calendar/EventEditorDialog.svelte';
 	import CalendarComparison from '$lib/components/friends/CalendarComparison.svelte';
-	import ParticipantPicker from '$lib/components/friends/ParticipantPicker.svelte';
 	import SavedMeetings from '$lib/components/friends/SavedMeetings.svelte';
 	import Help from '$lib/components/settings/Help.svelte';
 	import Settings from '$lib/components/settings/Settings.svelte';
 	import WeekNavigation from '$lib/components/ui/WeekNavigation.svelte';
 
 	const ui = getPanelUi();
-	const dates = $derived(weekDates(ui.week));
-	const participants = $derived(ui.people.filter((person) => ui.selected.includes(person.id)));
 	$effect(() => {
 		ui.termOptions = displayTerms;
 	});
@@ -64,13 +64,6 @@
 	let processedData: Course[] | undefined = $derived(responseData?.classes);
 	let savedData = $state.raw<SavedMeetingsResponse>({ meetings: [], occurrences: [] });
 	let selectedSavedOccurrence = $state('');
-	const comparisonMessage = $derived(
-		ui.hasSelectedFriends
-			? undefined
-			: ui.friendsLoading
-				? 'Loading friends…'
-				: ui.friendsError || 'Select some friends to compare calendars.'
-	);
 	let terms = $state<TermResponse | undefined>(undefined);
 	const termDates = $derived.by(() => {
 		const meetings = (processedData ?? []).flatMap((course) => course.meeting_times ?? []);
@@ -92,6 +85,9 @@
 				: !ui.comparison && termDates.end && termDates.end < todayDate()
 		);
 	});
+	const dates = $derived(
+		weekDates(historicSchedule && termDates.start ? termDates.start : ui.week)
+	);
 	const calendarCourses = $derived([
 		...(processedData ?? []),
 		...(historicSchedule ? [] : savedMeetingCourses(savedData, dates))
@@ -160,15 +156,34 @@
 	);
 
 	const calendarStartHour = $derived(startHourFor(calendarCourses));
-	const stackedMeetings = $derived(
-		stackMeetings(calendarCourses, {
+	const stackedMeetings = $derived.by(() => {
+		const grid = stackMeetings(calendarCourses, {
 			dates,
 			startHour: calendarStartHour,
 			historic: historicSchedule,
 			labColor,
 			lectureColor
-		})
-	);
+		});
+		const byDay: Record<string, ComparisonGridEvent[]> = {};
+		for (const [day, events] of Object.entries(grid.byDay))
+			byDay[day] = events.map((item) => {
+				const occurrence = savedData.occurrences.find(
+					(occurrence) => occurrence.id === item.meeting.id
+				);
+				const meeting =
+					occurrence && savedData.meetings.find((meeting) => meeting.id === occurrence.meeting_id);
+				return occurrence && meeting
+					? {
+							...item,
+							savedMeeting: { meeting, occurrence },
+							bgColor: 'rgb(var(--m3-scheme-tertiary-container))',
+							textColor: 'rgb(var(--m3-scheme-on-tertiary-container))'
+						}
+					: item;
+			});
+		return { byDay };
+	});
+
 	const earliestClassOffsetRem = $derived(earliestOffset(stackedMeetings));
 
 	function closeEditor() {
@@ -662,9 +677,33 @@
 	onDestroy(() => {
 		ui.calendarActions = undefined;
 	});
+
+	let calendarElement = $state<HTMLDivElement>();
+	let narrow = $state(false);
+	const calendarDisplay = $derived(
+		ui.calendarPresentation === 'auto' ? (narrow ? 'list' : 'calendar') : ui.calendarPresentation
+	);
+	const selectedDayEvents = $derived(
+		stackedMeetings.byDay[DAYS[Math.max(0, dates.indexOf(ui.calendarDay))].key] ?? []
+	);
+	$effect(() => {
+		if (dates.includes(ui.calendarDay)) return;
+		const previous = ui.calendarDay ? new Date(ui.calendarDay + 'T12:00:00Z').getUTCDay() - 1 : 0;
+		ui.calendarDay = dates[Math.min(4, Math.max(0, previous))];
+	});
+	onMount(() => {
+		if (!calendarElement) return;
+		narrow = calendarElement.clientWidth < 600;
+		const observer = new ResizeObserver(([entry]) => (narrow = entry.contentRect.width < 600));
+		observer.observe(calendarElement);
+		return () => observer.disconnect();
+	});
 </script>
 
-<div class="min-w-0 gap-3 @container box-border flex h-full w-full flex-col">
+<div
+	bind:this={calendarElement}
+	class="min-w-0 gap-3 @container box-border flex h-full w-full flex-col"
+>
 	{#if !ui.comparison && !processedData && tab === 'a'}
 		<div
 			class="gap-6 p-6 bg-surface-container rounded-2xl shadow-md max-w-lg mx-auto flex w-full flex-col items-center"
@@ -730,45 +769,56 @@
 
 	{#if tab === 'a'}
 		{#if ui.comparison}
-			<div class="gap-2 flex flex-wrap items-center justify-between">
-				<ParticipantPicker bind:selected={ui.selected} />
-				<div class="ml-auto shrink-0">
-					<Button
-						variant="text"
-						onclick={() => {
-							ui.comparison = false;
-							ui.highlightedSlot = undefined;
-						}}>Exit comparison</Button
-					>
-				</div>
-			</div>
-			{#if comparisonMessage}
-				<div class="gap-2 flex flex-wrap items-center justify-between" role="status">
-					<p class="text-sm text-on-surface-variant">{comparisonMessage}</p>
-					<Button variant="text" onclick={() => ui.friendActions?.retrySchedules()}
-						>Reload schedules</Button
-					>
-				</div>
-			{:else}
-				<CalendarComparison
-					{militaryTime}
-					{participants}
-					comparison
-					date={ui.week}
-					bind:week={ui.week}
-					slot={ui.highlightedSlot}
-					ownEvents={stackedMeetings}
-					friendSchedules={ui.term ? (ui.friendSchedules[ui.term] ?? {}) : {}}
-					onownselect={selectCalendarEvent}
-					onedit={() => {
-						ui.meetingDetails = true;
-						ui.meetingEditorOpen = true;
-					}}
-				/>
-			{/if}
+			<CalendarComparison
+				{militaryTime}
+				savedMeetings={savedData}
+				onownselect={selectCalendarEvent}
+			/>
 		{:else}
 			{#if !historicSchedule}<WeekNavigation bind:week={ui.week} />{/if}
-			{#if processedData || savedData.occurrences.length}
+			<ConnectedButtons>
+				<input
+					type="radio"
+					name="calendar-presentation"
+					id="calendar-week-view"
+					aria-label="Calendar view"
+					checked={calendarDisplay === 'calendar'}
+					onchange={() => (ui.calendarPresentation = 'calendar')}
+				/><Button for="calendar-week-view">Calendar</Button>
+				<input
+					type="radio"
+					name="calendar-presentation"
+					id="calendar-list-view"
+					aria-label="List view"
+					checked={calendarDisplay === 'list'}
+					onchange={() => (ui.calendarPresentation = 'list')}
+				/><Button for="calendar-list-view">List</Button>
+			</ConnectedButtons>
+			{#if (processedData || savedData.occurrences.length) && calendarDisplay === 'list'}
+				<nav class="gap-2 flex flex-wrap" aria-label="Schedule day">
+					{#each dates as date (date)}<Chip
+							variant="general"
+							selected={ui.calendarDay === date}
+							aria-pressed={ui.calendarDay === date}
+							aria-label={historicSchedule
+								? `Show ${dateLabel(date).split(',')[0]}`
+								: `Show ${dateLabel(date)}, ${date.slice(0, 4)}`}
+							onclick={() => (ui.calendarDay = date)}
+							>{new Date(date + 'T12:00:00Z').toLocaleDateString('en-US', {
+								weekday: historicSchedule ? 'long' : 'short',
+								timeZone: 'UTC'
+							})}{#if !historicSchedule}
+								{Number(date.slice(-2))}{/if}</Chip
+						>{/each}
+				</nav>
+				<ComparisonList
+					showDates={!historicSchedule}
+					events={selectedDayEvents}
+					date={ui.calendarDay || dates[0]}
+					{militaryTime}
+					onselect={selectCalendarEvent}
+				/>
+			{:else if processedData || savedData.occurrences.length}
 				<CalendarGrid
 					{stackedMeetings}
 					dates={historicSchedule ? undefined : dates}
@@ -782,7 +832,7 @@
 		{/if}
 		{#if jwt_token}
 			<SavedMeetings
-				week={ui.week}
+				week={dates[0]}
 				{militaryTime}
 				showList={false}
 				bind:selectedOccurrence={selectedSavedOccurrence}

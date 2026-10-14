@@ -1,246 +1,125 @@
 import { test, expect } from './extension.fixture';
-import { chooseRadio, fitsViewport, selectFriends, toggle } from './helpers';
+import { chooseRadio, fitsViewport, selectFriends } from './helpers';
 import { friends, origin } from './backend';
 
-test('picker, planning preferences, meeting validation, draft, preview and link form', async ({
+test('approved planner, explicit draft, duration and preview retain session context', async ({
 	extension
 }) => {
 	const { page } = extension;
 	await extension.open();
 	await selectFriends(page);
-	const preferences = page.getByRole('region', { name: 'Meeting preferences' });
-	for (const width of [320, 480, 1280]) {
-		await page.setViewportSize({ width, height: 900 });
-		await fitsViewport(page, preferences);
-	}
-	await preferences.getByLabel('From', { exact: true }).fill('2026-10-07');
-	await preferences.getByRole('button', { name: 'Pick until', exact: true }).click();
-	const untilCalendar = preferences.getByRole('dialog', { name: 'Date picker', exact: true });
-	await untilCalendar.getByRole('button', { name: '2026-10-06', exact: true }).click();
-	await untilCalendar.getByRole('button', { name: 'OK', exact: true }).click();
-	await expect(preferences.getByLabel('Until', { exact: true })).toHaveValue('2026-10-06');
-	await expect(preferences.getByLabel('Until', { exact: true })).toHaveAttribute(
-		'aria-invalid',
-		'true'
-	);
-	await expect(preferences.getByText('This date is invalid. Pick a different date.')).toHaveCount(
-		2
-	);
-	await expect(page.getByText('Choose a valid date range.', { exact: true })).toBeVisible();
-	await preferences.getByLabel('Until', { exact: true }).fill('2026-10-23');
-	await expect(preferences.getByText('This date is invalid. Pick a different date.')).toHaveCount(
-		0
-	);
-	await preferences.getByLabel('Duration (minutes)', { exact: true }).fill('0');
-	await expect(
-		page.getByText('Enter a positive duration and a buffer of zero or more minutes.', {
-			exact: true
-		})
-	).toBeVisible();
-	await preferences.getByLabel('Duration (minutes)', { exact: true }).fill('45');
-	await preferences.getByLabel('Daily start').fill('08:00');
-	await preferences.getByLabel('Daily end').fill('18:00');
-	await preferences.getByText('Additional options', { exact: true }).click();
-	await preferences.getByLabel('Buffer (minutes)').fill('-1');
-	await expect(
-		page.getByText('Enter a positive duration and a buffer of zero or more minutes.', {
-			exact: true
-		})
-	).toBeVisible();
-	await preferences.getByLabel('Buffer (minutes)').fill('5');
-	await toggle(preferences, 'Between classes', true);
-	await expect(preferences.getByText(/Only gaps between/)).toBeVisible();
-	await toggle(preferences, 'Between classes', false);
-	await preferences.getByLabel('Daily end').fill('07:00');
-	await expect(
-		page.getByText('Choose a daily start before the daily end.', { exact: true })
-	).toBeVisible();
-	await preferences.getByLabel('Daily end').fill('18:00');
-	const schedulesBefore = extension.network.filter((row) =>
-		row.path.endsWith('/processed_events')
-	).length;
-	await page.getByRole('button', { name: 'Refresh friends', exact: true }).click();
-	await expect
-		.poll(() => extension.network.filter((row) => row.path.endsWith('/processed_events')).length)
-		.toBe(schedulesBefore + 3);
-	const results = page.getByRole('region', { name: 'Shared free periods' });
-	await expect(results.locator('details')).toHaveCount(5);
-	await results.locator('summary').first().click();
-	await expect(results.locator('details').first()).not.toHaveAttribute('open');
-	await results.locator('summary').first().click();
-	await results.getByRole('button', { name: 'Show more days' }).click();
-	await expect(results.locator('details')).toHaveCount(10);
-	await results
-		.getByRole('button', { name: /^08:00/ })
-		.first()
-		.click();
-	const editor = page.getByRole('dialog', { name: 'Choose meeting time' });
+	const planner = page.getByRole('region', { name: 'Friends planning' });
+	const suggested = planner.locator('.day');
+	await expect(suggested).toHaveCount(3);
+	await planner.getByRole('button', { name: 'Show more suggested days' }).click();
+	await expect(suggested).toHaveCount(4);
+	await planner.getByRole('button', { name: /Tuesday, Oct 6, 12:15 to 12:45/ }).click();
+	const editor = page.getByRole('dialog', { name: 'Create meeting', exact: true });
 	await expect(editor).toBeVisible();
+	await expect(planner.getByText('Saved draft', { exact: true })).toHaveCount(0);
+	await editor.getByLabel('Meeting title').fill('Planning draft');
+	await editor.getByText('More options', { exact: true }).click();
+	await editor.getByLabel('Location (optional)').fill('Test Hall');
+	await expect(editor.getByRole('checkbox')).toBeChecked();
+	await editor.getByLabel('Duration', { exact: true }).click();
+	await page.getByRole('option', { name: '45 min', exact: true }).click();
+	await expect(editor.getByText('Ends at 13:00')).toBeVisible();
 	for (const width of [320, 480, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		await fitsViewport(page, editor);
+		await expect(editor.getByRole('button', { name: 'Save draft' })).toBeInViewport();
 	}
-	await editor.getByLabel('Date', { exact: true }).fill('2026-10-08');
-	await editor.getByLabel('Date', { exact: true }).fill('2026-10-07');
-	await editor.getByRole('button', { name: 'Pick date', exact: true }).click();
-	const calendar = editor.getByRole('dialog', { name: 'Date picker', exact: true });
-	for (const width of [320, 480, 1280]) {
-		await page.setViewportSize({ width, height: 900 });
-		await fitsViewport(page, calendar);
-	}
-	await expect(calendar.getByRole('button', { name: 'Previous year', exact: true })).toBeDisabled();
-	await expect(calendar.getByRole('button', { name: 'Next year', exact: true })).toBeDisabled();
-	await expect(
-		calendar.getByRole('button', { name: 'Choose year, 2026', exact: true })
-	).toBeDisabled();
-	await expect(
-		calendar.getByRole('button', { name: 'Previous month', exact: true })
-	).toBeDisabled();
-	await expect(calendar.getByRole('button', { name: '2026-10-01', exact: true })).toBeDisabled();
-	await calendar.getByRole('button', { name: 'Choose month, October', exact: true }).click();
-	const months = calendar.getByRole('group', { name: 'Months', exact: true });
-	await expect(months.getByRole('button', { name: 'September', exact: true })).toBeDisabled();
-	await expect(months.getByRole('button', { name: 'November', exact: true })).toBeEnabled();
-	await months.getByRole('button', { name: 'December', exact: true }).click();
-	await expect(calendar.getByRole('button', { name: '2026-12-21', exact: true })).toBeDisabled();
-	await expect(calendar.getByRole('button', { name: 'Next month', exact: true })).toBeDisabled();
-	await calendar.getByRole('button', { name: 'Cancel', exact: true }).click();
-	await editor.getByLabel('Date', { exact: true }).fill('2026-10-01');
-	await expect(editor.getByLabel('Date', { exact: true })).toHaveValue('2026-10-01');
-	await expect(editor.getByText('This date is invalid. Pick a different date.')).toBeVisible();
-	await expect(editor.getByRole('button', { name: 'Continue' })).toBeDisabled();
-	await editor.getByRole('button', { name: 'Pick date', exact: true }).click();
-	await calendar.getByRole('button', { name: '2026-10-07', exact: true }).click();
-	await editor.getByRole('button', { name: 'OK', exact: true }).click();
-	await expect(editor.getByLabel('Date', { exact: true })).toHaveValue('2026-10-07');
-	await expect(editor.getByText('This date is invalid. Pick a different date.')).toHaveCount(0);
-	await editor.getByRole('button', { name: 'Pick date', exact: true }).click();
-	await calendar.getByRole('button', { name: '2026-10-07', exact: true }).focus();
-	await page.keyboard.press('Escape');
-	await expect(calendar).toBeHidden();
-	await expect(editor).toBeVisible();
-	await editor.getByLabel('Duration (min)', { exact: true }).fill('30');
-	const slider = editor.getByRole('slider', { name: 'Meeting start time' });
-	await slider.focus();
-	await slider.press('ArrowRight');
-	await expect(editor.getByLabel('Start', { exact: true })).toHaveValue('08:01');
-	await editor.getByLabel('End', { exact: true }).fill('07:00');
-	await expect(editor.getByRole('button', { name: 'Continue' })).toBeDisabled();
-	await expect(editor.getByRole('status')).toContainText(/end|after|valid/i);
-	await editor.getByLabel('Start', { exact: true }).fill('08:00');
-	await editor.getByLabel('End', { exact: true }).fill('08:30');
-	await editor.getByRole('button', { name: 'Continue' }).click();
-	const details = page.getByRole('dialog', { name: 'Edit / confirm meeting' });
-	await details.getByLabel('Title', { exact: true }).fill('Test planning draft');
-	await details.getByLabel('Location (optional)').fill('Test Hall');
-	await expect(details.getByRole('checkbox', { name: 'ICS calendar feed' })).toBeChecked();
-	await expect(
-		details.getByRole('checkbox', { name: 'Send an invite to participants' })
-	).toBeEnabled();
-	await expect(details.getByRole('button', { name: 'Create meeting', exact: true })).toBeEnabled();
-	await details.getByRole('button', { name: 'Change time' }).click();
-	await editor.getByRole('button', { name: 'Continue' }).click();
-	await expect(details.getByLabel('Title', { exact: true })).toHaveValue('Test planning draft');
-	for (const width of [320, 480, 1280]) {
-		await page.setViewportSize({ width, height: 900 });
-		await fitsViewport(page, details);
-	}
-	await details.getByRole('button', { name: 'Preview on calendar' }).click();
-	await expect(page.getByRole('button', { name: /^Planned meeting,/ })).toBeVisible();
-	await page.getByRole('button', { name: 'Next week', exact: true }).click();
-	await expect(page.getByRole('button', { name: /^Planned meeting,/ })).toHaveCount(0);
-	await page.getByRole('button', { name: 'View meeting week' }).click();
-	await expect(page.getByRole('button', { name: /^Planned meeting,/ })).toBeVisible();
-	await page.getByRole('button', { name: 'Edit / confirm', exact: true }).click();
-	await expect(details.getByLabel('Title', { exact: true })).toHaveValue('Test planning draft');
-	await details.getByRole('button', { name: 'Close', exact: true }).click();
-	await page.getByRole('button', { name: 'Exit comparison' }).click();
-	await chooseRadio(page, 'Friends');
-	await page.getByRole('button', { name: 'Create meeting link', exact: true }).click();
-	const link = page.getByRole('dialog', { name: 'Create meeting link' });
-	await link.getByLabel('Meeting name (optional)').fill('Test link draft');
-	await link.getByLabel('Link expires').fill('2026-10-20');
-	await link.getByRole('button', { name: 'Pick link expires', exact: true }).click();
-	const linkCalendar = link.getByRole('dialog', { name: 'Date picker', exact: true });
-	await linkCalendar.getByRole('button', { name: 'Choose month, October', exact: true }).click();
-	await linkCalendar
-		.getByRole('group', { name: 'Months', exact: true })
-		.getByRole('button', { name: 'December', exact: true })
-		.click();
-	await expect(linkCalendar.getByRole('button', { name: '2026-12-04', exact: true })).toBeEnabled();
-	await expect(
-		linkCalendar.getByRole('button', { name: '2026-12-05', exact: true })
-	).toBeDisabled();
-	await linkCalendar.getByRole('button', { name: 'Cancel', exact: true }).click();
-	await link.getByLabel('From', { exact: true }).fill('2026-12-15');
-	await expect(link.getByText('This date is invalid. Pick a different date.')).toHaveCount(2);
-	await link.getByRole('button', { name: 'Pick until', exact: true }).click();
-	await linkCalendar.getByRole('button', { name: 'Next year', exact: true }).click();
-	await expect(
-		linkCalendar.getByRole('button', { name: 'Choose year, 2027', exact: true })
-	).toBeVisible();
-	await expect(linkCalendar.getByRole('button', { name: '2027-01-13', exact: true })).toBeEnabled();
-	await expect(
-		linkCalendar.getByRole('button', { name: '2027-01-14', exact: true })
-	).toBeDisabled();
-	await linkCalendar.getByRole('button', { name: '2027-01-13', exact: true }).click();
-	await linkCalendar.getByRole('button', { name: 'OK', exact: true }).click();
-	await expect(link.getByLabel('Until', { exact: true })).toHaveValue('2027-01-13');
-	await expect(link.getByText('This date is invalid. Pick a different date.')).toHaveCount(0);
-	await expect(link.getByRole('button', { name: 'Generate link' })).toBeEnabled();
-	for (const width of [320, 480, 1280]) {
-		await page.setViewportSize({ width, height: 900 });
-		await fitsViewport(page, link);
-	}
-	await link.getByRole('button', { name: 'Close', exact: true }).click();
+	await editor.getByRole('button', { name: 'Save draft' }).click();
+	await expect(planner.getByText('Planning draft', { exact: true })).toBeVisible();
+	await planner.getByRole('button', { name: 'Continue', exact: true }).click();
+	await expect(editor.getByLabel('Meeting title')).toHaveValue('Planning draft');
+	await editor.getByLabel('Meeting title').fill('Unsaved revision');
+	await editor.getByRole('button', { name: 'Discard', exact: true }).click();
+	await expect(planner.getByText('Planning draft', { exact: true })).toBeVisible();
+	await expect(planner.getByText('Unsaved revision', { exact: true })).toHaveCount(0);
+	await planner.getByRole('button', { name: /Wednesday, Oct 7, 11:45 to 12:15/ }).click();
+	await expect(editor.getByLabel('Meeting title')).toHaveValue('Planning draft');
+	await editor.getByRole('button', { name: 'Preview on calendar' }).click();
+	const comparison = page.getByRole('region', { name: 'Calendar comparison' });
+	await expect(comparison.getByRole('radio', { name: 'Detailed', exact: true })).toBeChecked();
+	await expect(comparison.getByRole('radio', { name: 'List', exact: true })).toBeChecked();
+	await expect(comparison.getByRole('button', { name: /Proposed meeting, Wednesday/ })).toHaveCount(
+		1
+	);
+	await chooseRadio(comparison, 'Calendar');
+	await chooseRadio(comparison, 'Group availability');
+	await comparison.getByRole('button', { name: 'Back to editing' }).click();
+	await expect(editor.getByLabel('Meeting title')).toHaveValue('Planning draft');
+	await editor.getByRole('button', { name: 'Preview on calendar' }).click();
+	await expect(comparison.getByRole('radio', { name: 'Detailed', exact: true })).toBeChecked();
+	await expect(comparison.getByRole('radio', { name: 'List', exact: true })).toBeChecked();
+	await chooseRadio(comparison, 'Calendar');
+	await comparison.getByRole('button', { name: '← Back to Friends' }).click();
+	await expect(planner.getByText('Planning draft', { exact: true })).toBeVisible();
+	await expect(suggested).toHaveCount(4);
+	await page.getByRole('button', { name: 'Compare calendars', exact: true }).click();
+	await expect(comparison.getByRole('radio', { name: 'Calendar', exact: true })).toBeChecked();
+	await comparison.getByRole('button', { name: '← Back to Friends' }).click();
+	await planner.getByRole('button', { name: 'Discard', exact: true }).click();
+	await expect(planner.getByText('Saved draft', { exact: true })).toHaveCount(0);
 });
 
-test('detailed/group comparison uses real selected schedules, details and week navigation', async ({
-	extension
-}) => {
-	const { page } = extension;
+test('filter validation, no-match feedback and real availability reload', async ({ extension }) => {
+	const { page, network } = extension;
 	await extension.open();
 	await selectFriends(page);
-	await page.getByRole('button', { name: 'Compare calendars', exact: true }).click();
-	await chooseRadio(page, 'Detailed');
-	await expect(page.getByRole('button', { name: /Ada Test · Ada Class/ })).toHaveCount(5);
-	await expect(page.getByRole('button', { name: /Ben Test · Ben Class/ })).toHaveCount(5);
-	await expect(page.getByRole('button', { name: /Cam Test ·/ })).toHaveCount(0);
-	await expect(page.getByRole('button', { name: /You · Algorithms Test/ })).toHaveCount(5);
-	await page
-		.getByRole('button', { name: /Ada Test · Ada Class/ })
-		.first()
+	const planner = page.getByRole('region', { name: 'Friends planning' });
+	await planner.getByRole('button', { name: 'This week', exact: true }).click();
+	await planner
+		.locator('.filter-menu')
+		.getByRole('button', { name: 'Custom Date', exact: true })
 		.click();
-	const friend = page.getByRole('dialog', { name: 'Ada Class' });
-	await expect(friend.getByText('Ada Test', { exact: true })).toBeVisible();
-	await friend.getByRole('button', { name: 'Close', exact: true }).click();
-	await chooseRadio(page, 'Group availability');
-	await expect(page.getByRole('button', { name: /Group · Busy/ })).toHaveCount(10);
-	await page
-		.getByRole('button', { name: /Group · Busy/ })
-		.first()
+	await planner.getByLabel('From', { exact: true }).fill('2026-10-09');
+	await planner.getByLabel('Until', { exact: true }).fill('2026-10-07');
+	await expect(planner.getByText('Choose a start date on or before the end date.')).toBeVisible();
+	await planner.getByLabel('From', { exact: true }).fill('2026-10-07');
+	await planner.getByLabel('Until', { exact: true }).fill('2026-10-16');
+	await planner.getByRole('button', { name: '30 min', exact: true }).click();
+	await planner
+		.locator('.filter-menu')
+		.getByRole('button', { name: 'Custom Duration', exact: true })
 		.click();
-	const group = page.getByRole('dialog', { name: 'Group availability' });
-	await expect(group).toContainText('Ada Test · Ada Class');
-	await expect(group).toContainText('Ben Test · Ben Class');
-	await group.getByRole('button', { name: 'Close', exact: true }).click();
-	const week = page.getByText(/^Week of /);
-	const initial = await week.textContent();
-	await page.getByRole('button', { name: 'Previous week' }).click();
-	await expect(week).not.toHaveText(initial!);
-	await page.getByRole('button', { name: 'Next week' }).click();
-	await expect(week).toHaveText(initial!);
-	await page.getByRole('button', { name: 'Next week' }).click();
-	await expect(week).not.toHaveText(initial!);
-	await page.getByRole('button', { name: 'This week' }).click();
-	await expect(week).toHaveText(initial!);
+	await planner.getByLabel('Minutes', { exact: true }).fill('0');
+	await expect(planner.getByText('Choose a meeting duration.')).toBeVisible();
+	await planner.getByLabel('Minutes', { exact: true }).fill('30');
+	await planner.getByRole('button', { name: '10 min buffer', exact: true }).click();
+	await planner
+		.locator('.filter-menu')
+		.getByRole('button', { name: 'Custom Buffer', exact: true })
+		.click();
+	await planner.getByLabel('Buffer minutes').fill('-1');
+	await expect(planner.getByText('Enter a buffer of zero or more minutes.')).toBeVisible();
+	await planner.getByLabel('Buffer minutes').fill('10');
+	const before = network.filter((row) => row.path.endsWith('/busy_blocks')).length;
+	await page.getByRole('button', { name: 'Refresh friends', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Refresh friends', exact: true })).toBeEnabled();
+	await expect
+		.poll(() => network.filter((row) => row.path.endsWith('/busy_blocks')).length)
+		.toBeGreaterThan(before);
+	await expect(planner.locator('.day')).toHaveCount(3);
 	for (const width of [320, 480, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
-		await fitsViewport(page);
+		await fitsViewport(page, planner);
 	}
-	await page.getByRole('button', { name: 'Exit comparison' }).click();
-	await expect(page.getByRole('radio', { name: 'Detailed', exact: true })).toHaveCount(0);
-	await extension.context.route(origin + '/api/friends', async (route) =>
+	await page.getByRole('button', { name: /^Edit people/ }).click();
+	const picker = page.getByRole('dialog', { name: 'Select people' });
+	await picker.getByLabel('Search people').fill('Nobody');
+	await expect(picker.getByText('No people match “Nobody”.')).toBeVisible();
+	await picker.getByRole('button', { name: 'Clear search' }).click();
+	await expect(picker.getByRole('checkbox', { name: /Ada/ })).toBeChecked();
+	await picker.getByRole('button', { name: 'Done', exact: true }).click();
+});
+
+test('comparison uses real schedules, owner strips, privacy, missing data and day/week navigation', async ({
+	extension
+}) => {
+	const { page, context } = extension;
+	await context.route(origin + '/api/friends', (route) =>
 		route.fulfill({
 			json: {
 				friends: friends.map((friend) =>
@@ -251,167 +130,123 @@ test('detailed/group comparison uses real selected schedules, details and week n
 			}
 		})
 	);
-	const detailsBefore = extension.network.filter(
-		(row) => row.path.endsWith('/processed_events') || row.path.endsWith('/processed_events/status')
-	).length;
-	await page.getByRole('button', { name: 'Manage friends', exact: true }).click();
-	const drawer = page.getByRole('dialog', { name: 'Manage friends' });
-	await chooseRadio(drawer, /^Requests/);
-	await drawer.getByRole('button', { name: 'Refresh friends', exact: true }).click();
-	await chooseRadio(drawer, 'People');
-	await expect(drawer.getByText('Availability only', { exact: true }).first()).toBeVisible();
-	await drawer.getByRole('button', { name: 'Close manage friends', exact: true }).click();
-	await chooseRadio(page, 'Friends');
+	await extension.open();
+	await selectFriends(page);
 	await page.getByRole('button', { name: 'Compare calendars', exact: true }).click();
-	await chooseRadio(page, 'Detailed');
-	await expect(page.getByRole('button', { name: /Ada Test · Busy/ })).toHaveCount(5);
-	await expect(page.getByRole('button', { name: /Ada Class/ })).toHaveCount(0);
-	expect(
-		extension.network.filter(
-			(row) =>
-				row.path.endsWith('/processed_events') || row.path.endsWith('/processed_events/status')
-		)
-	).toHaveLength(detailsBefore);
-	await page.getByRole('button', { name: 'Exit comparison' }).click();
-	await chooseRadio(page, 'Friends');
-	await page.getByText('Additional options', { exact: true }).click();
-	await expect(page.getByRole('switch', { name: 'Between classes' })).toBeDisabled();
+	const comparison = page.getByRole('region', { name: 'Calendar comparison' });
+	await chooseRadio(comparison, 'Calendar');
+	await expect(comparison.getByRole('button', { name: /Ada Test · Busy/ })).toHaveCount(5);
+	await expect(comparison.getByRole('button', { name: /Ada Class/ })).toHaveCount(0);
+	await comparison
+		.getByRole('button', { name: /Ada Test · Busy/ })
+		.first()
+		.click();
+	const detail = page.getByRole('dialog', { name: 'Busy', exact: true });
+	await expect(detail).toContainText('Event details are private.');
+	await detail.getByRole('button', { name: 'Close', exact: true }).click();
+	await chooseRadio(comparison, 'Group availability');
+	await expect(comparison.locator('.owner-strips').first()).toBeVisible();
+	await comparison
+		.getByRole('button', { name: /Group · Busy/ })
+		.first()
+		.click();
+	const group = page.getByRole('dialog', { name: 'Group busy time' });
+	await expect(group).toContainText('Ada Test');
+	await expect(group).toContainText('Busy · Availability only');
+	await group.getByRole('button', { name: 'Close', exact: true }).click();
+	await chooseRadio(comparison, 'List');
+	await comparison.getByRole('button', { name: 'Show Tuesday, Oct 6, 2026', exact: true }).click();
+	await comparison.getByRole('button', { name: 'Next week', exact: true }).click();
 	await expect(
-		page.getByText('Between classes needs full class details for every selected participant.', {
-			exact: true
-		})
+		comparison.getByRole('region', { name: 'Schedule list for Tuesday, Oct 13, 2026' })
 	).toBeVisible();
+	await comparison.getByRole('button', { name: 'This week', exact: true }).click();
+	let fail = true;
+	await context.route(origin + '/api/friends/friend-ben/busy_blocks?*', (route) =>
+		fail
+			? route.fulfill({ status: 503, json: { error: 'Ben availability unavailable' } })
+			: route.fallback()
+	);
+	await comparison.getByRole('button', { name: '← Back to Friends' }).click();
+	await page.getByRole('button', { name: 'Refresh friends', exact: true }).click();
+	await expect(page.getByRole('region', { name: 'Friends planning' })).toContainText(
+		'Ben availability unavailable'
+	);
+	await expect(page.getByRole('region', { name: 'Friends planning' }).locator('.day')).toHaveCount(
+		0
+	);
+	await page.getByRole('button', { name: 'Compare calendars', exact: true }).click();
+	await expect(comparison.getByText('Ben Test - Could not load schedule')).toBeVisible();
+	await expect(comparison.getByRole('button', { name: /Ben Test - Ben Class/ })).toHaveCount(0);
+	fail = false;
+	await comparison.getByRole('button', { name: 'Refresh', exact: true }).click();
+	await chooseRadio(comparison, 'Detailed');
+	await expect(comparison.getByRole('button', { name: /Ben Test - Ben Class/ })).toBeVisible();
+	for (const scheme of ['light', 'dark'] as const)
+		for (const width of [320, 480, 1280]) {
+			await page.emulateMedia({ colorScheme: scheme });
+			await page.setViewportSize({ width, height: 900 });
+			await fitsViewport(page, comparison);
+		}
 });
 
-test('combined refresh retries saved-meeting errors and reloads all Friends data', async ({
+test('global refresh retries Upcoming and reloads Friends resources without losing preferences', async ({
 	extension
 }) => {
 	const { page, context, network } = extension;
-	let savedRequests = 0;
-	let state: 'error' | 'one' | 'empty' = 'error';
-	let release = () => {};
-	const held = new Promise<void>((resolve) => {
-		release = resolve;
-	});
-	const meeting = {
-		id: 'saved-test',
-		title: 'Saved test meeting',
-		location: null,
-		start_time: '2026-10-07T12:00:00-04:00',
-		end_time: '2026-10-07T12:30:00-04:00',
-		time_zone: 'America/New_York',
-		frequency: 'one_time',
-		recurrence: null,
-		repeat_until: null,
-		invite_friends: false,
-		role: 'owner',
-		can_edit: true,
-		can_delete: true,
-		can_leave: false,
-		owner: { id: 'you', name: 'You' },
-		friends: [],
-		destinations: ['ics'],
-		publications: []
-	};
-	await context.route(origin + '/api/friends/meetings?*', async (route) => {
+	let fail = true,
+		reads = 0;
+	await context.route(origin + '/api/friends/meetings?*', (route) => {
 		if (route.request().method() !== 'GET') return route.fallback();
-		++savedRequests;
-		if (state === 'error')
-			return route.fulfill({ status: 503, json: { error: 'Saved meetings unavailable' } });
-		await held;
-		return route.fulfill({
-			json:
-				state === 'one'
-					? {
-							meetings: [meeting],
-							occurrences: [
-								{
-									id: 'saved-occurrence',
-									meeting_id: meeting.id,
-									start_time: meeting.start_time,
-									end_time: meeting.end_time
-								}
-							]
-						}
-					: { meetings: [], occurrences: [] }
-		});
+		reads++;
+		return fail
+			? route.fulfill({ status: 503, json: { error: 'Meetings unavailable' } })
+			: route.fulfill({ json: { meetings: [], occurrences: [] } });
 	});
-	await extension.open('friends');
-	const saved = page.getByRole('region', { name: 'Saved meetings', exact: true });
-	await expect(saved.getByRole('alert')).toContainText('Saved meetings unavailable');
+	await extension.open();
 	await selectFriends(page);
-	const refresh = page.getByRole('button', { name: 'Refresh friends', exact: true });
-	await expect(refresh).toBeEnabled();
+	const saved = page.getByRole('region', { name: 'Saved meetings', exact: true });
+	await expect(saved.getByRole('alert')).toContainText('Meetings unavailable');
 	const paths = [
 		'/api/friends',
 		'/api/friends/requests',
 		'/api/friends/groups',
-		'/api/v1/catalog/terms/current',
-		'/api/v1/catalog/terms/next',
 		'/api/meeting_links'
 	];
-	const counts = paths.map((path) => network.filter((row) => row.path === path).length);
-	const schedules = network.filter((row) => row.path.endsWith('/processed_events')).length;
-	const busy = network.filter((row) => row.path.endsWith('/busy_blocks')).length;
-	const savedBefore = savedRequests;
-	state = 'one';
-	try {
-		await refresh.click();
-		await expect(refresh).toBeDisabled();
-		await expect(saved.getByRole('status')).toHaveText('Loading meetings…');
-		await expect.poll(() => savedRequests).toBe(savedBefore + 1);
-	} finally {
-		release();
-	}
-	await expect(saved.getByText('Saved test meeting', { exact: true })).toBeVisible();
-	await expect(saved.getByRole('alert')).toHaveCount(0);
-	await expect(refresh).toBeEnabled();
-	for (const [index, path] of paths.entries())
-		expect(network.filter((row) => row.path === path)).toHaveLength(counts[index] + 1);
-	expect(network.filter((row) => row.path.endsWith('/processed_events'))).toHaveLength(
-		schedules + 3
-	);
-	expect(network.filter((row) => row.path.endsWith('/busy_blocks'))).toHaveLength(busy + 3);
-	for (const width of [320, 480, 1280]) {
-		await page.setViewportSize({ width, height: 900 });
-		await fitsViewport(page);
-	}
-	state = 'empty';
-	const peopleBounds = await page.getByRole('button', { name: /^People:/ }).boundingBox();
-	const compareBounds = await page
-		.getByRole('button', { name: 'Compare calendars', exact: true })
-		.boundingBox();
-	const refreshBounds = await refresh.boundingBox();
-	const mainBounds = await page.getByRole('main').boundingBox();
-	expect(compareBounds!.x).toBeGreaterThanOrEqual(peopleBounds!.x + peopleBounds!.width);
-	expect(refreshBounds!.x).toBeGreaterThan(compareBounds!.x + compareBounds!.width);
-	expect(refreshBounds!.x + refreshBounds!.width).toBeCloseTo(mainBounds!.x + mainBounds!.width, 0);
+	const before = paths.map((path) => network.filter((row) => row.path === path).length);
+	const oldReads = reads;
+	fail = false;
+	const refresh = page.getByRole('button', { name: 'Refresh friends', exact: true });
 	await refresh.click();
+	await expect(saved.getByText('No meetings in the next 14 days.')).toBeVisible();
 	await expect(refresh).toBeEnabled();
-	await expect(saved).toHaveCount(0);
-	expect(savedRequests).toBe(savedBefore + 2);
+	await expect(
+		page.getByRole('button', { name: /^Edit people · You, Ada Test, Ben Test/ })
+	).toBeVisible();
+	await expect.poll(() => reads).toBeGreaterThan(oldReads);
+	await expect
+		.poll(() => paths.map((path) => network.filter((row) => row.path === path).length))
+		.toEqual(before.map((count) => count + 1));
+	await page.getByRole('button', { name: 'Compare calendars', exact: true }).click();
+	await page.getByRole('button', { name: 'Next week', exact: true }).click();
+	await page.getByRole('button', { name: '← Back to Friends' }).click();
+	await expect(saved).toContainText('Oct 6, 2026 - Oct 19, 2026');
+	await expect(saved.getByRole('button', { name: 'Previous week' })).toHaveCount(0);
 });
 
-test('unchanged meeting-link reads preserve meeting and availability caches across navigation', async ({
+test('persistent Friends navigation retains selection and resource lists', async ({
 	extension
 }) => {
 	const { page, network } = extension;
 	await extension.open();
 	await selectFriends(page);
-	await expect(page.getByRole('button', { name: 'Refresh friends', exact: true })).toBeEnabled();
-	const meetings = network.filter((row) => row.path === '/api/friends/meetings').length;
+	const reads = network.filter((row) => row.path === '/api/meeting_links').length;
 	const busy = network.filter((row) => row.path.endsWith('/busy_blocks')).length;
-	const links = network.filter((row) => row.path === '/api/meeting_links').length;
 	await chooseRadio(page, 'Calendar');
-	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
 	await chooseRadio(page, 'Friends');
-	await expect
-		.poll(() => network.filter((row) => row.path === '/api/meeting_links').length)
-		.toBe(links + 1);
-	await expect(page.getByRole('button', { name: 'Refresh friends', exact: true })).toBeEnabled();
 	await expect(
-		page.getByRole('region', { name: 'Shared free periods' }).getByRole('button').first()
+		page.getByRole('button', { name: /^Edit people · You, Ada Test, Ben Test/ })
 	).toBeVisible();
-	expect(network.filter((row) => row.path === '/api/friends/meetings')).toHaveLength(meetings);
+	expect(network.filter((row) => row.path === '/api/meeting_links')).toHaveLength(reads);
 	expect(network.filter((row) => row.path.endsWith('/busy_blocks'))).toHaveLength(busy);
 });

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import FriendsWorkspace from '$lib/components/friends/FriendsWorkspace.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -13,5 +12,3 @@
 		}
 	});
 </script>
-
-<FriendsWorkspace />

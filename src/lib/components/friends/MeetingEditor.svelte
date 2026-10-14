@@ -4,24 +4,30 @@
 	import { getPanelUi } from '$lib/panel/ui.svelte';
 	import { getPanelSession } from '$lib/panel/session';
 	import { API, ApiError } from '$lib/api';
-	import type { CalendarDestination, SavedMeetingInput } from '$lib/friends/savedMeetings';
+	import {
+		providerLabel,
+		type CalendarDestination,
+		type SavedMeetingInput
+	} from '$lib/friends/savedMeetings';
 	import type { MeetingDraft } from '$lib/friends/types';
 	import { processedData, termClasses, userSettings } from '$lib/stores';
 	import {
 		calendarDateTime,
 		dateLabel,
+		formatTime,
+		todayDate,
+		CAMPUS_TIME_ZONE,
 		minutesTime,
 		shiftDate,
 		timeMinutes,
 		weekDates
 	} from '$lib/datetime';
-	import { meetingMessage } from '$lib/friends/availability';
-	import { busyEndMinutes } from '$lib/friends/schedule';
-	import PreviewDialog from '$lib/components/ui/PreviewDialog.svelte';
-	import FreePeriodResult from './FreePeriodResult.svelte';
-	import MeetingEventForm from './MeetingEventForm.svelte';
-	import { Button, snackbar } from 'm3-svelte';
-	import { untrack } from 'svelte';
+	import { scheduleAvailability } from '$lib/friends/availability';
+	import { copyDraft, editorMessage, suggestedMeetings } from '$lib/friends/planner';
+	import { busyEndMinutes, busyForRange, validDate } from '$lib/friends/schedule';
+	import CreateMeetingEditor from './CreateMeetingEditor.svelte';
+	import { Button, Dialog, snackbar } from 'm3-svelte';
+	import { untrack, tick } from 'svelte';
 
 	const ui = getPanelUi();
 	const session = getPanelSession();
@@ -30,6 +36,7 @@
 	let accountsError = $state('');
 	const submitting = $derived(ui.meetingDraft?.submitting ?? false);
 	let destinationVersion = 0;
+	let confirmOpen = $state(false);
 	$effect(() => {
 		if (ui.meetingEditorOpen) untrack(() => void loadDestinations());
 	});
@@ -91,7 +98,13 @@
 		} finally {
 			if (session.active && version === destinationVersion) {
 				accountsLoading = false;
-				if (ui.meetingEditorOpen && ui.meetingDraft === draft && draft && !draft.submission) {
+				if (
+					!accountsError &&
+					ui.meetingEditorOpen &&
+					ui.meetingDraft === draft &&
+					draft &&
+					!draft.submission
+				) {
 					if (draft.destinationDefaultsPending) {
 						draft.destinations = availableDestinations.includes('google') ? ['google'] : ['ics'];
 						draft.destinationDefaultsPending = false;
@@ -112,7 +125,7 @@
 		if (!draft || submitting || !session.active) return;
 		try {
 			if (!draft.submission) {
-				const error = meetingMessage(ui, ownCourses, draft.slot);
+				const error = editorMessage(ui, ownCourses, draft.slot);
 				if (error) throw new Error(error);
 				const title = draft.title.trim();
 				const location = draft.location.trim();
@@ -158,6 +171,8 @@
 			ui.comparison = true;
 			ui.meetingEditorOpen = false;
 			ui.meetingDraft = undefined;
+			ui.savedDraft = undefined;
+			confirmOpen = false;
 			snackbar('Meeting created.');
 			void goto(resolve('/calendar'));
 		} catch (failure) {
@@ -169,28 +184,18 @@
 		}
 	}
 	const message = $derived(
-		ui.meetingDraft ? meetingMessage(ui, ownCourses, ui.meetingDraft.slot) : undefined
+		ui.meetingDraft ? editorMessage(ui, ownCourses, ui.meetingDraft.slot) : undefined
 	);
-	const windowAvailable = $derived(
-		ui.meetingDraft &&
-			!meetingMessage(ui, ownCourses, {
-				...ui.meetingDraft.slot,
-				date: ui.meetingDraft.period.date,
-				start: minutesTime(ui.meetingDraft.period.start),
-				end: minutesTime(ui.meetingDraft.period.end)
-			})
-	);
-
 	function preview() {
 		const draft = ui.meetingDraft;
 		if (!draft || submitting || draft.submission) return;
-		const error = meetingMessage(ui, ownCourses, draft.slot);
+		const error = editorMessage(ui, ownCourses, draft.slot);
 		if (error) {
 			snackbar(error, undefined, true);
 			return;
 		}
 		const start = timeMinutes(draft.slot.start)!;
-		const end = timeMinutes(draft.slot.end)!;
+		const end = busyEndMinutes(draft.slot.end)!;
 		const slot = {
 			...draft.slot,
 			id: `${draft.slot.date}-${start}-${end}`,
@@ -199,69 +204,281 @@
 			end: minutesTime(end)
 		};
 		draft.slot = slot;
-		ui.starts[draft.period.id] = start;
 		ui.highlightedSlot = { ...slot };
 		ui.week = weekDates(slot.date)[0];
 		ui.term = ui.scheduleTerm ?? ui.term;
 		ui.comparison = true;
+		ui.comparisonDisplay = 'detailed';
+		ui.comparisonPresentation = 'list';
+		ui.comparisonDay = slot.date;
+		if (ui.planning) ui.friendsScroll = window.scrollY;
+		ui.friendsReturnTarget ??= ui.editorReturnTarget;
 		ui.meetingEditorOpen = false;
 		void goto(resolve('/calendar'));
 	}
+
+	const draft = $derived(ui.meetingDraft);
+	const start = $derived(draft ? (timeMinutes(draft.slot.start) ?? 0) : 0);
+	const duration = $derived(draft ? (busyEndMinutes(draft.slot.end) ?? 0) - start : 30);
+	const editorParticipants = $derived(
+		participants.map((person) => {
+			const data =
+				draft && validDate(draft.slot.date)
+					? busyForRange(ui.busyBlocks, person.id, draft.slot.date, draft.slot.date)
+					: undefined;
+			return {
+				id: person.id,
+				name: person.name,
+				busy: (data?.busy ?? [])
+					.filter((block) => block.date === draft?.slot.date)
+					.map((block) => [timeMinutes(block.start)!, busyEndMinutes(block.end)!]),
+				message: data ? undefined : 'Availability unavailable'
+			};
+		})
+	);
+	const rangeStart = $derived(timeMinutes(ui.preferences.dailyStart) ?? 8 * 60);
+	const rangeEnd = $derived(
+		(busyEndMinutes(ui.preferences.dailyEnd) ?? 21 * 60) > rangeStart
+			? busyEndMinutes(ui.preferences.dailyEnd)!
+			: Math.min(1440, rangeStart + 60)
+	);
+	const editorAvailability = $derived(
+		draft && validDate(draft.slot.date)
+			? scheduleAvailability(ui, ownCourses, {
+					...ui.preferences,
+					from: draft.slot.date,
+					until: draft.slot.date,
+					duration: String(duration)
+				})
+			: { periods: [], message: 'Choose a valid date.' }
+	);
+	const starts = $derived(
+		[
+			...new Set([
+				...suggestedMeetings(editorAvailability.periods, duration).map((slot) => slot.start),
+				start
+			])
+		]
+			.sort((a, b) => a - b)
+			.map((value) => ({
+				value: String(value),
+				text: formatTime(minutesTime(value), militaryTime),
+				disabled: !editorAvailability.periods.some(
+					(period) => value >= period.start && value + duration <= period.end
+				)
+			}))
+	);
+	const calendarOptions = $derived(
+		availableDestinations.map((value) => ({ value, text: providerLabel(value) }))
+	);
+	const validation = $derived(
+		message ||
+			accountsError ||
+			(!ui.hasSelectedFriends ? 'Choose at least one friend.' : '') ||
+			(!ui.meetingEventsEnabled ? 'Meeting creation is not enabled for this account.' : '') ||
+			(accountsLoading ? 'Loading destination calendars…' : '')
+	);
+	const canCreate = $derived(
+		Boolean(
+			draft &&
+				!submitting &&
+				ui.meetingEventsEnabled &&
+				(draft.submission ||
+					(!validation &&
+						draft.title.trim() &&
+						draft.title.trim().length <= 200 &&
+						draft.location.trim().length <= 200 &&
+						draft.destinations.length &&
+						draft.destinations.every((provider) => availableDestinations.includes(provider))))
+		)
+	);
+	function changeSlot(date: string, beginning = start, length = duration) {
+		if (!draft || draft.submission || submitting) return;
+		draft.slot = {
+			...draft.slot,
+			date,
+			day: validDate(date) ? dateLabel(date) : '',
+			start: minutesTime(beginning),
+			end: minutesTime(beginning + length)
+		};
+		draft.error = '';
+	}
+	async function restoreFocus() {
+		await tick();
+		if (ui.editorReturnTarget?.isConnected && !ui.editorReturnTarget.closest('[hidden]'))
+			ui.editorReturnTarget.focus();
+	}
+	function discard() {
+		if (!draft || draft.submission || submitting) return;
+		ui.meetingEditorOpen = false;
+		ui.meetingDraft = undefined;
+		ui.highlightedSlot = undefined;
+		void restoreFocus();
+	}
+	function saveDraft() {
+		if (!draft || draft.submission || submitting) return;
+		ui.savedDraft = copyDraft(draft);
+		ui.meetingEditorOpen = false;
+		ui.meetingDraft = undefined;
+		ui.highlightedSlot = undefined;
+		void restoreFocus();
+	}
+	function review() {
+		if (!draft || submitting) return;
+		if (!canCreate) {
+			draft.error = validation || 'Enter a title and choose an available calendar.';
+			ui.meetingEditorOpen = true;
+			return;
+		}
+		confirmOpen = true;
+	}
+	async function retry() {
+		if (submitting || draft?.submission) return;
+		await Promise.all([loadDestinations(), ui.friendActions?.retrySchedules()]);
+		if (draft && validDate(draft.slot.date))
+			await ui.busyActions?.load(draft.slot.date, draft.slot.date);
+	}
+	ui.meetingActions = { review, edit: () => (ui.meetingEditorOpen = true) };
 </script>
 
 {#if ui.meetingDraft?.submission && !ui.meetingEditorOpen}
-	<Button
-		variant="text"
-		disabled={submitting}
-		onclick={() => {
-			ui.meetingDetails = true;
-			ui.meetingEditorOpen = true;
-		}}>Retry meeting creation</Button
+	<Button variant="text" disabled={submitting} onclick={() => (ui.meetingEditorOpen = true)}
+		>Retry meeting creation</Button
 	>
 {/if}
 
-{#if ui.meetingDraft && ui.meetingEditorOpen}
-	<PreviewDialog
-		bind:open={ui.meetingEditorOpen}
-		closable={!submitting}
-		title={ui.meetingDetails ? 'Edit / confirm meeting' : 'Choose meeting time'}
-	>
-		{#if ui.meetingDetails}
-			<MeetingEventForm
-				slot={ui.meetingDraft.slot}
-				bind:title={ui.meetingDraft.title}
-				bind:location={ui.meetingDraft.location}
-				bind:destinations={ui.meetingDraft.destinations}
-				bind:inviteFriends={ui.meetingDraft.inviteFriends}
-				bind:frequency={ui.meetingDraft.frequency}
-				{availableDestinations}
-				{accountsLoading}
-				{accountsError}
-				{submitting}
-				attempted={Boolean(ui.meetingDraft.submission)}
-				error={ui.meetingDraft.error}
-				{participants}
-				{militaryTime}
-				{message}
-				onback={() => (ui.meetingDetails = false)}
-				onview={preview}
-				oncreate={() => void create()}
-			/>
-		{:else}
-			<FreePeriodResult
-				period={ui.meetingDraft.period}
-				bounds={ui.scheduleTerm ? ui.termBounds[ui.scheduleTerm] : undefined}
-				bind:slot={ui.meetingDraft.slot}
-				{militaryTime}
-				{message}
-				windowAvailable={Boolean(windowAvailable)}
-				onadd={() => {
-					const error = meetingMessage(ui, ownCourses, ui.meetingDraft!.slot);
-					if (error) snackbar(error, undefined, true);
-					else ui.meetingDetails = true;
-				}}
-				onview={preview}
-			/>
-		{/if}
-	</PreviewDialog>
+{#if draft && ui.meetingEditorOpen}
+	<CreateMeetingEditor
+		bind:open={
+			() => ui.meetingEditorOpen,
+			(value) => {
+				if (value) ui.meetingEditorOpen = true;
+				else discard();
+			}
+		}
+		bind:title={() => draft!.title, (value) => (draft!.title = value)}
+		bind:location={() => draft!.location, (value) => (draft!.location = value)}
+		bind:date={() => draft!.slot.date, (value) => changeSlot(value)}
+		bind:start={() => String(start), (value) => changeSlot(draft!.slot.date, Number(value))}
+		bind:duration={
+			() => String(duration), (value) => changeSlot(draft!.slot.date, start, Number(value))
+		}
+		bind:frequency={
+			() => draft!.frequency,
+			(value) => {
+				if (value === 'one_time' || value === 'weekly') draft!.frequency = value;
+			}
+		}
+		bind:calendar={
+			() => draft!.destinations[0] ?? '',
+			(value) => {
+				if (availableDestinations.includes(value as CalendarDestination))
+					draft!.destinations = [value as CalendarDestination];
+			}
+		}
+		bind:invite={() => draft!.inviteFriends, (value) => (draft!.inviteFriends = value)}
+		participants={editorParticipants}
+		buffer={Number(ui.preferences.buffer) || 0}
+		{rangeStart}
+		{rangeEnd}
+		{militaryTime}
+		{starts}
+		{calendarOptions}
+		{canCreate}
+		locked={Boolean(draft.submission)}
+		{submitting}
+		createLabel={submitting ? 'Creating…' : draft.submission ? 'Retry creation' : undefined}
+		canPreview={!message && !submitting && !draft.submission && ui.hasSelectedFriends}
+		onpreview={preview}
+		message={draft.error || validation}
+		onretry={!draft.submission && (message || accountsError) ? () => void retry() : undefined}
+		minDate={validDate(ui.preferences.from) && ui.preferences.from > todayDate(CAMPUS_TIME_ZONE)
+			? ui.preferences.from
+			: todayDate(CAMPUS_TIME_ZONE)}
+		maxDate={validDate(ui.preferences.until) ? ui.preferences.until : undefined}
+		onsavedraft={saveDraft}
+		ondiscard={discard}
+		oncreate={review}
+	/>
 {/if}
+
+<div class="meeting-confirmation friends-preview">
+	<Dialog
+		bind:open={confirmOpen}
+		headline="Create this meeting?"
+		role="dialog"
+		aria-label="Confirm meeting"
+		closedby={submitting ? 'none' : 'closerequest'}
+	>
+		{#snippet buttons()}
+			<div class="confirmation-actions">
+				<Button
+					variant="text"
+					disabled={submitting}
+					onclick={() => {
+						confirmOpen = false;
+						ui.meetingEditorOpen = true;
+					}}>Back to editing</Button
+				>
+				<Button disabled={!canCreate} onclick={() => void create()}
+					>{submitting
+						? 'Creating…'
+						: draft?.submission
+							? 'Retry creation'
+							: draft?.inviteFriends
+								? 'Create & invite'
+								: 'Create meeting'}</Button
+				>
+			</div>
+		{/snippet}
+		{#if draft}
+			<div class="confirmation-summary">
+				<h2 class="m3-font-title-large">{draft.title || 'Untitled meeting'}</h2>
+				<p>
+					{dateLabel(draft.slot.date)} · {formatTime(draft.slot.start, militaryTime)} - {formatTime(
+						draft.slot.end,
+						militaryTime
+					)}
+				</p>
+				<p>{participants.map((person) => person.name).join(', ')}</p>
+				{#if draft.location}<p>{draft.location}</p>{/if}
+				<p class="m3-font-body-small">
+					{draft.destinations.map(providerLabel).join(', ')} - {draft.frequency === 'weekly'
+						? 'Weekly through the term'
+						: 'Once'} - Invites {draft.inviteFriends ? 'on' : 'off'}
+				</p>
+				{#if draft.error || validation}<p class="text-error" role="alert">
+						{draft.error || validation}
+					</p>{/if}
+			</div>
+		{/if}
+	</Dialog>
+</div>
+
+<style>
+	.meeting-confirmation :global(dialog) {
+		width: min(35rem, calc(100vw - 1.5rem));
+		min-width: 0;
+		max-height: calc(100dvh - 2rem);
+		overflow: hidden;
+	}
+	.meeting-confirmation :global(.content) {
+		overflow-y: auto;
+		min-height: 0;
+	}
+	.confirmation-summary {
+		display: grid;
+		gap: 1rem;
+		color: rgb(var(--m3-scheme-on-surface));
+	}
+	.confirmation-summary p,
+	.confirmation-summary h2 {
+		margin: 0;
+	}
+	.confirmation-actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 0.5rem;
+	}
+</style>

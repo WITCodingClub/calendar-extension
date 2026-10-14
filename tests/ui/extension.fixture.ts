@@ -21,7 +21,7 @@ type NetworkRow = {
 	totalMs?: number;
 	responseMs?: number;
 };
-type Extension = {
+export type Extension = {
 	context: BrowserContext;
 	page: Page;
 	worker: Worker;
