@@ -351,7 +351,6 @@
 				refreshTried.add(term);
 				void refreshAllEventPrefsForCurrentTerm().then((ok) => {
 					if (ok) session.refreshedTerms.add(term);
-					else refreshTried.delete(term);
 				});
 			}
 		})
@@ -657,7 +656,6 @@
 			// visit tries a failed one again.
 			refreshAllEventPrefsForCurrentTerm().then((ok) => {
 				if (ok) session.refreshedTerms.add(term);
-				else refreshTried.delete(term);
 			});
 		}
 	});
