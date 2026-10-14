@@ -127,9 +127,7 @@ export class PanelUi {
 	meetingDraft = $state<MeetingDraft>();
 	savedDraft = $state<MeetingDraft>();
 	meetingEditorOpen = $state(false);
-	meetingDetails = $state(false);
 	meetingVersion = $state(0);
-	starts = $state<Record<string, number>>({});
 	preferences = $state<MeetingPreferences>({
 		preset: 'this-week',
 		from: weekDates()[0],
