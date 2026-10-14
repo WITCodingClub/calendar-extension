@@ -1,278 +1,108 @@
 <script lang="ts">
-	import DateField from '$lib/components/ui/DateField.svelte';
-	import { Button, SelectOutlined, TextFieldOutlined } from 'm3-svelte';
-	import { onMount } from 'svelte';
-	import { API, ApiError } from '$lib/api';
+	import { API } from '$lib/api';
 	import { getPanelUi } from '$lib/panel/ui.svelte';
 	import { getPanelSession } from '$lib/panel/session';
-	import type { MeetingLink, MeetingLinkDuration } from '$lib/types';
-	import PreviewDialog from '$lib/components/ui/PreviewDialog.svelte';
-	import {
-		CAMPUS_TIME_ZONE,
-		calendarDateTime,
-		campusDate,
-		endOfCampusDay,
-		shiftDate,
-		todayDate
-	} from '$lib/datetime';
-	import { validDate } from '$lib/friends/schedule';
+	import { campusDate, shiftDate } from '$lib/datetime';
+	import type { MeetingLink } from '$lib/types';
+	import MeetingLinksView from './MeetingLinksView.svelte';
+	import MeetingLinkDetails from './MeetingLinkDetails.svelte';
 	const ui = getPanelUi();
 	const session = getPanelSession();
-	let creating = $state(false);
-	let title = $state('');
-	let expiry = $state(shiftDate(todayDate(CAMPUS_TIME_ZONE), 7));
-	let startsOn = $state('');
-	let endsOn = $state('');
-	let duration = $state('30');
+	let manager: MeetingLinksView | undefined = $state();
 	let links = $state<MeetingLink[]>([]);
-	let url = $state('');
-	let generatedId = $state('');
-	let copied = $state(false);
-	let error = $state('');
-	let formError = $state('');
-	let loading = $state(false);
-	let submitting = $state(false);
-	let attempted = $state(false);
-	let revoking = $state('');
-	let version = 0;
-	const durations = [15, 30, 45, 60, 90, 120];
-	const dateOrderError = $derived(!!startsOn && !!endsOn && startsOn > endsOn);
-	const maxExpiryDate = $derived.by(() => {
-		const deadline = ui.now + 60 * 86400000;
-		const date = campusDate(new Date(deadline).toISOString());
-		return Date.parse(endOfCampusDay(date)) <= deadline ? date : shiftDate(date, -1);
-	});
-
+	let booking = $state<MeetingLink | null>(null);
+	let bookingOpen = $state(false);
+	let bookingLoading = $state(false);
+	let bookingError = $state('');
+	let bookingVersion = 0;
+	const current = () => {
+		if (!session.active) throw new Error('The session ended. Reopen your meeting links.');
+	};
 	export function isBusy() {
-		return loading || submitting || Boolean(revoking);
+		return Boolean(manager?.isBusy()) || bookingLoading;
 	}
-
 	export async function reload() {
-		if (!session.active || submitting || revoking) return;
-		const current = ++version;
-		loading = true;
-		error = '';
+		if (session.active && !isBusy()) await manager?.reload();
+	}
+	async function openBooking(id: string) {
+		if (bookingLoading || !session.active) return;
+		const link = links.find((item) => item.booking?.meeting_id === id);
+		if (!link?.booking) return;
+		const version = ++bookingVersion;
+		bookingLoading = true;
+		bookingError = '';
+		booking = link;
 		try {
-			const response = await API.getMeetingLinks();
-			if (session.active && current === version) {
-				links = response.meeting_links;
+			if (ui.meetingEventsEnabled) {
+				const result = await API.getSavedMeeting(id);
+				current();
+				const start = campusDate(result.meeting.start_time);
+				const end = shiftDate(campusDate(result.meeting.end_time), 1);
+				const response = await API.getSavedMeetings(start, end);
+				current();
+				if (version !== bookingVersion) return;
+				const meeting = response.meetings.find((item) => item.id === id);
+				const occurrence = response.occurrences.find(
+					(item) =>
+						item.meeting_id === id &&
+						Date.parse(item.start_time) === Date.parse(result.meeting.start_time)
+				);
+				if (meeting && occurrence) {
+					ui.savedMeetingDetail = { meeting, occurrence };
+					return;
+				}
 			}
+			bookingOpen = true;
 		} catch (failure) {
-			if (session.active && current === version)
-				error = failure instanceof Error ? failure.message : 'Could not load meeting links.';
+			if (session.active && version === bookingVersion) {
+				bookingError =
+					failure instanceof Error
+						? failure.message
+						: 'Could not load the saved meeting. Showing the booking summary.';
+				bookingOpen = true;
+			}
 		} finally {
-			if (session.active && current === version) loading = false;
-		}
-	}
-
-	onMount(() => {
-		void reload();
-	});
-
-	function openCreate() {
-		title = '';
-		expiry = shiftDate(todayDate(CAMPUS_TIME_ZONE), 7);
-		startsOn = ui.preferences.from;
-		endsOn = ui.preferences.until;
-		duration = durations.includes(Number(ui.preferences.duration)) ? ui.preferences.duration : '30';
-		url = '';
-		generatedId = '';
-		copied = false;
-		formError = '';
-		attempted = false;
-		creating = true;
-	}
-
-	async function generate() {
-		if (submitting || attempted || !session.active) return;
-		try {
-			const today = todayDate(CAMPUS_TIME_ZONE);
-			calendarDateTime(startsOn, '00:00');
-			calendarDateTime(endsOn, '00:00');
-			if (startsOn < today || endsOn < startsOn || endsOn > shiftDate(startsOn, 29))
-				throw new Error('Choose a future date range of 30 days or fewer.');
-			if (!durations.includes(Number(duration))) throw new Error('Choose a supported duration.');
-			const expiresAt = endOfCampusDay(expiry);
-			if (Date.parse(expiresAt) <= Date.now() || Date.parse(expiresAt) > Date.now() + 60 * 86400000)
-				throw new Error('Choose an expiry within the next 60 days.');
-			if (title.trim().length > 200)
-				throw new Error('Keep the meeting name within 200 characters.');
-			submitting = true;
-			attempted = true;
-			formError = '';
-			++version;
-			loading = false;
-			const response = await API.createMeetingLink({
-				starts_on: startsOn,
-				ends_on: endsOn,
-				duration_minutes: Number(duration) as MeetingLinkDuration,
-				expires_at: expiresAt,
-				...(title.trim() ? { title: title.trim() } : {})
-			});
-			if (!session.active) return;
-			const { url: createdUrl, ...link } = response.meeting_link;
-			url = createdUrl;
-			generatedId = link.id;
-			links = [link, ...links.filter((existing) => existing.id !== link.id)];
-		} catch (failure) {
-			if (failure instanceof ApiError && [400, 401, 403, 404, 422, 429].includes(failure.status))
-				attempted = false;
-			if (session.active)
-				formError = `${failure instanceof Error ? failure.message : 'Could not generate meeting link.'}${attempted ? ' Check the link list before generating another; this request will not be repeated.' : ''}`;
-		} finally {
-			if (session.active) submitting = false;
-		}
-	}
-
-	async function revoke(id: string) {
-		if (revoking || submitting || !session.active) return;
-		revoking = id;
-		error = '';
-		++version;
-		loading = false;
-		try {
-			const response = await API.revokeMeetingLink(id);
-			if (!session.active) return;
-			links = links.map((link) => (link.id === id ? response.meeting_link : link));
-			if (generatedId === id) url = '';
-		} catch (failure) {
-			if (session.active)
-				error = failure instanceof Error ? failure.message : 'Could not revoke meeting link.';
-		} finally {
-			if (session.active) revoking = '';
+			if (session.active && version === bookingVersion) bookingLoading = false;
 		}
 	}
 </script>
 
-<section
-	class="min-w-0 gap-4 rounded-2xl border-outline-variant/65 bg-surface-container-low p-4 grid border"
-	aria-labelledby="preview-links-title"
->
-	<div
-		class="gap-3 [&_p]:mt-1 [&_p]:text-sm [&_p]:text-on-surface-variant flex flex-wrap items-center justify-between"
-	>
-		<div>
-			<h3 id="preview-links-title">One-time meeting links</h3>
-			<p>
-				Let someone who isn't your friend, such as a professor or project partner, choose a free
-				time. They don't need WIT Calendar.
-			</p>
-		</div>
-		<Button
-			variant="outlined"
-			disabled={loading || submitting || Boolean(revoking)}
-			onclick={openCreate}>Create meeting link</Button
-		>
-	</div>
-
-	{#if loading}<p class="text-sm text-on-surface-variant" role="status">Loading links…</p>{/if}
-	{#if error}<p class="text-sm text-error" role="alert">{error}</p>{/if}
-	{#each links.filter((link) => link.status !== 'revoked' || link.booking) as link (link.id)}
-		<div class="gap-2 border-outline-variant pb-3 grid border-b">
-			<p class="text-sm font-medium">
-				{link.title || 'Meeting link'} · {link.status === 'active' &&
-				Date.parse(link.expires_at) <= ui.now
-					? 'expired'
-					: link.status}
-			</p>
-			<p class="text-sm text-on-surface-variant">
-				{link.starts_on} - {link.ends_on} · {link.duration_minutes} min · Expires {new Date(
-					link.expires_at
-				).toLocaleString()}
-			</p>
-			{#if link.booking}<p class="text-sm">
-					Booked by {link.booking.guest_name || link.booking.guest_email || 'Guest'} · {new Date(
-						link.booking.start_time
-					).toLocaleString()}
-				</p>{/if}
-			{#if link.status === 'active' && Date.parse(link.expires_at) > ui.now}<Button
-					variant="text"
-					disabled={Boolean(revoking) || submitting}
-					onclick={() => void revoke(link.id)}>Revoke link</Button
-				>{/if}
-		</div>
-	{/each}
-	<PreviewDialog
-		bind:open={creating}
-		closable={!submitting}
-		title="Create meeting link"
-		onclose={() => {
-			url = '';
-			generatedId = '';
-			copied = false;
-		}}
-	>
-		<div class="gap-4 grid">
-			<div
-				class="preview-fields min-w-0 gap-4 pt-1 grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))]"
-			>
-				<TextFieldOutlined
-					label="Meeting name (optional)"
-					maxlength={200}
-					disabled={attempted}
-					bind:value={title}
-				/>
-				<DateField
-					label="Link expires"
-					required
-					min={todayDate(CAMPUS_TIME_ZONE)}
-					max={maxExpiryDate}
-					validate={(date) => {
-						const expiresAt = Date.parse(endOfCampusDay(date));
-						return expiresAt > Date.now() && expiresAt <= Date.now() + 60 * 86400000;
-					}}
-					disabled={attempted}
-					bind:value={expiry}
-				/>
-				<DateField
-					label="From"
-					required
-					min={todayDate(CAMPUS_TIME_ZONE)}
-					error={dateOrderError}
-					disabled={attempted}
-					bind:value={startsOn}
-				/>
-				<DateField
-					label="Until"
-					required
-					min={todayDate(CAMPUS_TIME_ZONE)}
-					max={validDate(startsOn) ? shiftDate(startsOn, 29) : undefined}
-					error={dateOrderError}
-					disabled={attempted}
-					bind:value={endsOn}
-				/>
-				<SelectOutlined
-					label="Duration"
-					disabled={attempted}
-					bind:value={duration}
-					options={durations.map((value) => ({
-						text: `${value} minutes`,
-						value: String(value)
-					}))}
-				/>
-			</div>
-			<p class="text-sm text-on-surface-variant">
-				Guests can book one meeting during your free periods on weekdays, 8am - 9pm Eastern.
-			</p>
-			{#if formError}<p class="text-sm text-error" role="alert">{formError}</p>{/if}
-			{#if url}
-				<p class="text-sm break-all">{url}</p>
-				<p class="text-sm text-on-surface-variant">
-					Copy this link before closing. It cannot be retrieved again.
-				</p>
-				<Button
-					onclick={async () => {
-						try {
-							await navigator.clipboard.writeText(url);
-							copied = true;
-						} catch {
-							formError = 'Could not copy. Select and copy the link above.';
-						}
-					}}>{copied ? 'Copied' : 'Copy link'}</Button
-				>
-			{:else}<Button disabled={submitting || attempted} onclick={() => void generate()}
-					>{submitting ? 'Generating…' : 'Generate link'}</Button
-				>{/if}
-		</div>
-	</PreviewDialog>
-</section>
+<MeetingLinksView
+	bind:this={manager}
+	now={ui.now}
+	initialFrom={ui.preferences.from}
+	initialUntil={ui.preferences.until}
+	initialDuration={ui.preferences.duration}
+	bind:uncertain={ui.linkUncertain}
+	onbusy={(value) => (ui.linkBusy = value)}
+	onload={async () => {
+		current();
+		const response = await API.getMeetingLinks();
+		current();
+		links = response.meeting_links;
+		return links;
+	}}
+	oncreate={async (input) => {
+		current();
+		const response = await API.createMeetingLink(input);
+		current();
+		return response.meeting_link;
+	}}
+	onrevoke={async (id) => {
+		current();
+		const response = await API.revokeMeetingLink(id);
+		current();
+		links = links.map((item) => (item.id === id ? response.meeting_link : item));
+		return response.meeting_link;
+	}}
+	onmeeting={(id) => void openBooking(id)}
+/>
+{#if bookingLoading}<p class="text-sm text-on-surface-variant" role="status">
+		Loading meeting details…
+	</p>{/if}
+<MeetingLinkDetails
+	bind:open={bookingOpen}
+	link={booking}
+	error={bookingError}
+	onretry={booking ? () => void openBooking(booking!.booking!.meeting_id) : undefined}
+/>
