@@ -808,7 +808,7 @@
 								weekday: historicSchedule ? 'long' : 'short',
 								timeZone: 'UTC'
 							})}{#if !historicSchedule}
-								{Number(date.slice(-2))}{/if}</Chip
+								{` ${Number(date.slice(-2))}`}{/if}</Chip
 						>{/each}
 				</nav>
 				<ComparisonList
