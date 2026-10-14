@@ -27,7 +27,9 @@ export const FEATURE_FLAGS = [
 	'debugMode',
 	'envSwitcher',
 	'finalsRetroactive',
-	'bypassRateLimits'
+	'bypassRateLimits',
+	'friendMeetingEvents',
+	'meetingLinks'
 ] as const;
 
 export interface FeatureFlagsResponse {

@@ -9,8 +9,12 @@ import type {
 } from '../types';
 import type { BusyBlocksResponse } from '../friends/schedule';
 import type { PanelSession } from './session';
+import type { ManagementState } from '../friends/management';
+import type { ComparisonMode } from '../friends/comparison';
+import type { CalendarPresentation } from '../calendar/layout';
+import type { SavedMeetingSelection } from '../friends/savedMeetings';
 import { sharingLabel } from '../friends/parse';
-import { schoolDays, timeMinutes, weekDates } from '../datetime';
+import { timeMinutes, weekDates } from '../datetime';
 import type {
 	MeetingPreferences,
 	MeetingDraft,
@@ -59,16 +63,7 @@ export class PanelUi {
 	groupsLoading = $state(false);
 	groupsError = $state('');
 	groupLoadingId = $state('');
-	groupActions = $state.raw<{
-		reload: () => Promise<void>;
-		save: (
-			name: string,
-			members: string[],
-			id?: string,
-			expiresAt?: string | null
-		) => Promise<boolean>;
-		remove: (id: string) => Promise<boolean>;
-	}>();
+	groupActions = $state.raw<ManagementState['groupActions']>();
 	friendSchedules = $state<Record<string, Record<string, Course[]>>>({});
 	busyBlocks = $state<Record<string, Record<string, BusyBlocksResponse>>>({});
 	busyStatus = $state<Record<string, Record<string, 'loading' | 'loaded' | 'error'>>>({});
@@ -97,20 +92,32 @@ export class PanelUi {
 	sendFriendExpiry = $state('');
 	sendFriendVisibility = $state<SharingLevel>('full');
 	acceptFriendVisibility = $state<Record<string, SharingLevel>>({});
-	friendActions = $state.raw<{
-		refresh: () => Promise<void>;
-		reload: () => Promise<void>;
-		retrySchedules: () => Promise<void>;
-		send: () => Promise<void>;
-		accept: (id: string, visibility?: SharingLevel) => Promise<void>;
-		decline: (id: string) => Promise<void>;
-		cancel: (id: string) => Promise<void>;
-		remove: (id: string) => Promise<void>;
-		setExpiry: (id: string, value: string | null) => Promise<void>;
-		setSharing: (id: string, visibility: SharingLevel) => Promise<void>;
-	}>();
+	friendActions = $state.raw<
+		ManagementState['friendActions'] & {
+			refresh: () => Promise<void>;
+			retrySchedules: () => Promise<void>;
+		}
+	>();
 	comparison = $state(false);
-	comparisonDisplay = $state<'group' | 'detailed'>();
+	comparisonDisplay = $state<ComparisonMode>('detailed');
+	comparisonPresentation = $state<CalendarPresentation>('auto');
+	comparisonDay = $state('');
+	calendarPresentation = $state<CalendarPresentation>('auto');
+	calendarDay = $state('');
+	filtersManual = $state(false);
+	meetingEventsEnabled = $state(false);
+	meetingLinksEnabled = $state(false);
+	featuresLoading = $state(true);
+	featuresError = $state('');
+	featureActions = $state.raw<{ reload: () => Promise<void> }>();
+	linkUncertain = $state(false);
+	linkBusy = $state(false);
+	savedMeetingBusy = $state(false);
+	savedMeetingDetail = $state<SavedMeetingSelection>();
+	meetingActions = $state.raw<{ review: () => void; edit: () => void }>();
+	friendsReturnTarget: HTMLElement | null = null;
+	editorReturnTarget: HTMLElement | null = null;
+	friendsScroll = 0;
 	scheduleTerm = $derived(
 		this.planning ? this.currentTerm : this.comparison ? this.term : this.currentTerm
 	);
@@ -118,13 +125,15 @@ export class PanelUi {
 	highlightedSlot = $state<PreviewSlot>();
 	restoredPreview = $state<PreviewSlot>();
 	meetingDraft = $state<MeetingDraft>();
+	savedDraft = $state<MeetingDraft>();
 	meetingEditorOpen = $state(false);
 	meetingDetails = $state(false);
 	meetingVersion = $state(0);
 	starts = $state<Record<string, number>>({});
 	preferences = $state<MeetingPreferences>({
-		from: schoolDays()[0],
-		until: schoolDays()[4],
+		preset: 'this-week',
+		from: weekDates()[0],
+		until: weekDates()[4],
 		duration: '30',
 		dailyStart: '09:00',
 		dailyEnd: '17:00',

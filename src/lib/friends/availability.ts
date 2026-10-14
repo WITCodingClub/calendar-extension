@@ -20,7 +20,13 @@ import {
 	busyRangeKey,
 	type BusyBlock
 } from './schedule';
-import type { FreePeriod, MeetingPreferences, ScheduleClass, PreviewSlot } from './types';
+import type {
+	FreePeriod,
+	MeetingPreferences,
+	ScheduleClass,
+	PreviewSlot,
+	MinuteRange
+} from './types';
 
 export function dayClasses(date: string, selected: string[], source: ScheduleClass[]) {
 	const weekday = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
@@ -33,8 +39,8 @@ export function dayClasses(date: string, selected: string[], source: ScheduleCla
 	);
 }
 
-export function mergeBusy(intervals: Array<{ start: number; end: number }>) {
-	const merged: Array<{ start: number; end: number }> = [];
+export function mergeBusy(intervals: MinuteRange[]) {
+	const merged: MinuteRange[] = [];
 	for (const interval of intervals.toSorted((a, b) => a.start - b.start)) {
 		const last = merged.at(-1);
 		if (last && interval.start <= last.end) last.end = Math.max(last.end, interval.end);

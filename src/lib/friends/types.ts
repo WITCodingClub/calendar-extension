@@ -1,8 +1,7 @@
-import type { CalendarDestination, SavedMeetingInput } from './savedMeetings';
+import type { FriendIdentity } from '../types';
+import type { CalendarDestination, SavedMeeting, SavedMeetingInput } from './savedMeetings';
 
-export type Participant = {
-	id: string;
-	name: string;
+export type Participant = FriendIdentity & {
 	sharing: 'Full schedule' | 'Availability only' | 'Sharing unavailable';
 	expiry?: string;
 };
@@ -27,6 +26,7 @@ export type ScheduleClass = {
 	endDate: string;
 };
 export type MeetingPreferences = {
+	preset: string;
 	from: string;
 	until: string;
 	duration: string;
@@ -35,7 +35,19 @@ export type MeetingPreferences = {
 	buffer: string;
 	betweenClasses: boolean;
 };
-export type FreePeriod = { id: string; date: string; day: string; start: number; end: number };
+export type MinuteRange = { start: number; end: number };
+export type FreePeriod = MinuteRange & { id: string; date: string; day: string };
+export type PlannerSlot = Pick<FreePeriod, 'id' | 'date' | 'start' | 'end'>;
+export type PlannerPreset = { id: string; label: string; from?: string; until?: string };
+export type PlannerDraft = MinuteRange & {
+	title: string;
+	date: string;
+	participantNames: string[];
+	location?: string;
+	frequency?: string;
+	calendar?: string;
+	invite?: boolean;
+};
 export type PreviewSlot = {
 	id: string;
 	date: string;
@@ -52,8 +64,9 @@ export type MeetingDraft = {
 	location: string;
 	destinations: CalendarDestination[];
 	inviteFriends: boolean;
-	frequency: 'one_time' | 'weekly';
+	frequency: SavedMeeting['frequency'];
 	idempotencyKey: string;
+	destinationDefaultsPending?: boolean;
 	submission?: SavedMeetingInput;
 	submitting?: boolean;
 	error?: string;

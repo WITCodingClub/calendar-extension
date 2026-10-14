@@ -321,6 +321,15 @@ export class API {
 		);
 	}
 
+	public static async getSavedMeeting(id: string): Promise<{ meeting: SavedMeeting }> {
+		return savedMeetingResponse(
+			await requestJson(
+				`/friends/meetings/${encodeURIComponent(id)}`,
+				'Failed to fetch saved meeting'
+			)
+		);
+	}
+
 	public static async updateSavedMeeting(
 		id: string,
 		changes: SavedMeetingChanges

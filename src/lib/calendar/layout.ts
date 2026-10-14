@@ -2,6 +2,8 @@ import type { Course, MeetingTime } from '../types';
 import { textColor } from './colors';
 import { DAYS } from './days';
 
+export type CalendarPresentation = 'auto' | 'calendar' | 'list';
+
 export type CalendarGridEvent = {
 	course: Course;
 	meeting: MeetingTime;

@@ -5,6 +5,7 @@ type FeatureFlagName = (typeof FEATURE_FLAGS)[number];
 type FeatureFlagsState = Record<FeatureFlagName, boolean>;
 
 class FeatureFlagsService {
+	error = '';
 	private cache: FeatureFlagsState | null = null;
 	private loadPromise: Promise<void> | null = null;
 	// clearCache() moves this on. A load that started before then must not
@@ -26,6 +27,7 @@ class FeatureFlagsService {
 
 	private async _fetchFlags(): Promise<void> {
 		const epoch = this.epoch;
+		this.error = '';
 
 		try {
 			const response = await API.getAllFeatureFlags();
@@ -41,6 +43,7 @@ class FeatureFlagsService {
 		} catch (error) {
 			if (epoch !== this.epoch) return;
 			console.error('Error loading feature flags:', error);
+			this.error = error instanceof Error ? error.message : 'Could not load feature availability.';
 
 			// Set all flags to false on error
 			const flags: FeatureFlagsState = {} as FeatureFlagsState;
@@ -63,6 +66,7 @@ class FeatureFlagsService {
 		this.epoch++;
 		this.loadPromise = null;
 		this.cache = null;
+		this.error = '';
 	}
 
 	async reload(): Promise<void> {

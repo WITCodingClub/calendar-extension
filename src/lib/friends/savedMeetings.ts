@@ -6,6 +6,13 @@ import { record, timestamp } from './validate';
 
 export type CalendarDestination = 'google' | 'microsoft' | 'ics';
 
+const providerLabels: Record<string, string> = {
+	google: 'Google Calendar',
+	microsoft: 'Microsoft Calendar',
+	ics: 'ICS feed'
+};
+export const providerLabel = (provider: string) => providerLabels[provider] ?? provider;
+
 export type SavedMeeting = {
 	id: string;
 	title: string;
@@ -38,6 +45,12 @@ export type SavedMeetingOccurrence = {
 	start_time: string;
 	end_time: string;
 };
+
+export type SavedMeetingSelection = { meeting: SavedMeeting; occurrence: SavedMeetingOccurrence };
+export type SavedMeetingSelectionHandler = (
+	meeting: SavedMeetingSelection['meeting'],
+	occurrence: SavedMeetingSelection['occurrence']
+) => void;
 
 export type SavedMeetingsResponse = {
 	meetings: SavedMeeting[];
