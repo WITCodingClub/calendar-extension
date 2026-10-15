@@ -1,7 +1,7 @@
 import type { TemplateVariables } from '../types';
 
 export const TITLE_TEMPLATES = [
-	"{% if schedule_type == 'Laboratory' %}{{title | remove: '- Lab'}} - {{schedule_type_short}}{% else %}{{title}}{% endif %}",
+	"{% if schedule_type == 'Laboratory' %}{{title | remove: ' - Lab'}} - {{schedule_type_short}}{% else %}{{title}}{% endif %}",
 	"{% if schedule_type == 'Laboratory' %}{{course_code}}{% else %}{{title}} - {{schedule_type_short}}{% endif %}"
 ];
 export const DESCRIPTION_TEMPLATES = [
