@@ -31,10 +31,11 @@ export class PanelSession {
 	// False after the session ended. Check it before a write to a store that
 	// outlives the session, such as userSettings.
 	active = true;
+	workspaceMounted = false;
 	ownScheduleProcessed: ((term: string) => void) | undefined;
 	readonly termProcessing = new TermProcessing(
 		API,
-		() => this.active,
+		() => this.active && this.workspaceMounted,
 		async (term) => {
 			this.invalidateOwnSchedule(term);
 			const version = this.ownScheduleVersions[term];
