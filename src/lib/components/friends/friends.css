@@ -21,6 +21,11 @@
 	overflow-wrap: anywhere;
 }
 
+.friends-preview .preview-group-checkbox {
+	position: relative;
+	display: inline-flex;
+}
+
 .friends-preview .preview-group-checkbox.partial::after {
 	content: '';
 	position: absolute;
