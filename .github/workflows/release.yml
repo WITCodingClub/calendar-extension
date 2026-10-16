@@ -7,8 +7,24 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v2.0.2)'
-        required: true
+        description: 'Existing version tag for real releases; optional for dry runs'
+        required: false
+        type: string
+      dry_run:
+        description: 'Check store authentication without uploading or creating a GitHub release'
+        type: boolean
+        default: true
+
+concurrency:
+  group: extension-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  VERSION: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || '' }}
+  DRY_RUN: ${{ inputs.dry_run || false }}
 
 jobs:
   build-and-release:
@@ -18,12 +34,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.dry_run && github.sha || format('refs/tags/{0}', env.VERSION) }}
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
@@ -31,29 +50,67 @@ jobs:
         working-directory: .
         run: npm ci
 
-      - name: Build Chrome extension
-        working-directory: .
-        run: npm run build
+      - name: Build and package extensions
+        run: node scripts/release.js prepare
 
-      - name: Create Chrome zip artifact
-        env:
-          VERSION: ${{ github.event.inputs.version || github.ref_name }}
-        run: |
-          cd extension
-          zip -r "../wit-calendar-${VERSION}.zip" .
-
-      - name: Create Firefox zip artifact
-        env:
-          VERSION: ${{ github.event.inputs.version || github.ref_name }}
-        run: |
-          cd extension-firefox
-          zip -r "../wit-calendar-${VERSION}-firefox.zip" .
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-release
+          path: wit-calendar-*.zip
+          if-no-files-found: error
 
       - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
           files: |
             wit-calendar-${{ github.event.inputs.version || github.ref_name }}.zip
             wit-calendar-${{ github.event.inputs.version || github.ref_name }}-firefox.zip
+            wit-calendar-${{ github.event.inputs.version || github.ref_name }}-sources.zip
           generate_release_notes: true
+
+  publish:
+    name: Publish to ${{ matrix.store }}
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        store: [chrome, firefox]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.dry_run && github.sha || format('refs/tags/{0}', env.VERSION) }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-release
+
+      - name: Publish Chrome extension
+        if: matrix.store == 'chrome'
+        env:
+          CHROME_PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID }}
+          CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL }}
+          CHROME_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.CHROME_SERVICE_ACCOUNT_PRIVATE_KEY }}
+        run: node scripts/release.js chrome
+
+      - name: Publish Firefox extension
+        if: matrix.store == 'firefox'
+        env:
+          FIREFOX_JWT_ISSUER: ${{ secrets.FIREFOX_JWT_ISSUER }}
+          FIREFOX_JWT_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}
+        run: node scripts/release.js firefox

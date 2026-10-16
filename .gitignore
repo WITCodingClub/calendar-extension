@@ -25,6 +25,7 @@ vite.config.ts.timestamp-*
 # Extension
 extension
 extension-firefox
+/wit-calendar-*.zip
 
 # Local verification evidence and tooling
 /.verification/
