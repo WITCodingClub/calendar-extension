@@ -90,22 +90,9 @@
 		}, 1000);
 		return () => clearInterval(timer);
 	});
-	const view = $derived(browser ? page.url.searchParams.get('view') : null);
 	const activeTab = $derived(
-		page.route.id === '/(panel)/(calendar)/friends'
-			? 'friends'
-			: view === 'settings'
-				? 'settings'
-				: view === 'help'
-					? 'help'
-					: 'calendar'
+		page.route.id === '/(panel)/(calendar)/friends' ? 'friends' : 'calendar'
 	);
-	const titles: Record<string, string> = {
-		calendar: 'Your Calendar',
-		friends: 'Friends',
-		settings: 'Settings',
-		help: 'Help'
-	};
 	const tabs = [
 		{ name: 'Calendar', value: 'calendar', onselect: () => void goto(resolve('/calendar')) },
 		{ name: 'Friends', value: 'friends', onselect: () => void goto(resolve('/friends')) }
@@ -132,7 +119,7 @@
 
 {#if !restoring}
 	<PanelShell
-		title={titles[activeTab]}
+		title={activeTab === 'friends' ? 'Friends' : 'Your Calendar'}
 		mode="calendar"
 		tab={activeTab}
 		{tabs}
@@ -201,19 +188,9 @@
 				</div>
 			{:else}
 				<div class="border-outline-variant bg-surface-container-high px-4 py-3 border-t">
-					<h2 class="m-0 text-sm font-bold text-on-surface">
-						{activeTab === 'friends'
-							? 'Plan with friends'
-							: activeTab === 'settings'
-								? 'Calendar preferences'
-								: 'Information'}
-					</h2>
+					<h2 class="m-0 text-sm font-bold text-on-surface">Plan with friends</h2>
 					<p class="m-0 mt-0.5 text-xs text-on-surface-variant">
-						{activeTab === 'friends'
-							? 'Find shared free time, compare calendars, save meetings, or create meeting links.'
-							: activeTab === 'settings'
-								? 'Manage your settings, account information, and event notifications.'
-								: 'Subscribe in another calendar app or customize event titles with templates.'}
+						Find shared free time, compare calendars, save meetings, or create meeting links.
 					</p>
 				</div>
 			{/if}

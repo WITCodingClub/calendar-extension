@@ -40,16 +40,14 @@
 		}
 	];
 	const utilities = [
-		{ name: 'Settings', value: 'settings', icon: iconSettings },
-		{ name: 'Help', value: 'help', icon: iconHelp }
-	].map((item) => ({
-		...item,
-		onselect: () => {
-			let destination: string = resolve('/calendar');
-			destination += `?view=${item.value}`;
-			void goto(destination);
-		}
-	}));
+		{
+			name: 'Settings',
+			value: 'settings',
+			icon: iconSettings,
+			onselect: () => void goto(resolve('/settings'))
+		},
+		{ name: 'Help', value: 'help', icon: iconHelp, onselect: () => void goto(resolve('/help')) }
+	];
 </script>
 
 <div

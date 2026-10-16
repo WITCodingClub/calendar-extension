@@ -10,7 +10,8 @@
 	import {
 		processedData as storedProcessedData,
 		userSettings as storedUserSettings,
-		icsUrl as storedIcsUrl
+		icsUrl as storedIcsUrl,
+		enrolledTerms
 	} from '$lib/stores';
 	import type { ConnectedAccount, UserSettings } from '$lib/types';
 	import {
@@ -24,7 +25,7 @@
 	import { copyIcsUrl } from '$lib/browser/clipboard';
 	import { openOAuthWindow } from '$lib/auth/popup';
 	import { Button, SelectOutlined, snackbar, Switch } from 'm3-svelte';
-	import { getPanelSession } from '$lib/panel/session';
+	import { getPanelSettings } from '$lib/panel/settings';
 	import { onMount } from 'svelte';
 	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
 	import { resolveUniCalColor, UNI_CAL_DEFAULT_COLOR } from '$lib/calendar/colors';
@@ -43,9 +44,7 @@
 	];
 
 	let userSettings = $state<UserSettings | undefined>(undefined);
-	// The calendar page mounts this component again after an environment change,
-	// so this is always the session of the current environment.
-	const session = getPanelSession();
+	const session = getPanelSettings();
 	let email = $state<string | undefined>(undefined);
 	let currentEnvironment = $state<Environment>('prod');
 	let authenticatedEnvironments = $state<Environment[]>([]);
@@ -194,6 +193,10 @@
 					// A reply for an ended session must not write into the new one.
 					if (session.active) {
 						storedUserSettings.set(userSettings);
+						if (userSettings.enrolled_terms?.length && $enrolledTerms.length === 0) {
+							enrolledTerms.set(userSettings.enrolled_terms);
+						}
+						session.loaded = true;
 					}
 					email = emailData.email;
 				} catch (error) {
@@ -425,18 +428,12 @@
 			return;
 		}
 
-		// Set these before the switch. The (panel) layout mounts the calendar
-		// page again as soon as the environment changes, and the page reads them.
-		if (browser) {
-			sessionStorage.setItem('returnToSettings', 'true');
-			sessionStorage.setItem('clearCalendarData', 'true');
-		}
-
 		const hasJwt = await EnvironmentManager.switchEnvironment(newEnv);
 
 		const envDisplayName = ENVIRONMENTS[newEnv].displayName;
 
 		if (!hasJwt) {
+			if (browser) sessionStorage.setItem('returnToSettings', 'true');
 			storedProcessedData.set([]);
 			snackbar(`Switched to ${envDisplayName}. Please sign in.`, undefined, true);
 			await goto(resolve('/'));
@@ -610,6 +607,7 @@
 		class="rounded-2xl bg-surface-container-low overflow-hidden shadow-[0_1px_3px_rgb(var(--m3-scheme-shadow)/0.1)]"
 	>
 		<div class="divide-outline-variant bg-surface-container divide-y">
+			<h2 class="m-0 p-4 text-base font-bold text-on-surface">Calendar preferences</h2>
 			{#if !isOtherCalendar}
 				<div
 					class="gap-4 p-4 flex flex-row items-center justify-between @max-[30rem]:flex-col @max-[30rem]:items-stretch"
