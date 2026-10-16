@@ -822,6 +822,7 @@
 								</li>
 							{/each}
 						</ul>
+						<p class="group-label m3-font-label-large">Friends</p>
 					{/if}
 					<ul class="preview-list people-list">
 						{#each filteredPeople as person (person.id)}
