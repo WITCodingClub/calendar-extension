@@ -10,7 +10,11 @@ test('Settings starts Google account connection without an email', async ({ exte
 		await route.fulfill({ json: { error: 'Google connection is temporarily unavailable' } });
 	});
 	await extension.open();
-	await chooseRadio(page, 'Settings');
+	await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+	await page
+		.getByRole('navigation', { name: 'Application navigation' })
+		.getByRole('button', { name: 'Settings', exact: true })
+		.click();
 	await expect(page.getByLabel('Google account email')).toHaveCount(0);
 	const request = page.waitForRequest(
 		(request) => request.url() === endpoint && request.method() === 'POST'
@@ -23,7 +27,42 @@ test('Settings starts Google account connection without an email', async ({ exte
 test('Settings loads and scrolls every section without changing values', async ({ extension }) => {
 	const { page, network } = extension;
 	await extension.open();
-	await chooseRadio(page, 'Settings');
+	const navigation = page.getByRole('navigation', { name: 'Application navigation' });
+	const openNavigation = page.getByRole('button', { name: 'Open navigation', exact: true });
+	await expect(page.getByRole('radio', { name: 'Settings', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('radio', { name: 'Help', exact: true })).toHaveCount(0);
+	for (const width of [320, 480, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		await openNavigation.click();
+		await fitsViewport(page, navigation);
+		await expect(navigation.getByRole('button')).toHaveText(['Calendar', 'Settings', 'Help']);
+		await expect(navigation.locator('[aria-current="true"]')).toHaveText('Calendar');
+		await page.keyboard.press('Escape');
+		await expect(navigation).toBeHidden();
+		await expect(openNavigation).toBeFocused();
+	}
+	await openNavigation.click();
+	await navigation.getByRole('button', { name: 'Help', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
+	await expect(navigation).toBeHidden();
+	await openNavigation.click();
+	await expect(navigation.locator('[aria-current="page"]')).toHaveText('Help');
+	await navigation.getByRole('button', { name: 'Calendar', exact: true }).click();
+	await chooseRadio(page, 'Friends');
+	await openNavigation.click();
+	await expect(navigation.locator('[aria-current="true"]')).toHaveText('Calendar');
+	await page.setViewportSize({ width: 320, height: 900 });
+	await fitsViewport(page, navigation);
+	await navigation.getByRole('button', { name: 'Calendar', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
+	await expect(page.getByRole('radio', { name: 'Calendar', exact: true })).toBeChecked();
+	await chooseRadio(page, 'Friends');
+	await openNavigation.click();
+	await navigation.getByRole('button', { name: 'Settings', exact: true }).click();
+	await expect(navigation).toBeHidden();
+	await openNavigation.click();
+	await expect(navigation.locator('[aria-current="page"]')).toHaveText('Settings');
+	await page.keyboard.press('Escape');
 	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
 	await expect
 		.poll(() => network.some((row) => row.path === '/api/calendar_preferences'))
