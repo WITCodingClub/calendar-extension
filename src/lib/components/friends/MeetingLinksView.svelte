@@ -246,7 +246,7 @@
 </script>
 
 <section
-	class="min-w-0 gap-4 rounded-2xl border-outline-variant/65 bg-surface-container-low p-4 grid border"
+	class="min-w-0 gap-4 rounded-2xl border-outline-variant/65 bg-surface-container-low px-4 pt-2 pb-4 grid border"
 	aria-labelledby="preview-links-title"
 >
 	<div class="row-heading">
