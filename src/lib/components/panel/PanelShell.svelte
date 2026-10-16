@@ -4,7 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { browser } from '$app/environment';
-	import { Button, ConnectedButtons, VariableTabs, LoadingIndicator } from 'm3-svelte';
+	import { Button, ConnectedButtons, LoadingIndicator } from 'm3-svelte';
 	import { processedData, termClasses } from '$lib/stores';
 	import { meetingMessage, scheduleMessage } from '$lib/friends/availability';
 	import { savePanelHandoff } from '$lib/panel/handoff';
@@ -13,7 +13,10 @@
 	import { featureFlags } from '$lib/featureFlags';
 	import FriendsWorkspace from '$lib/components/friends/FriendsWorkspace.svelte';
 	import SavedMeetingDialogs from '$lib/components/friends/SavedMeetingDialogs.svelte';
-	import OpenInTabButton from './OpenInTabButton.svelte';
+	import PanelHeader from './PanelHeader.svelte';
+	import iconCalendar from '@ktibow/iconset-material-symbols/calendar-month';
+	import iconSettings from '@ktibow/iconset-material-symbols/settings-outline';
+	import iconHelp from '@ktibow/iconset-material-symbols/help-outline';
 	import ManageFriendsDrawer from '$lib/components/friends/ManageFriendsDrawer.svelte';
 	import ConnectedFriends from '$lib/components/friends/ConnectedFriends.svelte';
 	import MeetingEditor from '$lib/components/friends/MeetingEditor.svelte';
@@ -73,6 +76,20 @@
 		settings: 'Settings',
 		help: 'Help'
 	};
+	const tabs = [
+		{ name: 'Calendar', value: 'calendar', onselect: () => void goto(resolve('/calendar')) },
+		{ name: 'Friends', value: 'friends', onselect: () => void goto(resolve('/friends')) }
+	];
+	const utilities = ['settings', 'help'].map((value) => ({
+		name: titles[value],
+		value,
+		icon: value === 'settings' ? iconSettings : iconHelp,
+		onselect: () => {
+			let destination: string = resolve('/calendar');
+			destination += `?view=${value}`;
+			void goto(destination);
+		}
+	}));
 	$effect(() => {
 		ui.planning = activeTab === 'friends';
 	});
@@ -96,57 +113,29 @@
 <div
 	class="friends-preview min-w-0 gap-3 p-3 text-on-surface @max-[20rem]:p-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_h4]:font-semibold @container flex w-full flex-col"
 >
-	<section
-		class="rounded-2xl bg-surface-container w-full shrink-0 overflow-hidden shadow-[0_0.2rem_0.75rem_rgb(var(--m3-scheme-shadow)/0.12)]"
+	<PanelHeader
+		title={titles[activeTab]}
+		mode="calendar"
+		modes={[{ ...tabs[0], icon: iconCalendar }]}
+		tab={activeTab}
+		{tabs}
+		{utilities}
+		view={activeTab === 'calendar' ? 'a' : activeTab}
+		prepareHref={() => savePanelHandoff(ui, session, page.url.href)}
 	>
-		<header
-			class="gap-3 bg-secondary-container px-4 py-4 text-on-secondary-container flex items-center justify-between"
-		>
-			<h1 class="leading-tight text-[clamp(1.35rem,5cqi,1.8rem)] font-[750] tracking-[-0.025em]">
-				{titles[activeTab]}
-			</h1>
-			<OpenInTabButton
-				view={activeTab === 'calendar' ? 'a' : activeTab}
-				prepareHref={() => savePanelHandoff(ui, session, page.url.href)}
-			/>
-		</header>
-		<div class="bg-surface flex items-center">
-			<div class="preview-tabs min-w-0 flex-1">
-				<VariableTabs
-					secondary
-					tab={activeTab}
-					items={[
-						{ name: 'Calendar', value: 'calendar' },
-						{ name: 'Friends', value: 'friends' },
-						{ name: 'Settings', value: 'settings' },
-						{ name: 'Help', value: 'help' }
-					]}
-					onchange={(event) => {
-						const value = event.currentTarget.value;
-						if (value === 'friends') void goto(resolve('/friends'));
-						else if (value === 'calendar') void goto(resolve('/calendar'));
-						else {
-							let destination: string = resolve('/calendar');
-							destination += `?view=${value}`;
-							void goto(destination);
-						}
-					}}
-				/>
-			</div>
-			<div class="px-1 shrink-0">
-				<Button
-					variant="text"
-					iconType="full"
-					aria-label="Manage friends"
-					title="Manage friends"
-					onclick={() => (ui.manageOpen = true)}
+		{#snippet tabActions()}
+			<Button
+				variant="text"
+				iconType="full"
+				aria-label="Manage friends"
+				title="Manage friends"
+				onclick={() => (ui.manageOpen = true)}
+			>
+				<svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24"
+					><path fill="currentColor" d={PEOPLE_ICON} /></svg
 				>
-					<svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24"
-						><path fill="currentColor" d={PEOPLE_ICON} /></svg
-					>
-				</Button>
-			</div>
-		</div>
+			</Button>
+		{/snippet}
 		{#if activeTab === 'calendar'}
 			<div class="gap-2 px-4 py-3 flex flex-wrap items-center justify-between">
 				<div class="min-w-0 max-w-full [&>.m3-container]:flex! [&>.m3-container]:flex-wrap!">
@@ -210,7 +199,7 @@
 				</p>
 			</div>
 		{/if}
-	</section>
+	</PanelHeader>
 	{@render children()}
 	{#if friendsMounted}<div hidden={activeTab !== 'friends'} class="min-w-0 w-full">
 			<FriendsWorkspace />
