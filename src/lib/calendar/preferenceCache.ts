@@ -23,6 +23,8 @@ export class PreferenceCache {
 	constructor(private readonly readVersion: () => Promise<string | undefined>) {}
 
 	start(): () => void {
+		this.#active = true;
+		if (this.#hasTerms) void this.checkVersion().catch(() => {});
 		const timer = setInterval(() => {
 			if (this.#supported && this.#hasTerms) {
 				void this.checkVersion().catch(() => {
