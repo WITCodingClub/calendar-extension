@@ -18,7 +18,9 @@ test('a queued current term is polled without opening LeopardWeb', async ({ exte
 		});
 	});
 	await page.clock.install({ time: new Date(now) });
+	const healthCheck = page.waitForResponse(origin + '/up');
 	await extension.open();
+	expect(await (await healthCheck).finished()).toBeNull();
 	await expect.poll(() => polls).toBe(1);
 	await page.clock.runFor(5_001);
 	await expect.poll(() => polls).toBe(2);
