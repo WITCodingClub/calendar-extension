@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
-	import { page } from '$app/state';
 	import { browser } from '$app/environment';
 	import {
 		processedData as storedProcessedData,
@@ -41,6 +39,7 @@
 	import ComparisonList from '$lib/components/friends/ComparisonList.svelte';
 	import type { ComparisonGridEvent } from '$lib/friends/comparison';
 	import { savedMeetingCourses, type SavedMeetingsResponse } from '$lib/friends/savedMeetings';
+	import { getPanelSettings } from '$lib/panel/settings';
 	import { getPanelSession } from '$lib/panel/session';
 	import { getPanelUi } from '$lib/panel/ui.svelte';
 	import CalendarGrid from '$lib/components/calendar/CalendarGrid.svelte';
@@ -49,11 +48,10 @@
 	} from '$lib/components/calendar/EventEditorDialog.svelte';
 	import CalendarComparison from '$lib/components/friends/CalendarComparison.svelte';
 	import SavedMeetings from '$lib/components/friends/SavedMeetings.svelte';
-	import Help from '$lib/components/settings/Help.svelte';
-	import Settings from '$lib/components/settings/Settings.svelte';
 	import WeekNavigation from '$lib/components/ui/WeekNavigation.svelte';
 
 	const ui = getPanelUi();
+	const settingsSession = getPanelSettings();
 	$effect(() => {
 		ui.termOptions = displayTerms;
 	});
@@ -110,6 +108,7 @@
 	let currentEventPrefs = $state<GetPreferencesResponse | undefined>(undefined);
 	let loading = $state(false);
 	let refreshing = $state(false);
+	let pageActive = true;
 	// The router destroys this page when the user opens the friends page. The
 	// session keeps what this page already loaded, so coming back sends no requests.
 	const session = getPanelSession();
@@ -203,6 +202,7 @@
 	});
 
 	onDestroy(() => {
+		pageActive = false;
 		if (browser && typeof window !== 'undefined') {
 			window.removeEventListener('keydown', onWindowKeyDown, true);
 		}
@@ -226,20 +226,23 @@
 	}
 
 	async function ensureProcessedForTerm(termId: string | undefined) {
-		if (!termId || loading) return;
+		if (!pageActive || !termId || loading) return;
 		let version = session.ownScheduleVersions[termId] ?? 0;
 		const fresh = () =>
+			pageActive &&
 			session.active &&
 			ui.term === termId &&
 			(session.ownScheduleVersions[termId] ?? 0) === version;
 		try {
 			loading = true;
 			if (session.termProcessing.pending.has(termId)) await session.termProcessing.wait(termId);
-			if (!session.active || ui.term !== termId) return;
+			if (!pageActive || !session.active || ui.term !== termId) return;
 			version = session.ownScheduleVersions[termId] ?? 0;
 			let status = await API.userIsProcessed(termId);
+			if (!fresh()) return;
 			if (status.status === 'pending' || status.status === 'processing') {
 				await session.termProcessing.wait(termId, status);
+				if (!fresh()) return;
 				status = await API.userIsProcessed(termId);
 			}
 			if (!fresh()) return;
@@ -357,7 +360,7 @@
 	);
 
 	async function runScrapeAndProcess(termId: string | undefined) {
-		if (loading) return;
+		if (!pageActive || !session.active || loading) return;
 		if (termId && session.termProcessing.pending.has(termId)) {
 			await ensureProcessedForTerm(termId);
 			return;
@@ -365,6 +368,7 @@
 		let expectedTerm = termId;
 		let version = expectedTerm ? (session.ownScheduleVersions[expectedTerm] ?? 0) : 0;
 		const fresh = () =>
+			pageActive &&
 			session.active &&
 			(!expectedTerm ||
 				(ui.term === expectedTerm && (session.ownScheduleVersions[expectedTerm] ?? 0) === version));
@@ -411,13 +415,14 @@
 	}
 
 	async function refreshSchedule(termId: string | undefined) {
-		if (!termId || refreshing || loading) return;
+		if (!pageActive || !session.active || !termId || refreshing || loading) return;
 		if (session.termProcessing.pending.has(termId)) {
 			await ensureProcessedForTerm(termId);
 			return;
 		}
 		let version = session.ownScheduleVersions[termId] ?? 0;
 		const fresh = () =>
+			pageActive &&
 			session.active &&
 			ui.term === termId &&
 			(session.ownScheduleVersions[termId] ?? 0) === version;
@@ -425,6 +430,7 @@
 			refreshing = true;
 
 			const scraped = await fetchRegistrationEvents();
+			if (!fresh()) return;
 			if (!scraped) {
 				snackbar('Failed to open LeopardWeb tab', undefined, true);
 				return;
@@ -526,44 +532,11 @@
 		}
 	}
 
-	// Check if returning to settings after environment switch (before render)
-	let shouldReturnToSettings = browser && sessionStorage.getItem('returnToSettings') === 'true';
-	let shouldClearData = browser && sessionStorage.getItem('clearCalendarData') === 'true';
-	let initialView = browser ? page.url.searchParams.get('view') : null;
-	let tab = $state(
-		shouldReturnToSettings || initialView === 'settings'
-			? 'settings'
-			: initialView === 'help'
-				? 'help'
-				: 'a'
-	);
-
-	$effect(() => {
-		const view = page.url.searchParams.get('view');
-		tab = view === 'settings' || view === 'help' ? view : 'a';
-	});
-
-	// Clear data immediately if switching environments (before render)
-	if (shouldClearData && browser) {
-		sessionStorage.removeItem('returnToSettings');
-		sessionStorage.removeItem('clearCalendarData');
-		// Clear stores immediately to prevent old data from showing
-		localStorage.removeItem('processedData');
-		localStorage.removeItem('userSettings');
-		localStorage.removeItem('icsUrl');
-	}
-
-	function clearEnvironmentData() {
-		storedProcessedData.set([]);
-		storedUserSettings.set(undefined);
-		storedIcsUrl.set(undefined);
-	}
-
 	// Loads the terms and the user settings. Neither depends on the other, so
 	// they go out together. The settings load once per session. The terms come
 	// from the session, which shares one request with the friends page.
 	async function loadTermsAndSettings() {
-		const settingsRequest = session.calendarLoaded ? undefined : API.userSettings();
+		const settingsRequest = settingsSession.loaded ? undefined : API.userSettings();
 		// Keep a failed settings request from being reported as unhandled while
 		// the terms request is still open. It still throws at its await below.
 		settingsRequest?.catch(() => undefined);
@@ -578,12 +551,12 @@
 		try {
 			const settings = await settingsRequest;
 			// A reply for an ended session must not write into the new one.
-			if (!session.active) return;
+			if (!settingsSession.active) return;
 			storedUserSettings.set(settings);
 			if (settings.enrolled_terms?.length && $enrolledTerms.length === 0) {
 				enrolledTerms.set(settings.enrolled_terms);
 			}
-			session.calendarLoaded = true;
+			settingsSession.loaded = true;
 		} catch (e) {
 			// The auth code already sent the user to sign in.
 			if (!(e instanceof AuthError)) {
@@ -593,12 +566,6 @@
 	}
 
 	onMount(async () => {
-		if (shouldReturnToSettings) {
-			sessionStorage.removeItem('returnToSettings');
-			let destination: string = resolve('/calendar');
-			destination += '?view=settings';
-			void goto(destination, { replaceState: true });
-		}
 		checkBetaAccess();
 		jwt_token = await getUsableJwt();
 		if (!jwt_token) {
@@ -606,11 +573,6 @@
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			goto('/');
 			return;
-		}
-
-		// IMPORTANT: Clear data FIRST before fetching anything for environment switches
-		if (shouldClearData) {
-			clearEnvironmentData();
 		}
 
 		// The (panel) layout handles environment changes. It starts a new
@@ -702,7 +664,7 @@
 	bind:this={calendarElement}
 	class="min-w-0 gap-3 @container box-border flex h-full w-full flex-col"
 >
-	{#if !ui.comparison && !processedData && tab === 'a'}
+	{#if !ui.comparison && !processedData}
 		<div
 			class="gap-6 p-6 bg-surface-container rounded-2xl shadow-md max-w-lg mx-auto flex w-full flex-col items-center"
 		>
@@ -765,84 +727,78 @@
 		</div>
 	{/if}
 
-	{#if tab === 'a'}
-		{#if ui.comparison}
-			<CalendarComparison
-				{militaryTime}
-				savedMeetings={savedData}
-				onownselect={selectCalendarEvent}
-			/>
-		{:else}
-			{#if processedData}
-				{#if !historicSchedule}<WeekNavigation bind:week={ui.week} />{/if}
-				<ConnectedButtons>
-					<input
-						type="radio"
-						name="calendar-presentation"
-						id="calendar-week-view"
-						aria-label="Calendar view"
-						checked={calendarDisplay === 'calendar'}
-						onchange={() => (ui.calendarPresentation = 'calendar')}
-					/><Button for="calendar-week-view">Calendar</Button>
-					<input
-						type="radio"
-						name="calendar-presentation"
-						id="calendar-list-view"
-						aria-label="List view"
-						checked={calendarDisplay === 'list'}
-						onchange={() => (ui.calendarPresentation = 'list')}
-					/><Button for="calendar-list-view">List</Button>
-				</ConnectedButtons>
-			{/if}
-			{#if (processedData || savedData.occurrences.length) && calendarDisplay === 'list'}
-				<nav class="gap-2 flex flex-wrap" aria-label="Schedule day">
-					{#each dates as date (date)}<Chip
-							variant="general"
-							selected={ui.calendarDay === date}
-							aria-pressed={ui.calendarDay === date}
-							aria-label={historicSchedule
-								? `Show ${dateLabel(date).split(',')[0]}`
-								: `Show ${dateLabel(date)}, ${date.slice(0, 4)}`}
-							onclick={() => (ui.calendarDay = date)}
-							>{new Date(date + 'T12:00:00Z').toLocaleDateString('en-US', {
-								weekday: historicSchedule ? 'long' : 'short',
-								timeZone: 'UTC'
-							})}{#if !historicSchedule}
-								{` ${Number(date.slice(-2))}`}{/if}</Chip
-						>{/each}
-				</nav>
-				<ComparisonList
-					showDates={!historicSchedule}
-					events={selectedDayEvents}
-					date={ui.calendarDay || dates[0]}
-					{militaryTime}
-					onselect={selectCalendarEvent}
-				/>
-			{:else if processedData || savedData.occurrences.length}
-				<CalendarGrid
-					{stackedMeetings}
-					dates={historicSchedule ? undefined : dates}
-					startHour={calendarStartHour}
-					latestHour={latestEndHour(calendarCourses)}
-					{militaryTime}
-					{earliestClassOffsetRem}
-					onselect={selectCalendarEvent}
-				/>
-			{/if}
+	{#if ui.comparison}
+		<CalendarComparison
+			{militaryTime}
+			savedMeetings={savedData}
+			onownselect={selectCalendarEvent}
+		/>
+	{:else}
+		{#if processedData}
+			{#if !historicSchedule}<WeekNavigation bind:week={ui.week} />{/if}
+			<ConnectedButtons>
+				<input
+					type="radio"
+					name="calendar-presentation"
+					id="calendar-week-view"
+					aria-label="Calendar view"
+					checked={calendarDisplay === 'calendar'}
+					onchange={() => (ui.calendarPresentation = 'calendar')}
+				/><Button for="calendar-week-view">Calendar</Button>
+				<input
+					type="radio"
+					name="calendar-presentation"
+					id="calendar-list-view"
+					aria-label="List view"
+					checked={calendarDisplay === 'list'}
+					onchange={() => (ui.calendarPresentation = 'list')}
+				/><Button for="calendar-list-view">List</Button>
+			</ConnectedButtons>
 		{/if}
-		{#if jwt_token}
-			<SavedMeetings
-				week={dates[0]}
+		{#if (processedData || savedData.occurrences.length) && calendarDisplay === 'list'}
+			<nav class="gap-2 flex flex-wrap" aria-label="Schedule day">
+				{#each dates as date (date)}<Chip
+						variant="general"
+						selected={ui.calendarDay === date}
+						aria-pressed={ui.calendarDay === date}
+						aria-label={historicSchedule
+							? `Show ${dateLabel(date).split(',')[0]}`
+							: `Show ${dateLabel(date)}, ${date.slice(0, 4)}`}
+						onclick={() => (ui.calendarDay = date)}
+						>{new Date(date + 'T12:00:00Z').toLocaleDateString('en-US', {
+							weekday: historicSchedule ? 'long' : 'short',
+							timeZone: 'UTC'
+						})}{#if !historicSchedule}
+							{` ${Number(date.slice(-2))}`}{/if}</Chip
+					>{/each}
+			</nav>
+			<ComparisonList
+				showDates={!historicSchedule}
+				events={selectedDayEvents}
+				date={ui.calendarDay || dates[0]}
 				{militaryTime}
-				showList={false}
-				bind:selectedOccurrence={selectedSavedOccurrence}
-				ondata={(data) => (savedData = data)}
+				onselect={selectCalendarEvent}
+			/>
+		{:else if processedData || savedData.occurrences.length}
+			<CalendarGrid
+				{stackedMeetings}
+				dates={historicSchedule ? undefined : dates}
+				startHour={calendarStartHour}
+				latestHour={latestEndHour(calendarCourses)}
+				{militaryTime}
+				{earliestClassOffsetRem}
+				onselect={selectCalendarEvent}
 			/>
 		{/if}
-	{:else if tab === 'settings'}
-		<Settings />
-	{:else if tab === 'help'}
-		<Help />
+	{/if}
+	{#if jwt_token}
+		<SavedMeetings
+			week={dates[0]}
+			{militaryTime}
+			showList={false}
+			bind:selectedOccurrence={selectedSavedOccurrence}
+			ondata={(data) => (savedData = data)}
+		/>
 	{/if}
 </div>
 
@@ -851,7 +807,7 @@
 		course={activeCourse}
 		meeting={activeMeeting}
 		prefs={currentEventPrefs}
-		visible={tab === 'a'}
+		visible={true}
 		{advancedEditing}
 		{labColor}
 		{lectureColor}

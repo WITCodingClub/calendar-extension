@@ -3,6 +3,7 @@
 	import { PanelUi, setPanelUi } from '$lib/panel/ui.svelte';
 	import { featureFlags } from '$lib/featureFlags';
 	import { PanelSession, setPanelSession } from '$lib/panel/session';
+	import { PanelSettings, setPanelSettings } from '$lib/panel/settings';
 	import { resetStores } from '$lib/stores';
 
 	let { children } = $props();
@@ -13,6 +14,8 @@
 	setPanelSession(() => (session ??= new PanelSession()));
 	let ui: PanelUi | undefined;
 	setPanelUi(() => (ui ??= new PanelUi()));
+	let settings: PanelSettings | undefined;
+	setPanelSettings(() => (settings ??= new PanelSettings()));
 	let generation = $state(0);
 
 	onMount(() => {
@@ -31,9 +34,11 @@
 			// Drop the data of the environment that the user left, then start a
 			// new session. The pages mount again and load for the new environment.
 			if (session) session.active = false;
+			if (settings) settings.active = false;
 			resetStores();
 			featureFlags.clearCache();
 			session = undefined;
+			settings = undefined;
 			ui = undefined;
 			generation += 1;
 		}
@@ -42,6 +47,7 @@
 		return () => {
 			chrome.storage.onChanged.removeListener(onStorageChanged);
 			if (session) session.active = false;
+			if (settings) settings.active = false;
 		};
 	});
 </script>

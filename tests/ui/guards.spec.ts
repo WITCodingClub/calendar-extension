@@ -7,7 +7,15 @@ test('signed-out route guards and local reset use only a disposable profile', as
 	extension
 }) => {
 	const { page, open, worker } = extension;
-	for (const route of ['calendar', 'friends', 'onboard', 'gcalendar', 'passkey-setup']) {
+	for (const route of [
+		'calendar',
+		'friends',
+		'settings',
+		'help',
+		'onboard',
+		'gcalendar',
+		'passkey-setup'
+	]) {
 		await open(route, false);
 		await expect(page.getByRole('button', { name: /Sign in with Google/ })).toBeVisible();
 		await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toHaveCount(0);
