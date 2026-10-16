@@ -8,7 +8,7 @@ process.chdir(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
 
 function required(name) {
 	const value = process.env[name];
-	if (!value?.trim()) throw new Error(`Missing ${name}. See docs/releasing.md.`);
+	if (!value?.trim()) throw new Error(`Missing ${name}.`);
 	return value;
 }
 
@@ -29,13 +29,7 @@ try {
 	if (!['prepare', 'chrome', 'firefox'].includes(command)) {
 		throw new Error('Usage: node scripts/release.js <prepare|chrome|firefox>');
 	}
-	if (process.env.DRY_RUN && !['true', 'false'].includes(process.env.DRY_RUN)) {
-		throw new Error('DRY_RUN must be true or false');
-	}
-	const dryRun = process.env.DRY_RUN === 'true';
-	const tag =
-		process.env.VERSION ||
-		(dryRun ? `v${JSON.parse(readFileSync('package.json', 'utf8')).version}` : required('VERSION'));
+	const tag = required('VERSION');
 	if (!/^v\d+\.\d+\.\d+$/.test(tag)) {
 		throw new Error('VERSION must be a release tag such as v6.0.1');
 	}
@@ -84,8 +78,8 @@ try {
 							sourcesZip: `${base}-sources.zip`
 						}
 					};
-		console.log(`${dryRun ? 'Checking authentication for' : 'Submitting'} ${command} ${tag}`);
-		const results = await submit({ ...config, dryRun });
+		console.log(`Submitting ${command} ${tag}`);
+		const results = await submit(config);
 		if (!results[command]?.success) {
 			throw new Error(`${command} submission failed. Check the store output above.`);
 		}

@@ -7,13 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Existing version tag for real releases; optional for dry runs'
-        required: false
+        description: 'Existing version tag (e.g., v6.0.1)'
+        required: true
         type: string
-      dry_run:
-        description: 'Check store authentication without uploading or creating a GitHub release'
-        type: boolean
-        default: true
 
 concurrency:
   group: extension-release
@@ -23,8 +19,7 @@ permissions:
   contents: read
 
 env:
-  VERSION: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || '' }}
-  DRY_RUN: ${{ inputs.dry_run || false }}
+  VERSION: ${{ inputs.version || github.ref_name }}
 
 jobs:
   build-and-release:
@@ -36,7 +31,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.dry_run && github.sha || format('refs/tags/{0}', env.VERSION) }}
+          ref: refs/tags/${{ env.VERSION }}
           persist-credentials: false
 
       - name: Setup Node.js
@@ -47,7 +42,6 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: .
         run: npm ci
 
       - name: Build and package extensions
@@ -61,14 +55,13 @@ jobs:
           if-no-files-found: error
 
       - name: Create GitHub Release
-        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          tag_name: ${{ env.VERSION }}
           files: |
-            wit-calendar-${{ github.event.inputs.version || github.ref_name }}.zip
-            wit-calendar-${{ github.event.inputs.version || github.ref_name }}-firefox.zip
-            wit-calendar-${{ github.event.inputs.version || github.ref_name }}-sources.zip
+            wit-calendar-${{ env.VERSION }}.zip
+            wit-calendar-${{ env.VERSION }}-firefox.zip
+            wit-calendar-${{ env.VERSION }}-sources.zip
           generate_release_notes: true
 
   publish:
@@ -83,7 +76,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.dry_run && github.sha || format('refs/tags/{0}', env.VERSION) }}
+          ref: refs/tags/${{ env.VERSION }}
           persist-credentials: false
 
       - name: Setup Node.js
@@ -103,7 +96,7 @@ jobs:
       - name: Publish Chrome extension
         if: matrix.store == 'chrome'
         env:
-          CHROME_PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID }}
+          CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID || vars.CHROME_PUBLISHER_ID }}
           CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL }}
           CHROME_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.CHROME_SERVICE_ACCOUNT_PRIVATE_KEY }}
         run: node scripts/release.js chrome
