@@ -38,6 +38,8 @@ Each screenshot uses a fresh temporary profile, mocked backend responses, and da
 
 Optional shared settings are `data`, `date`, `timezone`, and `viewport`. Each screenshot can override `data`, `date`, and `viewport`. Set `signedIn: false` on a screenshot for the welcome page. Choose a fixed date inside the sample schedule's term.
 
+Set `sidebar: true` on a screenshot to simulate sidebar detection (`chrome.tabs.getCurrent()` returns no tab), making the "Open in new tab" button visible. Use a narrow `viewport` to match sidebar dimensions. The capture still runs in an isolated browser tab.
+
 `actions` runs in order before capture. `beforeEach` is an optional shared list that runs before each entry's actions. Use `waitFor` to specify what must be ready; the runner also waits for network idle and fonts before capturing.
 
 ## Extension settings
@@ -132,6 +134,43 @@ Omitting `capture` captures the current viewport, preserving the page's scroll p
 ```
 
 Element captures automatically scroll the target into view. Clip coordinates describe a rectangle in the page; use viewport capture for a scrolled screen. Use only one capture mode at a time.
+
+Add `padding` to a target capture to include surrounding content, like zooming out from that element:
+
+```json
+{ "capture": { "target": "@dialog", "padding": 32 } }
+```
+
+Use a number for equal padding on all sides, or an object for individual sides:
+
+```json
+{
+	"capture": {
+		"target": "@dialog",
+		"padding": { "top": 24, "right": 32, "bottom": 48, "left": 32 }
+	}
+}
+```
+
+Padding is measured in CSS pixels and must be finite and non-negative. Omitted sides default to zero. The crop stops at the page edges and preserves the page's original scale; it does not resize the element or change browser zoom. Padding requires `target` and cannot be combined with `clip` or `fullPage`.
+
+## Highlighting elements
+
+Add `highlights` to a screenshot entry to draw red boxes around targets:
+
+```json
+{
+	"name": "homepage",
+	"route": "/index.html",
+	"signedIn": false,
+	"highlights": [
+		{ "target": { "role": "button", "name": "Sign in with Google" } },
+		{ "target": "@anotherTarget", "padding": 10, "shape": "rounded" }
+	]
+}
+```
+
+Each box uses a 3-pixel red outline with a default 6-pixel gap from the element. The default `shape` is `"box"`, with square corners. Use `"shape": "rounded"` to follow the element's rounded corners instead. Set `padding` to a finite, non-negative number of CSS pixels to change the gap. Highlights are applied after actions and capture scrolling, without changing the target's layout or shape. Leave room inside the capture for the outline; a tight element capture clips highlights outside its edges, so use capture padding when needed.
 
 ## Sample data
 

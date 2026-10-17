@@ -146,6 +146,11 @@ for (const shot of config.screenshots) {
 			{ token, signedIn: shot.signedIn ?? true }
 		);
 		const page = await context.newPage();
+		if (shot.sidebar) {
+			await page.addInitScript(() => {
+				chrome.tabs.getCurrent = async () => undefined;
+			});
+		}
 		await page.clock.setFixedTime(
 			new Date(shot.date ?? config.date ?? '2026-10-06T12:00:00-04:00')
 		);
@@ -162,23 +167,109 @@ for (const shot of config.screenshots) {
 		}
 		await page.waitForLoadState('networkidle');
 		await page.evaluate(() => document.fonts.ready);
+		await page.evaluate(() => {
+			for (const animation of document.getAnimations()) {
+				if (Number.isFinite(animation.effect?.getComputedTiming().endTime)) animation.finish();
+			}
+		});
 		if (unexpected.size) throw new Error('Screenshot encountered unmocked requests.');
+		const capture = shot.capture ?? {};
+		if (capture.target) await target(page, capture.target).scrollIntoViewIfNeeded();
+		if (shot.highlights !== undefined && !Array.isArray(shot.highlights))
+			throw new Error('Highlights must be an array.');
+		for (const highlight of shot.highlights ?? []) {
+			const padding = highlight.padding ?? 6;
+			const shape = highlight.shape ?? 'box';
+			if (!['box', 'rounded'].includes(shape))
+				throw new Error('Highlight shape must be box or rounded.');
+			if (!Number.isFinite(padding) || padding < 0)
+				throw new Error('Highlight padding must be a finite, non-negative pixel value.');
+			const element = target(page, highlight.target);
+			await element.waitFor({ state: 'visible' });
+			await element.evaluate(
+				(element, { padding, shape }) => {
+					if (shape === 'rounded') {
+						element.style.setProperty('outline', '3px solid #ff0000', 'important');
+						element.style.setProperty('outline-offset', `${padding}px`, 'important');
+						return;
+					}
+					const box = element.getBoundingClientRect();
+					const dialog = element.closest('dialog[open]');
+					const parent = dialog ?? document.documentElement;
+					const parentBox = dialog?.getBoundingClientRect();
+					const offsetX = dialog
+						? dialog.scrollLeft - parentBox.left - dialog.clientLeft
+						: window.scrollX;
+					const offsetY = dialog
+						? dialog.scrollTop - parentBox.top - dialog.clientTop
+						: window.scrollY;
+					const overlay = document.createElement('div');
+					Object.assign(overlay.style, {
+						position: 'absolute',
+						left: `${box.left + offsetX - padding - 3}px`,
+						top: `${box.top + offsetY - padding - 3}px`,
+						width: `${box.width + 2 * (padding + 3)}px`,
+						height: `${box.height + 2 * (padding + 3)}px`,
+						border: '3px solid #ff0000',
+						borderRadius: '0',
+						boxSizing: 'border-box',
+						pointerEvents: 'none',
+						zIndex: '2147483647'
+					});
+					parent.append(overlay);
+				},
+				{ padding, shape }
+			);
+		}
 		const screenshotDir =
 			shot.outputDir === undefined ? outputDir : path.resolve(configDir, shot.outputDir);
 		await mkdir(screenshotDir, { recursive: true });
 		const outputPath = path.join(screenshotDir, `${shot.name}.webp`);
-		const capture = shot.capture ?? {};
 		if (capture.target && (capture.clip || capture.fullPage))
 			throw new Error('Element capture cannot use clip or fullPage.');
 		if (capture.clip && capture.fullPage) throw new Error('Choose clip or fullPage, not both.');
+		if (capture.padding !== undefined && !capture.target)
+			throw new Error('Capture padding requires a target.');
 		const options = { type: 'png', animations: 'disabled' };
-		const screenshot = capture.target
-			? await target(page, capture.target).screenshot(options)
-			: await page.screenshot({
-					...options,
-					fullPage: capture.fullPage ?? false,
-					clip: capture.clip
-				});
+		let screenshot;
+		if (capture.padding !== undefined) {
+			const padding = Object.fromEntries(
+				['top', 'right', 'bottom', 'left'].map((side) => [
+					side,
+					typeof capture.padding === 'number' ? capture.padding : (capture.padding?.[side] ?? 0)
+				])
+			);
+			if (
+				(capture.padding === null || typeof capture.padding !== 'object') &&
+				typeof capture.padding !== 'number'
+			)
+				throw new Error('Capture padding must be a number or an object with side values.');
+			if (Object.values(padding).some((value) => !Number.isFinite(value) || value < 0))
+				throw new Error('Capture padding must contain finite, non-negative pixel values.');
+			const element = target(page, capture.target);
+			await element.scrollIntoViewIfNeeded();
+			const clip = await element.evaluate((element, padding) => {
+				const box = element.getBoundingClientRect();
+				const pageWidth = Math.max(document.documentElement.scrollWidth, window.innerWidth);
+				const pageHeight = Math.max(document.documentElement.scrollHeight, window.innerHeight);
+				const x = Math.max(0, Math.floor(box.left + window.scrollX - padding.left));
+				const y = Math.max(0, Math.floor(box.top + window.scrollY - padding.top));
+				return {
+					x,
+					y,
+					width: Math.min(pageWidth, Math.ceil(box.right + window.scrollX + padding.right)) - x,
+					height: Math.min(pageHeight, Math.ceil(box.bottom + window.scrollY + padding.bottom)) - y
+				};
+			}, padding);
+			screenshot = await page.screenshot({ ...options, clip });
+		} else
+			screenshot = capture.target
+				? await target(page, capture.target).screenshot(options)
+				: await page.screenshot({
+						...options,
+						fullPage: capture.fullPage ?? false,
+						clip: capture.clip
+					});
 		await sharp(screenshot).webp({ lossless: true }).toFile(outputPath);
 		console.log(`Screenshot saved to ${outputPath}`);
 	} catch (error) {
