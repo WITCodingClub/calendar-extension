@@ -3,7 +3,7 @@ import { browser } from '$app/environment';
 import { API } from '../api';
 import { AuthError } from './session';
 import { listPasskeys, passkeysSupported } from './passkeys';
-import { usageStatsAsked } from '../browser/telemetry';
+import { rememberUsageStatsAnswer, usageStatsAsked } from '../browser/telemetry';
 
 const OFFER_PASSKEY_SETUP_KEY = 'offer_passkey_setup';
 
@@ -70,15 +70,33 @@ export async function finishPasskeySetup(): Promise<void> {
 	await goto('/onboard');
 }
 
+async function usageStatsAnswerOnAccount(): Promise<boolean | undefined> {
+	try {
+		const answer = (await API.userSettings()).usage_stats_enabled;
+		return typeof answer === 'boolean' ? answer : undefined;
+	} catch (err) {
+		if (err instanceof AuthError) {
+			throw err;
+		}
+		return undefined;
+	}
+}
+
 export async function continueAfterSignIn(options?: { offerPasskey?: boolean }): Promise<void> {
 	// Ask about usage counts once, before any other step. The prompt page calls
 	// this function again, so keep the passkey offer in storage for that call.
+	// An answer on the account, from another browser or from before the
+	// storage cleared, counts as asked.
 	if (!(await usageStatsAsked())) {
-		if (options?.offerPasskey) {
-			await chrome.storage.local.set({ [OFFER_PASSKEY_SETUP_KEY]: true });
+		const answer = await usageStatsAnswerOnAccount();
+		if (answer === undefined) {
+			if (options?.offerPasskey) {
+				await chrome.storage.local.set({ [OFFER_PASSKEY_SETUP_KEY]: true });
+			}
+			await goto('/usage-stats');
+			return;
 		}
-		await goto('/usage-stats');
-		return;
+		await rememberUsageStatsAnswer(answer);
 	}
 
 	if (browser && localStorage.getItem('isOtherCalendar') === 'true') {
