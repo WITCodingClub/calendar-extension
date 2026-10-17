@@ -221,6 +221,8 @@ export interface UserSettings {
 	available_university_event_categories?: UniversityEventCategory[];
 	show_historic_terms: boolean;
 	enrolled_terms?: Array<{ id: string; name: string }>;
+	/** The usage counts answer. null until the student answers. */
+	usage_stats_enabled?: boolean | null;
 }
 
 export interface ConnectedAccount {
