@@ -63,6 +63,16 @@ jobs:
             wit-calendar-${{ env.VERSION }}-firefox.zip
             wit-calendar-${{ env.VERSION }}-sources.zip
           generate_release_notes: true
+      - name: Trigger website screenshots
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
+          RELEASE_TAG: ${{ env.VERSION }}
+        run: |
+          gh api --method POST \
+            repos/WITCodingClub/calendar-website/dispatches \
+            -f event_type=extension-release \
+            -f "client_payload[tag]=$RELEASE_TAG"
+
 
   publish:
     name: Publish to ${{ matrix.store }}
