@@ -3,8 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const goto = vi.fn(async (_url: string) => {});
 vi.mock('$app/navigation', () => ({ goto: (url: string) => goto(url) }));
 vi.mock('$app/environment', () => ({ browser: false }));
+const userSettings = vi.hoisted(() =>
+	vi.fn(async (): Promise<{ usage_stats_enabled?: boolean | null }> => ({}))
+);
 vi.mock('../api', () => ({
-	API: { getConnectedAccounts: vi.fn(async () => ({ oauth_credentials: [] })) }
+	API: {
+		getConnectedAccounts: vi.fn(async () => ({ oauth_credentials: [] })),
+		userSettings
+	}
 }));
 vi.mock('./passkeys', () => ({
 	passkeysSupported: vi.fn(async () => false),
@@ -12,7 +18,11 @@ vi.mock('./passkeys', () => ({
 }));
 
 const telemetry = vi.hoisted(() => ({ asked: false }));
-vi.mock('../browser/telemetry', () => ({ usageStatsAsked: vi.fn(async () => telemetry.asked) }));
+const rememberUsageStatsAnswer = vi.hoisted(() => vi.fn(async (_enabled: boolean) => {}));
+vi.mock('../browser/telemetry', () => ({
+	usageStatsAsked: vi.fn(async () => telemetry.asked),
+	rememberUsageStatsAnswer
+}));
 
 import { continueAfterSignIn } from './afterSignIn';
 import { TermProcessing } from '../panel/termProcessing';
@@ -24,6 +34,9 @@ beforeEach(() => {
 	storage = {};
 	telemetry.asked = false;
 	goto.mockClear();
+	userSettings.mockReset();
+	userSettings.mockResolvedValue({});
+	rememberUsageStatsAnswer.mockClear();
 	vi.stubGlobal('chrome', {
 		storage: {
 			local: {
@@ -45,6 +58,33 @@ describe('continueAfterSignIn', () => {
 
 		expect(goto).toHaveBeenCalledWith('/usage-stats');
 		expect(storage.offer_passkey_setup).toBe(true);
+	});
+
+	it('asks when the account has no answer yet', async () => {
+		userSettings.mockResolvedValue({ usage_stats_enabled: null });
+
+		await continueAfterSignIn();
+
+		expect(goto).toHaveBeenCalledWith('/usage-stats');
+		expect(rememberUsageStatsAnswer).not.toHaveBeenCalled();
+	});
+
+	it('asks when the account answer cannot load', async () => {
+		userSettings.mockRejectedValue(new Error('offline'));
+
+		await continueAfterSignIn();
+
+		expect(goto).toHaveBeenCalledWith('/usage-stats');
+	});
+
+	it('uses the answer on the account and does not ask again', async () => {
+		userSettings.mockResolvedValue({ usage_stats_enabled: false });
+
+		await continueAfterSignIn();
+
+		expect(rememberUsageStatsAnswer).toHaveBeenCalledWith(false);
+		expect(goto).not.toHaveBeenCalledWith('/usage-stats');
+		expect(goto).toHaveBeenCalledWith('/onboard');
 	});
 
 	it('goes on to onboarding after the student chose', async () => {
