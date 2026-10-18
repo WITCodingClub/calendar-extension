@@ -34,6 +34,11 @@
 
 <section class="day-list" aria-label={`Schedule list for ${displayDate}`}>
 	<h2 class="m3-font-title-medium">{displayDate}</h2>
+	{#if !ordered.length}
+		<p class="m3-font-body-medium text-on-surface-variant" role="status">
+			No events scheduled for this day.
+		</p>
+	{/if}
 	<ol>
 		{#each ordered as item (`${item.ownerId ?? 'group'}:${item.meeting.id}`)}<li
 				class:proposed={item.preview}

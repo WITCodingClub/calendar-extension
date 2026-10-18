@@ -102,6 +102,7 @@ test('historical terms support Calendar/List with a fixed sample week and weekda
 					term: { ...course.term, uid: 202510 },
 					meeting_times: course.meeting_times.map((time) => ({
 						...time,
+						wednesday: false,
 						start_date: '2025-09-01',
 						end_date: '2025-12-20'
 					}))
@@ -124,6 +125,18 @@ test('historical terms support Calendar/List with a fixed sample week and weekda
 	const list = page.getByRole('region', { name: 'Schedule list for Tuesday', exact: true });
 	await expect(list.getByRole('heading', { name: 'Tuesday', exact: true })).toBeVisible();
 	await expect(list.getByRole('button')).toHaveCount(2);
+	await expect(list.getByRole('status')).toHaveCount(0);
+	await day.getByRole('button', { name: 'Show Wednesday', exact: true }).click();
+	const emptyList = page.getByRole('region', { name: 'Schedule list for Wednesday', exact: true });
+	await expect(emptyList.getByRole('status')).toHaveText('No events scheduled for this day.');
+	await expect(emptyList.getByRole('button')).toHaveCount(0);
+	for (const width of [320, 480, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		await fitsViewport(page, emptyList);
+	}
+	await day.getByRole('button', { name: 'Show Tuesday', exact: true }).click();
+	await expect(list.getByRole('button')).toHaveCount(2);
+	await expect(list.getByRole('status')).toHaveCount(0);
 	await expect(page.getByRole('button', { name: /Previous week|Next week|This week/ })).toHaveCount(
 		0
 	);
