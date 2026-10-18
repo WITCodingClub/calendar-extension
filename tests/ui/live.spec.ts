@@ -13,11 +13,7 @@ test('isolated staging session loads Calendar, Friends and Settings', async ({ e
 	const picker = page.getByRole('dialog', { name: 'Select people' });
 	await expect.poll(() => picker.getByRole('checkbox').count()).toBeGreaterThanOrEqual(4);
 	await picker.getByRole('button', { name: 'Close', exact: true }).click();
-	await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
-	await page
-		.getByRole('navigation', { name: 'Application navigation' })
-		.getByRole('button', { name: 'Settings', exact: true })
-		.click();
+	await chooseRadio(page, 'Settings');
 	await expect(page.getByRole('heading', { name: 'Connected Google accounts' })).toBeVisible();
 	await expect(
 		page.getByText(`Signed in as ${process.env.WIT_LIVE_EXPECTED_EMAIL}`, { exact: true })

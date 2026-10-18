@@ -120,7 +120,6 @@
 {#if !restoring}
 	<PanelShell
 		title={activeTab === 'friends' ? 'Friends' : 'Your Calendar'}
-		mode="calendar"
 		tab={activeTab}
 		{tabs}
 		class="friends-preview"
