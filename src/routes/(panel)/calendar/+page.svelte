@@ -424,7 +424,7 @@
 		try {
 			refreshing = true;
 
-			const scraped = await fetchRegistrationEvents();
+			const scraped = await fetchRegistrationEvents(termId);
 			if (!scraped) {
 				snackbar('Failed to open LeopardWeb tab', undefined, true);
 				return;
@@ -436,8 +436,11 @@
 			}
 
 			// Filter to only the current term's events before reprocessing
-			const termFiltered = registrationData.filter((e: any) => String(e.term) === String(termId));
-			const eventsToReprocess = termFiltered.length > 0 ? termFiltered : registrationData;
+			const termFiltered = registrationData.filter((e) => String(e.term) === String(termId));
+			if (termFiltered.length === 0) {
+				throw new Error('LeopardWeb returned no classes for the selected term.');
+			}
+			const eventsToReprocess = termFiltered;
 
 			// Call the reprocess endpoint
 			const response = await API.reprocessCourses(eventsToReprocess);
@@ -447,7 +450,7 @@
 				storedIcsUrl.set(response.ics_url);
 			}
 
-			const actualRefreshTermId = String(eventsToReprocess[0]?.term ?? termId);
+			const actualRefreshTermId = termId;
 
 			session.invalidateOwnSchedule(actualRefreshTermId);
 			ui.busyActions?.invalidate('you');

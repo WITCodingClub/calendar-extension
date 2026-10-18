@@ -12,8 +12,6 @@
 
 <style>
 	.stage {
-		max-width: 41rem;
-		margin: auto;
 		width: 100%;
 	}
 	.planner-context {

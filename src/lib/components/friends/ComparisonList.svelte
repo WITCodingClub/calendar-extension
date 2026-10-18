@@ -5,6 +5,7 @@
 	import { DAYS } from '$lib/calendar/days';
 	import { dateLabel, formatTime, timeMinutes } from '$lib/datetime';
 	import OwnerStrips from './OwnerStrips.svelte';
+	import SharedClassIcon from './SharedClassIcon.svelte';
 	import type { ComparisonGridEvent } from '$lib/friends/comparison';
 	let {
 		events,
@@ -34,6 +35,11 @@
 
 <section class="day-list" aria-label={`Schedule list for ${displayDate}`}>
 	<h2 class="m3-font-title-medium">{displayDate}</h2>
+	{#if !ordered.length}
+		<p class="m3-font-body-medium text-on-surface-variant" role="status">
+			No events scheduled for this day.
+		</p>
+	{/if}
 	<ol>
 		{#each ordered as item (`${item.ownerId ?? 'group'}:${item.meeting.id}`)}<li
 				class:proposed={item.preview}
@@ -46,7 +52,8 @@
 					onclick={() => onselect(item)}
 				>
 					<div class="list-row">
-						<span class="row-heading m3-font-label-large"
+						{#if item.sharedOwners}<SharedClassIcon owners={item.sharedOwners} />{/if}
+						<span class="row-heading m3-font-label-large" class:pr-5={Boolean(item.sharedOwners)}
 							>{#if item.savedMeeting}<svg aria-hidden="true" class="saved-icon" viewBox="0 0 24 24"
 									><path fill="currentColor" d={CALENDAR_ICON} /></svg
 								>{:else if item.ownerLabel}<i style:background={item.bgColor}
@@ -121,6 +128,7 @@
 		border-radius: 0.5rem;
 	}
 	.list-row {
+		position: relative;
 		display: grid;
 		gap: 0.35rem;
 		width: 100%;
