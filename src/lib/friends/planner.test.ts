@@ -163,6 +163,22 @@ describe('production planning and comparison adapters', () => {
 			'Saved API meeting',
 			'Real class'
 		]);
+		const friend: ComparisonPerson = { ...people[0], id: 'friend', name: 'Friend' };
+		const dates = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'];
+		const shared = comparisonGrid([...people, friend], dates, 'detailed', 8);
+		expect(shared.byDay.wednesday).toHaveLength(1);
+		expect(shared.byDay.wednesday[0].sharedOwners).toEqual([
+			{ ownerId: 'you', name: 'You', color: ownerColor('you', [...people, friend]) },
+			{ ownerId: 'friend', name: 'Friend', color: ownerColor('friend', [...people, friend]) }
+		]);
+		expect(Object.values(shared.details)[0].shared?.map(({ person }) => person.id)).toEqual([
+			'you',
+			'friend'
+		]);
+		expect(
+			comparisonGrid([...people, { ...friend, sharing: 'Availability only' }], dates, 'detailed', 8)
+				.byDay.wednesday
+		).toHaveLength(2);
 	});
 	it('hides private details and omits failed calendars', () => {
 		const state = ui();
@@ -204,7 +220,22 @@ describe('production planning and comparison adapters', () => {
 				.map((detail) => detail.person?.id)
 				.sort()
 		).toEqual(['a', 'b']);
-		expect(ownerColor('b', people)).toBe(ownerColor('b', [people[1]]));
+		expect(ownerColor('b', people)).toBe(ownerColor('b', people.toReversed()));
+		const colliding = ['a', 'g', 'm', 's', 'y', 'you', 'friend'].map((id) => ({
+			...people[0],
+			id
+		}));
+		for (const selected of [
+			colliding,
+			Array.from({ length: 16 }, (_, index) => ({ ...people[0], id: `friend-${index}` }))
+		]) {
+			const colors = selected.map((person) => ownerColor(person.id, selected));
+			expect(new Set(colors).size).toBe(selected.length);
+			expect(selected.map((person) => ownerColor(person.id, selected.toReversed()))).toEqual(
+				colors
+			);
+			expect(colors.every((color) => /^#[0-9a-f]{6}$/.test(color))).toBe(true);
+		}
 	});
 	it('preserves DST validation for production dates', () => {
 		expect(formatCampusDate('2026-11-12')).toBe(formatCampusDate('2026-11-12T17:00:00Z'));

@@ -1,3 +1,4 @@
+import { API } from '../api';
 import { EnvironmentManager } from './environment';
 
 /**
@@ -76,15 +77,45 @@ export async function setUsageStatsEnabled(enabled: boolean): Promise<boolean> {
 		if (enabled) {
 			const granted = await chrome.permissions.request(permission);
 			await chrome.storage.local.set({ [ASKED_KEY]: true });
+			await saveAnswerToAccount(granted);
 			return granted;
 		}
 		await chrome.permissions.remove(permission);
 		await chrome.storage.local.set({ [ASKED_KEY]: true });
-		return usageStatsEnabled();
+		const stillEnabled = await usageStatsEnabled();
+		await saveAnswerToAccount(stillEnabled);
+		return stillEnabled;
 	}
 
 	await chrome.storage.local.set({ [PREFERENCE_KEY]: enabled, [ASKED_KEY]: true });
+	await saveAnswerToAccount(enabled);
 	return enabled;
+}
+
+/**
+ * Stores the answer on the account, so a new browser or cleared storage does
+ * not ask again. A failed save keeps the answer in this browser only.
+ */
+async function saveAnswerToAccount(enabled: boolean): Promise<void> {
+	try {
+		await API.userSettings({ usage_stats_enabled: enabled });
+	} catch {
+		// The answer in this browser still applies.
+	}
+}
+
+/**
+ * Copies the answer stored on the account into this browser, without a
+ * prompt. On Firefox it copies only the "asked" flag: the data permission
+ * needs a click, so the stored answer cannot turn the counts on there.
+ */
+export async function rememberUsageStatsAnswer(enabled: boolean): Promise<void> {
+	if (detectBrowser() === 'firefox') {
+		await chrome.storage.local.set({ [ASKED_KEY]: true });
+		return;
+	}
+
+	await chrome.storage.local.set({ [PREFERENCE_KEY]: enabled, [ASKED_KEY]: true });
 }
 
 /**

@@ -4,6 +4,7 @@
 	import { on } from 'svelte/events';
 	import { DAYS } from '$lib/calendar/days';
 	import OwnerStrips from '$lib/components/friends/OwnerStrips.svelte';
+	import SharedClassIcon from '$lib/components/friends/SharedClassIcon.svelte';
 	import type { ComparisonGridEvent } from '$lib/friends/comparison';
 	import { formatTime, minutesTime } from '$lib/datetime';
 	import type { DayItem } from '$lib/types';
@@ -166,7 +167,8 @@
 										><path fill="currentColor" d={CALENDAR_ICON} /></svg
 									>
 								{:else}
-									<div class="font-medium truncate">
+									{#if item.sharedOwners}<SharedClassIcon owners={item.sharedOwners} />{/if}
+									<div class="font-medium truncate" class:pr-5={Boolean(item.sharedOwners)}>
 										{#if item.savedMeeting}<svg
 												aria-hidden="true"
 												class="saved-icon"
