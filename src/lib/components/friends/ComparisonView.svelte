@@ -140,6 +140,7 @@
 		if (
 			!fresh ||
 			fresh.person?.sharing !== detail.person?.sharing ||
+			JSON.stringify(fresh.shared) !== JSON.stringify(detail.shared) ||
 			fresh.block?.start !== detail.block?.start ||
 			fresh.block?.end !== detail.block?.end ||
 			fresh.period?.start !== detail.period?.start ||
@@ -154,7 +155,7 @@
 		else {
 			detailId = String(item.meeting.id);
 			detail = grid.details[detailId];
-			if (detail?.person?.id === 'you' && detail.block?.course && onclass)
+			if (!detail?.shared && detail?.person?.id === 'you' && detail.block?.course && onclass)
 				onclass(detail.block, detail.date);
 			else detailOpen = Boolean(detail);
 		}
@@ -321,7 +322,22 @@
 					detailEnd
 				)}
 			</p>
-			{#if detail.person && detail.block}<p class="m3-font-title-medium">{detail.person.name}</p>
+			{#if detail.shared}<div class="busy-details">
+					{#each detail.shared as { person, block } (`${person.id}:${block.id}`)}<div>
+							<h3 class="m3-font-title-medium">
+								<i style:background={ownerColor(person.id, people)}></i>{person.name}
+							</h3>
+							<p class="m3-font-body-medium">
+								{block.title || 'Busy'}<br /><span class="muted"
+									>{time(block.start)} - {time(block.end)}</span
+								>
+							</p>
+							{#if block.location}<p class="muted m3-font-body-medium">{block.location}</p>{/if}
+						</div>{/each}
+				</div>
+			{:else if detail.person && detail.block}<p class="m3-font-title-medium">
+					{detail.person.name}
+				</p>
 				{#if detail.person.sharing === 'Availability only'}<p class="muted m3-font-body-medium">
 						Availability only · Event details are private.
 					</p>{:else if detail.block.location}<p class="muted m3-font-body-medium">

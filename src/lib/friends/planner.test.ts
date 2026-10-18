@@ -163,6 +163,22 @@ describe('production planning and comparison adapters', () => {
 			'Saved API meeting',
 			'Real class'
 		]);
+		const friend: ComparisonPerson = { ...people[0], id: 'friend', name: 'Friend' };
+		const dates = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'];
+		const shared = comparisonGrid([...people, friend], dates, 'detailed', 8);
+		expect(shared.byDay.wednesday).toHaveLength(1);
+		expect(shared.byDay.wednesday[0].sharedOwners).toEqual([
+			{ ownerId: 'you', name: 'You', color: ownerColor('you', people) },
+			{ ownerId: 'friend', name: 'Friend', color: ownerColor('friend', [friend]) }
+		]);
+		expect(Object.values(shared.details)[0].shared?.map(({ person }) => person.id)).toEqual([
+			'you',
+			'friend'
+		]);
+		expect(
+			comparisonGrid([...people, { ...friend, sharing: 'Availability only' }], dates, 'detailed', 8)
+				.byDay.wednesday
+		).toHaveLength(2);
 	});
 	it('hides private details and omits failed calendars', () => {
 		const state = ui();
