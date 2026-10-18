@@ -24,6 +24,7 @@ export const ownerColor = (id: string, people: ComparisonPerson[]) => {
 };
 export type ComparisonDetail = {
 	date: string;
+	shared?: { person: ComparisonPerson; block: ComparisonBlock }[];
 	period?: ComparisonPeriod;
 	person?: ComparisonPerson;
 	block?: ComparisonBlock;
@@ -108,10 +109,34 @@ export function comparisonGrid(
 				details[id] = { date, period: { ...period, people: owners.map((person) => person.id) } };
 			}
 		} else {
+			const classes = new Map<string, ComparisonGridEvent>();
 			for (const person of loaded)
 				for (const block of person.days[date].blocks.filter((block) => block.kind !== 'buffer')) {
 					const id = JSON.stringify(['busy', person.id, date, block.id]);
-					add(
+					const key =
+						person.sharing === 'Full schedule' && block.course?.prefix
+							? JSON.stringify([
+									block.start,
+									block.end,
+									block.course.prefix,
+									block.course.course_number,
+									block.course.schedule_type
+								])
+							: undefined;
+					const existing = key ? classes.get(key) : undefined;
+					if (existing && existing.ownerId !== person.id) {
+						const detail = details[String(existing.meeting.id)];
+						detail.shared ??= [{ person: detail.person!, block: detail.block! }];
+						detail.shared.push({ person, block });
+						existing.sharedOwners = detail.shared.map(({ person }) => ({
+							ownerId: person.id,
+							name: person.name,
+							color: ownerColor(person.id, people)
+						}));
+						existing.ownerLabel = existing.sharedOwners.map((owner) => owner.name).join(', ');
+						continue;
+					}
+					const event = add(
 						id,
 						person.sharing === 'Availability only' ? 'Busy' : block.title || 'Busy',
 						block.start,
@@ -120,6 +145,7 @@ export function comparisonGrid(
 					);
 
 					details[id] = { date, person, block };
+					if (key) classes.set(key, event);
 				}
 		}
 		if (savedMeetings) {

@@ -30,6 +30,7 @@ export type ComparisonOwnerStrip = {
 	intervals: MinuteRange[];
 };
 export type ComparisonGridEvent = CalendarGridEvent & {
+	sharedOwners?: { ownerId: string; name: string; color: string }[];
 	ownerStrips?: ComparisonOwnerStrip[];
 	savedMeeting?: SavedMeetingSelection;
 };
