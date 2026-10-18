@@ -4,8 +4,12 @@ vi.mock('./environment', () => ({
 	EnvironmentManager: { getBaseUrl: vi.fn(async () => 'https://calendar.example.test') }
 }));
 
+const userSettings = vi.hoisted(() => vi.fn(async (_settings?: object) => ({})));
+vi.mock('../api', () => ({ API: { userSettings } }));
+
 import {
 	detectBrowser,
+	rememberUsageStatsAnswer,
 	setUsageStatsEnabled,
 	track,
 	usageStatsAsked,
@@ -37,6 +41,7 @@ beforeEach(() => {
 	dataCollection = [];
 	firefoxAllows = true;
 	fetchMock.mockClear();
+	userSettings.mockClear();
 	vi.stubGlobal('fetch', fetchMock);
 	vi.stubGlobal('chrome', {
 		storage: {
@@ -128,8 +133,47 @@ describe('usageStatsAsked', () => {
 	});
 });
 
+describe('the answer on the account', () => {
+	it('saves the answer on the account', async () => {
+		await setUsageStatsEnabled(false);
+
+		expect(userSettings).toHaveBeenCalledWith({ usage_stats_enabled: false });
+	});
+
+	it('keeps the answer in this browser when the save fails', async () => {
+		userSettings.mockRejectedValueOnce(new Error('offline'));
+
+		expect(await setUsageStatsEnabled(true)).toBe(true);
+		expect(await usageStatsEnabled()).toBe(true);
+	});
+
+	it('copies an answer from the account without asking again', async () => {
+		await rememberUsageStatsAnswer(true);
+
+		expect(await usageStatsAsked()).toBe(true);
+		expect(await usageStatsEnabled()).toBe(true);
+		expect(userSettings).not.toHaveBeenCalled();
+	});
+});
+
 describe('in Firefox', () => {
 	beforeEach(() => useBrowser(FIREFOX_UA));
+
+	it('saves what Firefox settled on, not what the student asked for', async () => {
+		firefoxAllows = false;
+
+		await setUsageStatsEnabled(true);
+
+		expect(userSettings).toHaveBeenCalledWith({ usage_stats_enabled: false });
+	});
+
+	it('copies only the asked flag from the account', async () => {
+		await rememberUsageStatsAnswer(true);
+
+		expect(await usageStatsAsked()).toBe(true);
+		expect(await usageStatsEnabled()).toBe(false);
+		expect(chrome.permissions.request).not.toHaveBeenCalled();
+	});
 
 	it('sends nothing without the data collection permission', async () => {
 		await track('passkey_created');

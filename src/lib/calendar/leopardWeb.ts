@@ -8,15 +8,16 @@ export const REGISTRATION_HISTORY_URL =
 	'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory';
 
 type TermOption = { id: string; name: string };
+type Registration = { courseReferenceNumber: string; term: string; courseNumber: string };
 type RegistrationsLookupResult =
 	| { error: string }
-	| { termOptions: TermOption[]; registrations: unknown[]; usedTermId: string };
-type RegistrationEventsLookupResult =
-	| { error: string }
-	| { termOptions: TermOption[]; events: unknown };
+	| { termOptions: TermOption[]; registrations: Registration[]; usedTermId: string };
 type TermCoursesLookupResult = { error: string } | { courses: ProcessingTerm['courses'] };
 
-async function lookupRegistrations(termIdArg: string): Promise<RegistrationsLookupResult> {
+async function lookupRegistrations(
+	termIdArg: string,
+	allowFallback = true
+): Promise<RegistrationsLookupResult> {
 	try {
 		// Extract the student's enrolled terms from the page dropdown
 		const select = document.querySelector<HTMLSelectElement>('#lookupFilter');
@@ -27,6 +28,7 @@ async function lookupRegistrations(termIdArg: string): Promise<RegistrationsLook
 		// If the requested term isn't in the enrolled list, fall back to the first enrolled term
 		let actualTermId = termIdArg;
 		if (termOptions.length > 0 && !termOptions.some((t) => t.id === actualTermId)) {
+			if (!allowFallback) throw new Error('The selected term is not available in LeopardWeb.');
 			actualTermId = termOptions[0].id;
 		}
 
@@ -90,23 +92,12 @@ async function lookupTermCourses(term: string): Promise<TermCoursesLookupResult>
 	}
 }
 
-async function lookupRegistrationEvents(): Promise<RegistrationEventsLookupResult> {
-	try {
-		// Extract enrolled terms from the page dropdown
-		const select = document.querySelector<HTMLSelectElement>('#lookupFilter');
-		const termOptions = select
-			? Array.from(select.options).map((o) => ({ id: o.value, name: o.text.trim() }))
-			: [];
-
-		const r = await fetch(
-			'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/classRegistration/getRegistrationEvents?termFilter=',
-			{ credentials: 'include' }
-		);
-		const events = await r.json();
-		return { termOptions, events };
-	} catch (e) {
-		return { error: e instanceof Error ? e.message : String(e) };
-	}
+function registrationCourses(registrations: Registration[]): ProcessingTerm['courses'] {
+	return registrations.map((reg) => ({
+		crn: reg.courseReferenceNumber,
+		term: reg.term,
+		courseNumber: reg.courseNumber
+	}));
 }
 
 async function openRegistrationTab(): Promise<chrome.tabs.Tab> {
@@ -180,7 +171,7 @@ export async function importSchedule(
 		}
 
 		const termOptions: TermOption[] = result.termOptions ?? [];
-		const registrations: any[] = result.registrations ?? [];
+		const registrations = result.registrations ?? [];
 		const usedTermId: string = result.usedTermId ?? String(termId);
 
 		// Persist the authoritative enrolled terms from the Banner dropdown
@@ -196,11 +187,7 @@ export async function importSchedule(
 		}
 
 		// Map Banner registration records to the format the backend expects
-		const coursesArray = registrations.map((reg: any) => ({
-			crn: reg.courseReferenceNumber,
-			term: reg.term,
-			courseNumber: reg.courseNumber
-		}));
+		const coursesArray = registrationCourses(registrations);
 
 		const response = await API.processCourses(coursesArray);
 		if (!session.active) return;
@@ -244,9 +231,9 @@ export async function importSchedule(
 	}
 }
 
-export async function fetchRegistrationEvents(): Promise<
-	{ termOptions: TermOption[]; events: unknown } | undefined
-> {
+export async function fetchRegistrationEvents(
+	termId: string
+): Promise<{ termOptions: TermOption[]; events: unknown } | undefined> {
 	// Scrape current courses from LeopardWeb
 	let shouldCloseTab = false;
 	const [currentTab] = await chrome.tabs.query({
@@ -255,23 +242,28 @@ export async function fetchRegistrationEvents(): Promise<
 	});
 
 	let tabToUse = currentTab;
-	if (currentTab.url !== REGISTRATION_HISTORY_URL) {
+	if (currentTab?.url !== REGISTRATION_HISTORY_URL) {
 		tabToUse = await openRegistrationTab();
 		shouldCloseTab = true;
 		if (!tabToUse.id) return;
+		const finalTab = await chrome.tabs.get(tabToUse.id);
+		if (!finalTab.url?.startsWith('https://selfservice.wit.edu/')) {
+			throw new Error('Please log in to LeopardWeb (selfservice.wit.edu) and try again.');
+		}
 	}
 
 	if (!tabToUse?.id) return;
 
-	const results = await chrome.scripting.executeScript({
-		target: { tabId: tabToUse.id },
-		world: 'MAIN',
-		func: lookupRegistrationEvents,
-		args: []
-	});
-
-	if (shouldCloseTab && tabToUse?.id) {
-		await chrome.tabs.remove(tabToUse.id);
+	let results;
+	try {
+		results = await chrome.scripting.executeScript({
+			target: { tabId: tabToUse.id },
+			world: 'MAIN',
+			func: lookupRegistrations,
+			args: [termId, false]
+		});
+	} finally {
+		if (shouldCloseTab) await chrome.tabs.remove(tabToUse.id);
 	}
 
 	const refreshResult = results[0]?.result;
@@ -284,5 +276,6 @@ export async function fetchRegistrationEvents(): Promise<
 
 	const termOptions: TermOption[] = refreshResult.termOptions ?? [];
 	saveEnrolledTerms(termOptions);
-	return { termOptions, events: refreshResult.events ?? [] };
+	const events = registrationCourses(refreshResult.registrations);
+	return { termOptions, events };
 }

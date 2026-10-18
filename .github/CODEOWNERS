@@ -4,3 +4,4 @@
 /static/** @Cattn
 /scripts/** @Cattn
 /resources/** @Cattn
+/tests/** @Cattn
