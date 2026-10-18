@@ -1,50 +1,24 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import PanelShell from '$lib/components/panel/PanelShell.svelte';
 	import { PanelUi, setPanelUi } from '$lib/panel/ui.svelte';
 	import { featureFlags } from '$lib/featureFlags';
 	import { PanelSession, setPanelSession } from '$lib/panel/session';
+	import { PanelSettings, setPanelSettings } from '$lib/panel/settings';
 	import { resetStores } from '$lib/stores';
-	import { browser } from '$app/environment';
-	import { page } from '$app/state';
-	import { restorePanelHandoff } from '$lib/panel/handoff';
-	import { snackbar } from 'm3-svelte';
 
 	let { children } = $props();
 
 	// This layout stays mounted while the user moves between the calendar and
 	// friends pages, so their session lasts until the panel closes.
-	let session = $state.raw(new PanelSession());
-	setPanelSession(() => session);
-	let ui = $state.raw(new PanelUi());
-	setPanelUi(() => ui);
-	let restoring = $state(browser && page.url.searchParams.has('panel-state'));
-
-	$effect(() => {
-		const current = session;
-		const unsubscribe = current.preferences.subscribe(() => current.refreshedTerms.clear());
-		const stop = current.preferences.start();
-		return () => {
-			unsubscribe();
-			stop();
-		};
-	});
+	let session: PanelSession | undefined;
+	setPanelSession(() => (session ??= new PanelSession()));
+	let ui: PanelUi | undefined;
+	setPanelUi(() => (ui ??= new PanelUi()));
+	let settings: PanelSettings | undefined;
+	setPanelSettings(() => (settings ??= new PanelSettings()));
+	let generation = $state(0);
 
 	onMount(() => {
-		if (restoring) {
-			void restorePanelHandoff(ui, session, page.url.href)
-				.catch((error) => {
-					console.error('Failed to restore panel state', error);
-					snackbar(
-						'Could not restore the panel state. Reopen the page from the panel to try again.',
-						undefined,
-						true
-					);
-				})
-				.finally(() => {
-					restoring = false;
-				});
-		}
 		function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>) {
 			const change = changes.environment_data;
 			const previousEnvironment = change?.oldValue?.current_environment ?? 'prod';
@@ -59,23 +33,25 @@
 			}
 			// Drop the data of the environment that the user left, then start a
 			// new session. The pages mount again and load for the new environment.
-			session.active = false;
+			if (session) session.active = false;
+			if (settings) settings.active = false;
 			resetStores();
 			featureFlags.clearCache();
-			session = new PanelSession();
-			ui = new PanelUi();
+			session = undefined;
+			settings = undefined;
+			ui = undefined;
+			generation += 1;
 		}
 
 		chrome.storage.onChanged.addListener(onStorageChanged);
 		return () => {
 			chrome.storage.onChanged.removeListener(onStorageChanged);
-			session.active = false;
+			if (session) session.active = false;
+			if (settings) settings.active = false;
 		};
 	});
 </script>
 
-{#if !restoring}
-	{#key session}
-		<PanelShell>{@render children()}</PanelShell>
-	{/key}
-{/if}
+{#key generation}
+	{@render children()}
+{/key}

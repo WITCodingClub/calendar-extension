@@ -1,8 +1,7 @@
 import { getContext, setContext } from 'svelte';
 import { API } from '../api';
 import { PreferenceCache } from '../calendar/preferenceCache';
-import type { PasskeySummary } from '../auth/passkeys';
-import type { ConnectedAccount, Course, Friend, ProcessedEvents, TermResponse } from '../types';
+import type { Course, Friend, ProcessedEvents, TermResponse } from '../types';
 import type { FriendGroup } from '../friends/types';
 import type { SavedMeetingsResponse } from '../friends/savedMeetings';
 import { busyRangeKey, type BusyBlocksResponse } from '../friends/schedule';
@@ -10,17 +9,6 @@ import { processedData, icsUrl } from '../stores';
 import { TermProcessing } from './termProcessing';
 import { get } from 'svelte/store';
 import { snackbar } from 'm3-svelte';
-
-export type SettingsData = {
-	email: string | undefined;
-	notificationsDisabled: boolean;
-	connectedAccounts: ConnectedAccount[];
-	canUsePasskeys: boolean;
-	passkeys: PasskeySummary[];
-	uniCalColor: string;
-	uniCalReminderMode: 'default' | 'off' | 'custom';
-	uniCalReminderOffset: string;
-};
 
 // The data that the calendar and friends pages load once. The (panel) layout
 // owns one session and keeps it while the user moves between those pages.
@@ -31,10 +19,11 @@ export class PanelSession {
 	// False after the session ended. Check it before a write to a store that
 	// outlives the session, such as userSettings.
 	active = true;
+	workspaceMounted = false;
 	ownScheduleProcessed: ((term: string) => void) | undefined;
 	readonly termProcessing = new TermProcessing(
 		API,
-		() => this.active,
+		() => this.active && this.workspaceMounted,
 		async (term) => {
 			this.invalidateOwnSchedule(term);
 			const version = this.ownScheduleVersions[term];
@@ -56,15 +45,11 @@ export class PanelSession {
 		}
 	);
 
-	// True after the calendar page loaded the user settings.
-	calendarLoaded = false;
 	// Terms whose processed events this session already asked for.
 	readonly attemptedTerms = new Set<string>();
 	// Terms whose meeting time preferences loaded in this session.
 	readonly refreshedTerms = new Set<string>();
 	readonly preferences = new PreferenceCache(() => API.getPreferenceVersion());
-
-	settings: SettingsData | undefined;
 
 	// Accepted friends. Friend requests are not kept, because they change when
 	// other users act.
@@ -178,14 +163,6 @@ export class PanelSession {
 		});
 		this.#terms = request;
 		return request;
-	}
-
-	// Changes loaded settings data. Does nothing before a full load, so a
-	// change never makes partial data look complete.
-	updateSettings(patch: Partial<SettingsData>): void {
-		if (this.settings) {
-			this.settings = { ...this.settings, ...patch };
-		}
 	}
 }
 

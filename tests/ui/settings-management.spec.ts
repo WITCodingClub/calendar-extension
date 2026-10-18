@@ -3,14 +3,31 @@ import { chooseRadio, fitsViewport } from './helpers';
 import { origin } from './backend';
 
 test('Settings starts Google account connection without an email', async ({ extension }) => {
-	const { page, context } = extension;
+	const { page, context, network, worker } = extension;
 	const endpoint = `${origin}/api/user/google_calendar`;
 	await context.route(endpoint, async (route) => {
 		if (route.request().method() !== 'POST') return route.fallback();
 		await route.fulfill({ json: { error: 'Google connection is temporarily unavailable' } });
 	});
-	await extension.open();
-	await chooseRadio(page, 'Settings');
+	await extension.open('settings');
+	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
+	const loaded = network.filter((row) => row.path === '/api/user/extension_config').length;
+	await worker.evaluate(async () => {
+		const { environment_data: data } = await chrome.storage.local.get('environment_data');
+		data.jwt_tokens.staging += '-changed';
+		await chrome.storage.local.set({ environment_data: data });
+	});
+	await expect
+		.poll(() => network.filter((row) => row.path === '/api/user/extension_config').length)
+		.toBeGreaterThan(loaded);
+	await expect(page).toHaveURL(/\/settings(?:\.html)?$/);
+	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Manage friends', exact: true })).toHaveCount(0);
+	expect(
+		network.some((row) =>
+			/catalog\/terms|processed_events|friends|preferences\/version/.test(row.path)
+		)
+	).toBe(false);
 	await expect(page.getByLabel('Google account email')).toHaveCount(0);
 	const request = page.waitForRequest(
 		(request) => request.url() === endpoint && request.method() === 'POST'
@@ -22,8 +39,45 @@ test('Settings starts Google account connection without an email', async ({ exte
 
 test('Settings loads and scrolls every section without changing values', async ({ extension }) => {
 	const { page, network } = extension;
-	await extension.open();
+	await extension.open('help');
+	await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
+	await page.goto(extension.baseUrl + '/calendar.html?view=help');
+	await expect(page).toHaveURL(/\/help(?:\.html)?$/);
+	await expect(page.getByRole('heading', { name: 'Import ICS calendar' })).toBeVisible();
+	await page.goto(extension.baseUrl + '/calendar.html?view=settings');
+	await expect(page).toHaveURL(/\/settings(?:\.html)?$/);
+	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
+	await page.evaluate(() => sessionStorage.setItem('returnToSettings', 'true'));
+	await page.goto(extension.baseUrl + '/calendar.html');
+	await expect(page).toHaveURL(/\/settings(?:\.html)?$/);
+	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Manage friends', exact: true })).toHaveCount(0);
+	expect(
+		network.some((row) =>
+			/catalog\/terms|processed_events|friends|preferences\/version/.test(row.path)
+		)
+	).toBe(false);
+	await chooseRadio(page, 'Calendar');
+	await expect(page.getByRole('button', { name: 'Open navigation', exact: true })).toHaveCount(0);
+	for (const width of [320, 480, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		for (const name of ['Calendar', 'Friends', 'Settings', 'Help']) {
+			await expect(page.getByRole('radio', { name, exact: true })).toHaveCount(1);
+		}
+		await fitsViewport(page);
+	}
+	await chooseRadio(page, 'Help');
+	await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
+	await expect(page).toHaveURL(/\/help(?:\.html)?$/);
+	await chooseRadio(page, 'Friends');
+	await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
+	await chooseRadio(page, 'Calendar');
+	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
+	await expect(page.getByRole('radio', { name: 'Calendar', exact: true })).toBeChecked();
+	await chooseRadio(page, 'Friends');
 	await chooseRadio(page, 'Settings');
+	await expect(page).toHaveURL(/\/settings(?:\.html)?$/);
+	await expect(page.getByRole('radio', { name: 'Settings', exact: true })).toBeChecked();
 	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
 	await expect
 		.poll(() => network.some((row) => row.path === '/api/calendar_preferences'))

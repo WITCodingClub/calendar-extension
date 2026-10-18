@@ -5,15 +5,40 @@ import { catalogTerm, now, origin, preference, settings, terms } from './backend
 test('a queued current term is polled without opening LeopardWeb', async ({ extension }) => {
 	const { page, context } = extension;
 	let polls = 0;
-	await context.route(origin + '/api/user/processed_events/status?term_uid=202610', (route) =>
-		route.fulfill({
-			json:
-				++polls === 1
-					? { processed: false, status: 'processing', error_code: null }
-					: { processed: true, status: 'processed', error_code: null }
-		})
-	);
+	let ready = false;
+	let release = () => {};
+	const held = new Promise<void>((resolve) => (release = resolve));
+	const endpoint = origin + '/api/user/processed_events/status?term_uid=202610';
+	await context.route(endpoint, async (route) => {
+		if (++polls === 2) await held;
+		await route.fulfill({
+			json: ready
+				? { processed: true, status: 'processed', error_code: null }
+				: { processed: false, status: 'processing', error_code: null }
+		});
+	});
+	await page.clock.install({ time: new Date(now) });
+	const healthCheck = page.waitForResponse(origin + '/up');
 	await extension.open();
+	expect(await (await healthCheck).finished()).toBeNull();
+	await expect.poll(() => polls).toBe(1);
+	await page.clock.runFor(5_001);
+	await expect.poll(() => polls).toBe(2);
+	await expect
+		.poll(() => extension.network.filter((row) => row.totalMs === undefined))
+		.toHaveLength(0);
+	await chooseRadio(page, 'Settings');
+	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
+	const response = page.waitForResponse(endpoint);
+	release();
+	await response;
+	await page.clock.runFor(5_001);
+	expect(polls).toBe(2);
+	expect(context.pages().some((tab) => tab.url().startsWith('https://selfservice.wit.edu/'))).toBe(
+		false
+	);
+	ready = true;
+	await chooseRadio(page, 'Calendar');
 	await expect(page.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
 	expect(polls).toBeGreaterThanOrEqual(2);
 	expect(context.pages().some((tab) => tab.url().startsWith('https://selfservice.wit.edu/'))).toBe(
