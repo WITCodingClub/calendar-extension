@@ -57,27 +57,49 @@ test('Settings loads and scrolls every section without changing values', async (
 			/catalog\/terms|processed_events|friends|preferences\/version/.test(row.path)
 		)
 	).toBe(false);
-	await chooseRadio(page, 'Calendar');
-	await expect(page.getByRole('button', { name: 'Open navigation', exact: true })).toHaveCount(0);
+	await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+	await page
+		.getByRole('navigation', { name: 'Application navigation' })
+		.getByRole('button', { name: 'Calendar', exact: true })
+		.click();
+	const navigation = page.getByRole('navigation', { name: 'Application navigation' });
+	const openNavigation = page.getByRole('button', { name: 'Open navigation', exact: true });
+	await expect(page.getByRole('radio', { name: 'Settings', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('radio', { name: 'Help', exact: true })).toHaveCount(0);
 	for (const width of [320, 480, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
-		for (const name of ['Calendar', 'Friends', 'Settings', 'Help']) {
-			await expect(page.getByRole('radio', { name, exact: true })).toHaveCount(1);
-		}
-		await fitsViewport(page);
+		await openNavigation.click();
+		await fitsViewport(page, navigation);
+		await expect(navigation.getByRole('button')).toHaveText(['Calendar', 'Settings', 'Help']);
+		await expect(navigation.locator('[aria-current="true"]')).toHaveText('Calendar');
+		await page.keyboard.press('Escape');
+		await expect(navigation).toBeHidden();
+		await expect(openNavigation).toBeFocused();
 	}
-	await chooseRadio(page, 'Help');
+	await openNavigation.click();
+	await navigation.getByRole('button', { name: 'Help', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
 	await expect(page).toHaveURL(/\/help(?:\.html)?$/);
+	await expect(navigation).toBeHidden();
+	await openNavigation.click();
+	await expect(navigation.locator('[aria-current="page"]')).toHaveText('Help');
+	await navigation.getByRole('button', { name: 'Calendar', exact: true }).click();
 	await chooseRadio(page, 'Friends');
-	await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
-	await chooseRadio(page, 'Calendar');
+	await openNavigation.click();
+	await expect(navigation.locator('[aria-current="true"]')).toHaveText('Calendar');
+	await page.setViewportSize({ width: 320, height: 900 });
+	await fitsViewport(page, navigation);
+	await navigation.getByRole('button', { name: 'Calendar', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
 	await expect(page.getByRole('radio', { name: 'Calendar', exact: true })).toBeChecked();
 	await chooseRadio(page, 'Friends');
-	await chooseRadio(page, 'Settings');
+	await openNavigation.click();
+	await navigation.getByRole('button', { name: 'Settings', exact: true }).click();
 	await expect(page).toHaveURL(/\/settings(?:\.html)?$/);
-	await expect(page.getByRole('radio', { name: 'Settings', exact: true })).toBeChecked();
+	await expect(navigation).toBeHidden();
+	await openNavigation.click();
+	await expect(navigation.locator('[aria-current="page"]')).toHaveText('Settings');
+	await page.keyboard.press('Escape');
 	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
 	await expect
 		.poll(() => network.some((row) => row.path === '/api/calendar_preferences'))
