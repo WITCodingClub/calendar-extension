@@ -17,10 +17,11 @@
 			return;
 
 		return new Promise<void>((resolve) => {
-			document.startViewTransition(async () => {
+			const transition = document.startViewTransition(async () => {
 				resolve();
 				await navigation.complete;
 			});
+			void transition.ready.catch(() => undefined);
 		});
 	});
 
