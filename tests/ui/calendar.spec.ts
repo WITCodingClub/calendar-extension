@@ -187,6 +187,30 @@ test('two distinct event dialogs reuse loaded preferences; UI and startup reques
 		await dialog.getByRole('button', { name: index ? 'Cancel' : 'Close', exact: true }).click();
 		await expect(dialog).toBeHidden();
 	}
+	for (const width of [620, 624, 628, 632, 640, 620]) {
+		await page.setViewportSize({ width, height: 900 });
+		const switches = await page.evaluate(async () => {
+			let previous = (document.getElementById('calendar-list-view') as HTMLInputElement).checked;
+			let switches = 0;
+			for (let frame = 0; frame < 45; frame++) {
+				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+				const current = (document.getElementById('calendar-list-view') as HTMLInputElement).checked;
+				if (current !== previous) switches++;
+				previous = current;
+			}
+			return switches;
+		});
+		expect(switches, `Automatic presentation should settle at ${width}px`).toBeLessThanOrEqual(1);
+		if (width === 620) await expect(page.getByRole('radio', { name: 'List view' })).toBeChecked();
+		if (width === 640)
+			await expect(page.getByRole('radio', { name: 'Calendar view' })).toBeChecked();
+	}
+	await chooseRadio(page, 'Calendar view');
+	await page.setViewportSize({ width: 320, height: 900 });
+	await expect(page.getByRole('radio', { name: 'Calendar view' })).toBeChecked();
+	await chooseRadio(page, 'List view');
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await expect(page.getByRole('radio', { name: 'List view' })).toBeChecked();
 	expect(network.filter((row) => row.path === '/api/meeting_times/:event/preference')).toHaveLength(
 		0
 	);
