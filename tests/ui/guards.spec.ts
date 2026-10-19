@@ -3,10 +3,10 @@ import { catalogTerm, origin, terms } from './backend';
 import { fitsViewport } from './helpers';
 import { request } from 'node:http';
 
-test('signed-out route guards and local reset use only a disposable profile', async ({
+test('startup session checks, signed-out route guards and local reset use only a disposable profile', async ({
 	extension
 }) => {
-	const { page, open, worker } = extension;
+	const { page, open, worker, context } = extension;
 	for (const route of [
 		'calendar',
 		'friends',
@@ -41,6 +41,22 @@ test('signed-out route guards and local reset use only a disposable profile', as
 			sessionStorage.getItem('reset_probe')
 		])
 	).toEqual([null, null]);
+	const endpoint = origin + '/api/user/oauth_credentials';
+	let release = () => {};
+	const held = new Promise<void>((resolve) => (release = resolve));
+	await context.route(endpoint, async (route) => {
+		await held;
+		await route.fulfill({
+			json: { oauth_credentials: [{ email: 'primary@example.invalid', has_calendar: true }] }
+		});
+	});
+	await open('index');
+	await expect(page.getByRole('status', { name: 'Opening WIT-Calendar' })).toBeVisible();
+	await expect(page.getByRole('button', { name: /Sign in with Google/ })).toHaveCount(0);
+	release();
+	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
+	await context.unroute(endpoint);
 });
 
 test('network interception covers extension pages and worker bypasses are contained', async ({

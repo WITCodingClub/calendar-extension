@@ -10,7 +10,7 @@
 </script>
 
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { VariableTabs } from 'm3-svelte';
 	import OpenInTabButton from './OpenInTabButton.svelte';
 
@@ -31,6 +31,11 @@
 		tabActions?: Snippet;
 		children?: Snippet;
 	} = $props();
+
+	let ready = $state(false);
+	onMount(() => {
+		ready = true;
+	});
 </script>
 
 <section
@@ -48,6 +53,7 @@
 		<div class="preview-tabs min-w-0 flex-1">
 			<VariableTabs
 				secondary
+				disabled={!ready}
 				{tab}
 				items={tabs}
 				onchange={(event) =>

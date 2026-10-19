@@ -22,6 +22,12 @@ test('a queued current term is polled without opening LeopardWeb', async ({ exte
 	await extension.open();
 	expect(await (await healthCheck).finished()).toBeNull();
 	await expect.poll(() => polls).toBe(1);
+	await expect(
+		page.getByRole('status').filter({ hasText: 'Loading your calendar…' })
+	).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Get Your Calendar', exact: true })).toHaveCount(
+		0
+	);
 	await page.clock.runFor(5_001);
 	await expect.poll(() => polls).toBe(2);
 	await expect
@@ -40,6 +46,9 @@ test('a queued current term is polled without opening LeopardWeb', async ({ exte
 	ready = true;
 	await chooseRadio(page, 'Calendar');
 	await expect(page.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
+	await expect(page.getByRole('status').filter({ hasText: 'Loading your calendar…' })).toHaveCount(
+		0
+	);
 	expect(polls).toBeGreaterThanOrEqual(2);
 	expect(context.pages().some((tab) => tab.url().startsWith('https://selfservice.wit.edu/'))).toBe(
 		false
