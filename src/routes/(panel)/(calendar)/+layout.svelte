@@ -4,7 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { browser } from '$app/environment';
-	import { Button, ConnectedButtons, LoadingIndicator, snackbar } from 'm3-svelte';
+	import { Button, ConnectedButtons, snackbar } from 'm3-svelte';
 	import { processedData, termClasses } from '$lib/stores';
 	import { meetingMessage, scheduleMessage } from '$lib/friends/availability';
 	import { restorePanelHandoff, savePanelHandoff } from '$lib/panel/handoff';
@@ -142,7 +142,9 @@
 		{#snippet headerContent()}
 			{#if activeTab === 'calendar'}
 				<div class="gap-2 px-4 py-3 flex flex-wrap items-center justify-between">
-					<div class="min-w-0 max-w-full [&>.m3-container]:flex! [&>.m3-container]:flex-wrap!">
+					<div
+						class="min-w-0 min-h-10 max-w-full [&>.m3-container]:flex! [&>.m3-container]:flex-wrap!"
+					>
 						<ConnectedButtons>
 							{#each ui.termOptions as term (term.id)}
 								<input
@@ -162,26 +164,27 @@
 									variant="tonal"
 									onclick={ui.calendarActions.copyLink}>Copy Calendar Link</Button
 								>{/if}
-							{#if ui.calendarActions.refreshing}<LoadingIndicator size={44} />
-							{:else}<Button
-									variant="tonal"
-									onclick={ui.calendarActions.refresh}
-									disabled={ui.calendarActions.loading}
-									aria-label="Refresh class schedule"
-									title="Refresh class schedule"
+							<Button
+								variant="tonal"
+								onclick={ui.calendarActions.refresh}
+								disabled={ui.calendarActions.loading || ui.calendarActions.refreshing}
+								aria-busy={ui.calendarActions.refreshing}
+								aria-label="Refresh class schedule"
+								title="Refresh class schedule"
+							>
+								<svg
+									class={ui.calendarActions.refreshing ? 'motion-safe:animate-spin' : ''}
+									aria-hidden="true"
+									width="20"
+									height="20"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									viewBox="0 0 24 24"
 								>
-									<svg
-										aria-hidden="true"
-										width="20"
-										height="20"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										viewBox="0 0 24 24"
-									>
-										<path stroke-linecap="round" stroke-linejoin="round" d={REFRESH_ICON} />
-									</svg>
-								</Button>{/if}
+									<path stroke-linecap="round" stroke-linejoin="round" d={REFRESH_ICON} />
+								</svg>
+							</Button>
 						{/if}
 					</div>
 				</div>
