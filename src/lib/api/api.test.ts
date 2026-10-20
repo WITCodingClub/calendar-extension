@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../browser/environment', () => ({
+	ENVIRONMENTS: { prod: { baseUrl: 'https://calendar.example.test' } },
 	EnvironmentManager: {
+		getEnvironmentData: vi.fn(async () => ({
+			current_environment: 'prod',
+			jwt_tokens: { prod: 'header.payload.signature' }
+		})),
 		getBaseUrl: vi.fn(async () => 'https://calendar.example.test'),
 		getJwtToken: vi.fn(async () => 'header.payload.signature')
 	}

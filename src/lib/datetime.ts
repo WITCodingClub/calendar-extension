@@ -1,5 +1,12 @@
 export const CAMPUS_TIME_ZONE = 'America/New_York';
 
+const dateLabelFormatter = new Intl.DateTimeFormat('en-US', {
+	weekday: 'long',
+	month: 'short',
+	day: 'numeric',
+	timeZone: 'UTC'
+});
+
 export function todayDate(timeZone?: string): string {
 	const date = new Date();
 	if (timeZone) {
@@ -43,12 +50,8 @@ export function schoolDays(value = todayDate()): string[] {
 }
 
 export function dateLabel(date: string): string {
-	return new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', {
-		weekday: 'long',
-		month: 'short',
-		day: 'numeric',
-		timeZone: 'UTC'
-	});
+	const value = new Date(`${date}T00:00:00Z`);
+	return Number.isFinite(value.getTime()) ? dateLabelFormatter.format(value) : 'Invalid Date';
 }
 
 export function calendarDateTime(date: string, time: string, timeZone = CAMPUS_TIME_ZONE): string {

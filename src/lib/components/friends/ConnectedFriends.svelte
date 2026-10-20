@@ -29,6 +29,8 @@
 	let termsVersion = 0;
 	let groupsVersion = 0;
 	let friendsLoadedAt = 0;
+	let friendsStarted = false;
+	let managementStarted = false;
 	const inFlight = new SvelteMap<string, Promise<void>>();
 	const busyInFlight = new Map<string, Promise<void>>();
 	const generations: Record<string, number> = {};
@@ -579,10 +581,7 @@
 	}
 
 	onMount(() => {
-		friendsLoadedAt = Date.now();
 		void loadTerms();
-		void loadFriendsAndRequests(true);
-		void loadGroups(true);
 	});
 
 	ui.groupActions = {
@@ -755,9 +754,20 @@
 		});
 	});
 	$effect(() => {
-		if (ui.manageOpen)
-			untrack(() => {
-				if (Date.now() - friendsLoadedAt >= 300_000) void reloadFriendsData();
-			});
+		const management = ui.planning || ui.manageOpen;
+		const friends = management || ui.comparison;
+		const manageOpen = ui.manageOpen;
+		untrack(() => {
+			if (friends && !friendsStarted) {
+				friendsStarted = true;
+				void loadFriends(true);
+			}
+			if (management && !managementStarted) {
+				managementStarted = true;
+				friendsLoadedAt = Date.now();
+				void loadRequests();
+				void loadGroups(true);
+			} else if (manageOpen && Date.now() - friendsLoadedAt >= 300_000) void reloadFriendsData();
+		});
 	});
 </script>

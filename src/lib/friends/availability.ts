@@ -142,12 +142,13 @@ export function findFreePeriods(
 				end: busyEndMinutes(item.end)! + buffer
 			}))
 		);
+		let dayLabel: string | undefined;
 		function addPeriod(periodStart: number, periodEnd: number) {
 			if (periodEnd - periodStart >= duration)
 				periods.push({
 					id: `${dateString}-${periodStart}-${periodEnd}`,
 					date: dateString,
-					day: dateLabel(dateString),
+					day: (dayLabel ??= dateLabel(dateString)),
 					start: periodStart,
 					end: periodEnd
 				});
