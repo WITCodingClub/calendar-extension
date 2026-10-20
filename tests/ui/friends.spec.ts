@@ -21,8 +21,7 @@ test('approved planner, explicit draft, duration and preview retain session cont
 	await editor.getByText('More options', { exact: true }).click();
 	await editor.getByLabel('Location (optional)').fill('Test Hall');
 	await expect(editor.getByRole('checkbox')).toBeChecked();
-	await editor.getByLabel('Duration', { exact: true }).click();
-	await page.getByRole('option', { name: '45 min', exact: true }).click();
+	await editor.getByLabel('Duration', { exact: true }).selectOption('45');
 	await expect(editor.getByText('Ends at 13:00')).toBeVisible();
 	for (const width of [320, 480, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
