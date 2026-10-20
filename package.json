@@ -14,7 +14,7 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"format": "prettier --write .",
 		"lint": "prettier --check . && eslint .",
-		"test": "vitest run --exclude tests/ui/**",
+		"test": "vitest run --exclude \"tests/ui/**\"",
 		"test:ui": "npm run build-dev && playwright test --project=deterministic",
 		"test:ui:built": "playwright test --project=deterministic",
 		"test:ui:check": "tsc -p tests/ui/tsconfig.json",
