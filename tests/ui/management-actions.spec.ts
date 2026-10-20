@@ -216,11 +216,13 @@ test('request expiry/accept retries, decline, cancel and send use real independe
 	expect(cancels).toBe(1);
 	await chooseRadio(drawer, 'People');
 	await drawer.getByRole('button', { name: 'Add friend', exact: true }).click();
+	await expect(drawer.getByRole('button', { name: 'Send request' })).toBeDisabled();
 	await drawer.getByLabel('Email or user ID').fill('new@example.invalid');
 	await drawer.getByRole('button', { name: 'Send request', exact: true }).click();
 	await expect(drawer.getByRole('alert')).toContainText('Request rejected');
 	await expect(drawer.getByLabel('Email or user ID')).toHaveValue('new@example.invalid');
 	await drawer.getByRole('button', { name: 'Send request', exact: true }).click();
+	await expect(drawer.getByLabel('Email or user ID')).toBeHidden();
 	await chooseRadio(drawer, /^Requests/);
 	await expect(drawer.getByText('New Test', { exact: true })).toBeVisible();
 	expect(sends).toBe(2);

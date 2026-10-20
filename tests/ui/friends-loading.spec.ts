@@ -39,6 +39,16 @@ test('deferred Calendar loading preserves saved planning participants until Frie
 	const { page, context, network } = extension;
 	await extension.open();
 	await selectFriends(page);
+	const retained = () =>
+		network.filter((row) => row.path === '/api/meeting_links' || row.path.endsWith('/busy_blocks'))
+			.length;
+	const loaded = retained();
+	await chooseRadio(page, 'Calendar');
+	await chooseRadio(page, 'Friends');
+	await expect(
+		page.getByRole('button', { name: 'Edit people · You, Ada Test, Ben Test', exact: true })
+	).toBeVisible();
+	expect(retained()).toBe(loaded);
 	await chooseRadio(page, 'Calendar');
 	await expect(page.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
 	const before = paths.map((path) => network.filter((row) => row.path === path).length);

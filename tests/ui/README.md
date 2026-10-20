@@ -60,18 +60,18 @@ After setup, `npm run test:ui` is the usual command to run after a UI change.
 
 ## What the tests cover
 
-| Area                                                    | What is checked                                                                                                                                                                                                                                     |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Calendar](calendar.spec.ts)                            | Open two different events using cached preferences. Check five-minute version polling, changed/failed checks, draft preservation, legacy servers, late responses, and server-confirmed saves. Report UI readiness separately from startup requests. |
-| [Friends planner](friends.spec.ts)                      | Search for and select friends, change planning preferences, reject invalid inputs, reload schedules, and expand results.                                                                                                                            |
-| [Meeting draft](friends.spec.ts)                        | Choose and adjust a time, use the slider, enter draft details, preview the meeting, and reopen it for editing. Creation and link controls stay disabled while those features are unfinished.                                                        |
-| [Calendar comparison](friends.spec.ts)                  | Check the selected people's schedules, combined busy periods, detail dialogs, week navigation, and exit controls.                                                                                                                                   |
-| [Settings and management](settings-management.spec.ts)  | Scroll through Settings without changing its values. Navigate People, Groups, and Requests, and exercise forms without submitting relationship changes.                                                                                             |
-| [Sign-in guards and network protection](guards.spec.ts) | Check signed-out pages and local reset. Verify that requests from the extension page and background worker are intercepted, and that attempted production requests are blocked.                                                                     |
+| Area                                                    | What is checked                                                                                                                                                                                                                                           |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Calendar](calendar.spec.ts)                            | Open two different events using cached preferences. Check five-minute version polling, changed/failed checks, draft preservation, legacy servers, late responses, and server-confirmed saves. Check narrow and wide layouts and automatic view selection. |
+| [Friends planner](friends.spec.ts)                      | Search for and select friends, change planning preferences, reject invalid inputs, reload schedules, and expand results.                                                                                                                                  |
+| [Meeting draft](friends.spec.ts)                        | Choose and adjust a time, enter draft details, preview the meeting, and reopen it for editing.                                                                                                                                                            |
+| [Calendar comparison](friends.spec.ts)                  | Check the selected people's schedules, combined busy periods, detail dialogs, week navigation, and exit controls.                                                                                                                                         |
+| [Settings and management](settings-management.spec.ts)  | Check Settings routing, account connection, friend search, unsaved group discard, and person navigation.                                                                                                                                                  |
+| [Sign-in guards and network protection](guards.spec.ts) | Check signed-out pages and local reset. Verify that requests from the extension page and background worker are intercepted, and that attempted production requests are blocked.                                                                           |
 
-The tests also check that pages, dialogs, and drawers fit at widths of **320, 480, and 1280 pixels**. The Calendar grid is allowed to scroll horizontally.
+The tests also check that pages, dialogs, and drawers fit at widths of **320 and 1280 pixels**, with additional Calendar breakpoint and sign-in checks. The Calendar grid is allowed to scroll horizontally.
 
-These checks catch behavior and layout problems, but they do not compare screenshots. Real sign-in, university imports, calendar syncing, Firefox, the browser's native side panel, and saving changes to real accounts need separate testing. Existing saved groups are also outside coverage; the management tests exercise unsaved group forms.
+These checks catch behavior and layout problems, but they do not compare screenshots. Real sign-in, university imports, calendar syncing, Firefox, the browser's native side panel, and saving changes to real accounts need separate testing. Saved groups, expiry, relationship changes, meeting creation/edit/delete/leave, and meeting-link lifecycle are tested with synthetic responses.
 
 ## When a test fails
 
@@ -144,7 +144,7 @@ PWDEBUG=1 npm run test:ui:built -- friends.spec.ts
 
 These options apply to the example run only. PowerShell clears the setting in `finally`; Bash sets it just for that command.
 
-Calendar tests also print dialog-opening and request timings. These are samples from the test environment, not speed targets or measurements of the real server.
+Calendar tests print synthetic request timings for diagnostics; they do not enforce performance targets.
 
 ### Screenshots and traces
 
@@ -167,7 +167,7 @@ Do not capture personal-account or live-session data.
 2. Add or update checks for the intended behavior, including invalid inputs where relevant. Use visible button text and input labels. Let Playwright wait for the expected state instead of adding fixed delays or changing application state behind the UI.
 3. Build and run that file while working, then run `npm run test:ui:check` and `npm run test:ui` before finishing. Run `npm test` and `npm run check` when the application code changes.
 
-When meeting creation or link generation is implemented, replace the corresponding disabled-control checks with tests of the new behavior. Keep normal tests on made-up backend responses. Before testing real writes in staging, arrange appropriate test accounts and protection against external side effects.
+Meeting creation and link generation are covered by `meetings.spec.ts` and `meeting-links.spec.ts`. Keep normal tests on made-up backend responses. Before testing real writes in staging, arrange appropriate test accounts and protection against external side effects.
 
 ### When backend requests or responses change
 

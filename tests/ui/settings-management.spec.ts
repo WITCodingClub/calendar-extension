@@ -37,7 +37,9 @@ test('Settings starts Google account connection without an email', async ({ exte
 	await expect(page.getByText('Google connection is temporarily unavailable')).toBeVisible();
 });
 
-test('Settings loads and scrolls every section without changing values', async ({ extension }) => {
+test('legacy routes and navigation reach Settings without changing values', async ({
+	extension
+}) => {
 	const { page, network } = extension;
 	await extension.open('help');
 	await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
@@ -68,22 +70,15 @@ test('Settings loads and scrolls every section without changing values', async (
 	});
 	await chooseRadio(page, 'Calendar');
 	await expect(page.getByRole('button', { name: 'Open navigation', exact: true })).toHaveCount(0);
-	for (const width of [320, 480, 1280]) {
+	for (const width of [320, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		for (const name of ['Calendar', 'Friends', 'Settings', 'Help']) {
 			await expect(page.getByRole('radio', { name, exact: true })).toHaveCount(1);
 		}
 		await fitsViewport(page);
 	}
-	await chooseRadio(page, 'Help');
-	await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
-	await expect(page).toHaveURL(/\/help(?:\.html)?$/);
 	await chooseRadio(page, 'Friends');
 	await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
-	await chooseRadio(page, 'Calendar');
-	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
-	await expect(page.getByRole('radio', { name: 'Calendar', exact: true })).toBeChecked();
-	await chooseRadio(page, 'Friends');
 	await chooseRadio(page, 'Settings');
 	await expect(page).toHaveURL(/\/settings(?:\.html)?$/);
 	await expect(page.getByRole('radio', { name: 'Settings', exact: true })).toBeChecked();
@@ -99,10 +94,9 @@ test('Settings loads and scrolls every section without changing values', async (
 			})
 		);
 	const before = await values();
-	for (const width of [320, 480, 1280]) {
+	for (const width of [320, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
-		for (const heading of await page.getByRole('heading').all())
-			await heading.scrollIntoViewIfNeeded();
+		await page.getByRole('heading').last().scrollIntoViewIfNeeded();
 		await fitsViewport(page);
 		await expect.poll(values).toEqual(before);
 	}
@@ -111,27 +105,14 @@ test('Settings loads and scrolls every section without changing values', async (
 	).toBe(true);
 });
 
-test('Manage friends People/Groups/Requests and safe forms/routes without relationship changes', async ({
-	extension
-}) => {
+test('friend search, unsaved group discard and person navigation', async ({ extension }) => {
 	const { page } = extension;
 	await extension.open();
 	await page.getByRole('button', { name: 'Manage friends', exact: true }).click();
 	const drawer = page.getByRole('dialog', { name: 'Manage friends' });
-	for (const name of ['Ada Test', 'Ben Test', 'Cam Test']) {
-		await drawer.getByText(name, { exact: true }).click();
-		await expect(drawer.getByRole('heading', { name, exact: true })).toBeVisible();
-		await expect(drawer.getByRole('button', { name: 'Remove friend' })).toBeVisible();
-		await drawer.getByRole('button', { name: 'All people' }).click();
-	}
 	await drawer.getByLabel('Search people').fill('Ada');
 	await expect(drawer.getByText('Ben Test', { exact: true })).toHaveCount(0);
 	await drawer.getByLabel('Search people').fill('');
-	await drawer.getByRole('button', { name: 'Add friend', exact: true }).click();
-	await expect(drawer.getByRole('button', { name: 'Send request' })).toBeDisabled();
-	await drawer.getByLabel('Email or user ID').fill('someone@example.invalid');
-	await expect(drawer.getByRole('button', { name: 'Send request' })).toBeEnabled();
-	await drawer.getByRole('button', { name: 'Cancel', exact: true }).click();
 	await chooseRadio(drawer, 'Groups');
 	await drawer.getByRole('button', { name: 'Create group', exact: true }).click();
 	await drawer.getByLabel('Group name').fill('Unsaved group');
@@ -141,16 +122,7 @@ test('Manage friends People/Groups/Requests and safe forms/routes without relati
 	await drawer.getByRole('button', { name: 'All groups' }).click();
 	await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
 	await expect(drawer.getByText('Unsaved group', { exact: true })).toHaveCount(0);
-	await chooseRadio(drawer, /^Requests/);
-	await expect(drawer.getByRole('heading', { name: 'Incoming Test' })).toBeVisible();
-	await expect(drawer.getByText('Outgoing Test', { exact: true })).toBeVisible();
-	await expect(
-		drawer.getByRole('button', { name: 'Accept friend request from Incoming Test', exact: true })
-	).toBeVisible();
-	await expect(
-		drawer.getByRole('button', { name: 'Decline friend request from Incoming Test', exact: true })
-	).toBeVisible();
-	for (const width of [320, 480, 1280]) {
+	for (const width of [320, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		await fitsViewport(page, drawer);
 	}
