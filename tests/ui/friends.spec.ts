@@ -7,7 +7,7 @@ test('approved planner, explicit draft, duration and preview retain session cont
 }) => {
 	const { page } = extension;
 	await extension.open();
-	await selectFriends(page);
+	await selectFriends(page, true);
 	const planner = page.getByRole('region', { name: 'Friends planning' });
 	const suggested = planner.locator('.day');
 	await expect(suggested).toHaveCount(3);

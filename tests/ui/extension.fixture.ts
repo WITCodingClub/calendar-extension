@@ -125,6 +125,7 @@ export const test = base.extend<{ extension: Extension }>({
 			context = await playwright.chromium.launchPersistentContext(profile, {
 				channel: 'chromium',
 				headless: !process.env.WIT_UI_HEADED && !process.env.PWDEBUG,
+				ignoreDefaultArgs: ['--hide-scrollbars'],
 				viewport: { width: 1280, height: 900 },
 				timezoneId: 'America/New_York',
 				locale: 'en-US',

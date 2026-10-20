@@ -62,6 +62,17 @@ body {
 
 html {
 	box-sizing: border-box;
+	scrollbar-gutter: stable;
+}
+
+::view-transition-group(root) {
+	animation: none;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 90ms;
+	animation-timing-function: ease-out;
 }
 
 *,

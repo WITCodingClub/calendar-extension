@@ -107,6 +107,7 @@
 	let activeMeeting: MeetingTime | undefined = $state(undefined);
 	let currentEventPrefs = $state<GetPreferencesResponse | undefined>(undefined);
 	let loading = $state(false);
+	let initializing = $state(true);
 	let refreshing = $state(false);
 	let pageActive = true;
 	// The router destroys this page when the user opens the friends page. The
@@ -581,6 +582,7 @@
 		// The (panel) layout handles environment changes. It starts a new
 		// session and mounts this page again.
 		await loadTermsAndSettings();
+		initializing = false;
 	});
 
 	$effect(() => {
@@ -665,9 +667,18 @@
 
 <div
 	bind:this={calendarElement}
-	class="min-w-0 gap-3 @container box-border flex h-full w-full flex-col"
+	class="min-w-0 min-h-96 gap-3 @container box-border flex h-full w-full flex-col"
 >
-	{#if !ui.comparison && !processedData}
+	{#if !ui.comparison && !processedData && (initializing || loading)}
+		<div
+			class="min-h-96 gap-3 rounded-2xl bg-surface-container-low flex w-full flex-1 flex-col items-center justify-center"
+			role="status"
+			aria-busy="true"
+		>
+			<LoadingIndicator size={44} center={false} />
+			<p class="text-sm text-on-surface-variant">Loading your calendar…</p>
+		</div>
+	{:else if !ui.comparison && !processedData}
 		<div
 			class="gap-6 p-6 bg-surface-container rounded-2xl shadow-md max-w-lg mx-auto flex w-full flex-col items-center"
 		>
@@ -692,40 +703,36 @@
 				</p>
 			</div>
 			<div class="peak gap-2 flex flex-col items-center">
-				{#if loading}
-					<LoadingIndicator size={44} />
-				{:else}
-					<Button variant="filled" square onclick={() => runScrapeAndProcess(ui.term)}>
-						<span class="gap-2 flex flex-row items-center">
-							<svg
-								class="w-5 h-5 mr-1"
-								fill="none"
+				<Button variant="filled" square onclick={() => runScrapeAndProcess(ui.term)}>
+					<span class="gap-2 flex flex-row items-center">
+						<svg
+							class="w-5 h-5 mr-1"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							viewBox="0 0 24 24"
+							><rect
+								x="4"
+								y="4"
+								width="16"
+								height="16"
+								rx="2.5"
 								stroke="currentColor"
-								stroke-width="2"
-								viewBox="0 0 24 24"
-								><rect
-									x="4"
-									y="4"
-									width="16"
-									height="16"
-									rx="2.5"
-									stroke="currentColor"
-									fill="#FFF3"
-								/><path
-									d="M8 2v4M16 2v4M3 10h18"
-									stroke="currentColor"
-									stroke-linecap="round"
-								/><circle cx="7.5" cy="15.5" r="1.25" fill="currentColor" /><circle
-									cx="12"
-									cy="15.5"
-									r="1.25"
-									fill="currentColor"
-								/><circle cx="16.5" cy="15.5" r="1.25" fill="currentColor" /></svg
-							>
-							Get Calendar
-						</span>
-					</Button>
-				{/if}
+								fill="#FFF3"
+							/><path
+								d="M8 2v4M16 2v4M3 10h18"
+								stroke="currentColor"
+								stroke-linecap="round"
+							/><circle cx="7.5" cy="15.5" r="1.25" fill="currentColor" /><circle
+								cx="12"
+								cy="15.5"
+								r="1.25"
+								fill="currentColor"
+							/><circle cx="16.5" cy="15.5" r="1.25" fill="currentColor" /></svg
+						>
+						Get Calendar
+					</span>
+				</Button>
 			</div>
 		</div>
 	{/if}
