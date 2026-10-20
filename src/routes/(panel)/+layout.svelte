@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { onNavigate } from '$app/navigation';
 	import { PanelUi, setPanelUi } from '$lib/panel/ui.svelte';
 	import { featureFlags } from '$lib/featureFlags';
 	import { PanelSession, setPanelSession } from '$lib/panel/session';
@@ -7,6 +8,22 @@
 	import { resetStores } from '$lib/stores';
 
 	let { children } = $props();
+
+	onNavigate((navigation) => {
+		if (
+			!document.startViewTransition ||
+			window.matchMedia('(prefers-reduced-motion: reduce)').matches
+		)
+			return;
+
+		return new Promise<void>((resolve) => {
+			const transition = document.startViewTransition(async () => {
+				resolve();
+				await navigation.complete;
+			});
+			void transition.ready.catch(() => undefined);
+		});
+	});
 
 	// This layout stays mounted while the user moves between the calendar and
 	// friends pages, so their session lasts until the panel closes.

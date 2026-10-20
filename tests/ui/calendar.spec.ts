@@ -22,6 +22,12 @@ test('a queued current term is polled without opening LeopardWeb', async ({ exte
 	await extension.open();
 	expect(await (await healthCheck).finished()).toBeNull();
 	await expect.poll(() => polls).toBe(1);
+	await expect(
+		page.getByRole('status').filter({ hasText: 'Loading your calendar…' })
+	).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Get Your Calendar', exact: true })).toHaveCount(
+		0
+	);
 	await page.clock.runFor(5_001);
 	await expect.poll(() => polls).toBe(2);
 	await expect
@@ -40,6 +46,9 @@ test('a queued current term is polled without opening LeopardWeb', async ({ exte
 	ready = true;
 	await chooseRadio(page, 'Calendar');
 	await expect(page.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
+	await expect(page.getByRole('status').filter({ hasText: 'Loading your calendar…' })).toHaveCount(
+		0
+	);
 	expect(polls).toBeGreaterThanOrEqual(2);
 	expect(context.pages().some((tab) => tab.url().startsWith('https://selfservice.wit.edu/'))).toBe(
 		false
@@ -187,6 +196,30 @@ test('two distinct event dialogs reuse loaded preferences; UI and startup reques
 		await dialog.getByRole('button', { name: index ? 'Cancel' : 'Close', exact: true }).click();
 		await expect(dialog).toBeHidden();
 	}
+	for (const width of [620, 624, 628, 632, 640, 620]) {
+		await page.setViewportSize({ width, height: 900 });
+		const switches = await page.evaluate(async () => {
+			let previous = (document.getElementById('calendar-list-view') as HTMLInputElement).checked;
+			let switches = 0;
+			for (let frame = 0; frame < 45; frame++) {
+				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+				const current = (document.getElementById('calendar-list-view') as HTMLInputElement).checked;
+				if (current !== previous) switches++;
+				previous = current;
+			}
+			return switches;
+		});
+		expect(switches, `Automatic presentation should settle at ${width}px`).toBeLessThanOrEqual(1);
+		if (width === 620) await expect(page.getByRole('radio', { name: 'List view' })).toBeChecked();
+		if (width === 640)
+			await expect(page.getByRole('radio', { name: 'Calendar view' })).toBeChecked();
+	}
+	await chooseRadio(page, 'Calendar view');
+	await page.setViewportSize({ width: 320, height: 900 });
+	await expect(page.getByRole('radio', { name: 'Calendar view' })).toBeChecked();
+	await chooseRadio(page, 'List view');
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await expect(page.getByRole('radio', { name: 'List view' })).toBeChecked();
 	expect(network.filter((row) => row.path === '/api/meeting_times/:event/preference')).toHaveLength(
 		0
 	);
