@@ -29,3 +29,6 @@ jobs:
       - name: Run svelte-check
         working-directory: .
         run: npm run check
+
+      - name: Run unit tests
+        run: npm test

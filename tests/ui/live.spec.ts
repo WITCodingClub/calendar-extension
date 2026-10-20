@@ -9,7 +9,7 @@ test('isolated staging session loads Calendar, Friends and Settings', async ({ e
 	await expect(page.getByRole('button', { name: /\d{1,2}:\d{2}.* - / }).first()).toBeVisible();
 	await chooseRadio(page, 'Friends');
 	await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
-	await page.getByRole('button', { name: /^People:/ }).click();
+	await page.getByRole('button', { name: /^(?:Choose people|Edit people)/ }).click();
 	const picker = page.getByRole('dialog', { name: 'Select people' });
 	await expect.poll(() => picker.getByRole('checkbox').count()).toBeGreaterThanOrEqual(4);
 	await picker.getByRole('button', { name: 'Close', exact: true }).click();

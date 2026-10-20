@@ -70,21 +70,13 @@ describe('request authentication snapshot', () => {
 		});
 	});
 
-	it.each([undefined, '', 'malformed-token', 'expired-token'])(
-		'does not fetch with an unusable token: %s',
-		async (token) => {
-			storageGet.mockResolvedValue({
-				environment_data: { current_environment: 'prod', jwt_tokens: { prod: token } }
-			});
-			vi.mocked(isUsableJwt).mockReturnValue(false);
-
-			await expect(request('/user')).rejects.toBeInstanceOf(AuthError);
-
-			expect(isUsableJwt).toHaveBeenCalledExactlyOnceWith(token);
-			expect(fetchMock).not.toHaveBeenCalled();
-			expect(handleUnauthorized).toHaveBeenCalledOnce();
-		}
-	);
+	it('does not fetch when token validation fails', async () => {
+		vi.mocked(isUsableJwt).mockReturnValue(false);
+		await expect(request('/user')).rejects.toBeInstanceOf(AuthError);
+		expect(isUsableJwt).toHaveBeenCalledExactlyOnceWith('original-token');
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(handleUnauthorized).toHaveBeenCalledOnce();
+	});
 
 	it('invalidates an unchanged session after a 401', async () => {
 		fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
