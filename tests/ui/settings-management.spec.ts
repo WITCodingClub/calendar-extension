@@ -57,6 +57,15 @@ test('Settings loads and scrolls every section without changing values', async (
 			/catalog\/terms|processed_events|friends|preferences\/version/.test(row.path)
 		)
 	).toBe(false);
+	await page.evaluate(() => {
+		const startViewTransition = document.startViewTransition;
+		document.startViewTransition = (update) => {
+			document.startViewTransition = startViewTransition;
+			const transition = startViewTransition.call(document, update);
+			transition.skipTransition();
+			return transition;
+		};
+	});
 	await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
 	await page
 		.getByRole('navigation', { name: 'Application navigation' })

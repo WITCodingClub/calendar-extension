@@ -10,7 +10,7 @@
 </script>
 
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { Divider, Icon, Menu, MenuItem, VariableTabs } from 'm3-svelte';
 	import iconMenu from '@ktibow/iconset-material-symbols/menu';
 	import iconCheck from '@ktibow/iconset-material-symbols/check';
@@ -39,6 +39,11 @@
 		tabActions?: Snippet;
 		children?: Snippet;
 	} = $props();
+
+	let ready = $state(false);
+	onMount(() => {
+		ready = true;
+	});
 
 	const menuId = $props.id();
 	let menuButton: HTMLButtonElement;
@@ -130,6 +135,7 @@
 			<div class="preview-tabs min-w-0 flex-1">
 				<VariableTabs
 					secondary
+					disabled={!ready}
 					{tab}
 					items={tabs}
 					onchange={(event) =>
