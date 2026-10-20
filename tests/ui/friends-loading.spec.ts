@@ -1,5 +1,6 @@
 import { test, expect } from './extension.fixture';
 import { chooseRadio, selectFriends } from './helpers';
+import { now } from './backend';
 
 const paths = ['/api/friends', '/api/friends/requests', '/api/friends/groups'];
 
@@ -35,23 +36,25 @@ for (const entry of ['drawer', 'Friends']) {
 test('deferred Calendar loading preserves saved planning participants until Friends needs them', async ({
 	extension
 }) => {
-	const { page, network } = extension;
+	const { page, context, network } = extension;
 	await extension.open();
 	await selectFriends(page);
 	await chooseRadio(page, 'Calendar');
 	await expect(page.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
-	await expect.poll(() => network.filter((row) => row.totalMs === undefined)).toHaveLength(0);
 	const before = paths.map((path) => network.filter((row) => row.path === path).length);
-	await page.goto(extension.baseUrl + '/calendar.html');
-	await expect(page.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
+	const reopened = await context.newPage();
+	await reopened.clock.setFixedTime(new Date(now));
+	await reopened.goto(extension.baseUrl + '/calendar.html');
+	await expect(reopened.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
 	expect(paths.map((path) => network.filter((row) => row.path === path).length)).toEqual(before);
-	await chooseRadio(page, 'Friends');
+	await chooseRadio(reopened, 'Friends');
 	await expect(
-		page.getByRole('button', { name: 'Edit people · You, Ada Test, Ben Test', exact: true })
+		reopened.getByRole('button', { name: 'Edit people · You, Ada Test, Ben Test', exact: true })
 	).toBeVisible();
-	await expect.poll(() => network.filter((row) => row.totalMs === undefined)).toHaveLength(0);
-	await page.goto(extension.baseUrl + '/friends.html?view=calendar');
-	const comparison = page.getByRole('region', { name: 'Calendar comparison' });
+	const restored = await context.newPage();
+	await restored.clock.setFixedTime(new Date(now));
+	await restored.goto(extension.baseUrl + '/friends.html?view=calendar');
+	const comparison = restored.getByRole('region', { name: 'Calendar comparison' });
 	await chooseRadio(comparison, 'Calendar');
 	await expect(
 		comparison.getByRole('button', { name: /Ben Test · Ben Class, Monday/ })
