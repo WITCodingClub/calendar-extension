@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { API } from '$lib/api';
 	import { continueAfterSignIn } from '$lib/auth/afterSignIn';
 	import { persistSession, AuthError } from '$lib/auth/session';
@@ -75,7 +76,7 @@
 
 			if (data && data.beta_access === false) {
 				await chrome.storage.local.set({ beta_access: false });
-				await goto('/beta-access-denied/');
+				await goto(resolve('/beta-access-denied'));
 				return;
 			}
 

@@ -28,6 +28,12 @@ export default defineConfig(
 		}
 	},
 	{
+		files: ['src/routes/+layout.svelte'],
+		rules: {
+			'svelte/no-navigation-without-resolve': ['error', { ignoreReplaceState: true }]
+		}
+	},
+	{
 		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
 		languageOptions: {
 			parserOptions: {

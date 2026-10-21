@@ -1,3 +1,5 @@
+import type { RawFriendCourse } from './friends/schedule';
+
 export type Weekday =
 	| 'monday'
 	| 'tuesday'
@@ -184,7 +186,7 @@ export interface OkResponse {
 }
 
 export interface FriendProcessedEventsResponse {
-	processed_courses: any[];
+	processed_courses: RawFriendCourse[];
 }
 
 export interface Professor {

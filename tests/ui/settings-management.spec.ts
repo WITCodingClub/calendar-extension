@@ -100,6 +100,10 @@ test('legacy routes and navigation reach Settings without changing values', asyn
 		await fitsViewport(page);
 		await expect.poll(values).toEqual(before);
 	}
+	await chooseRadio(page, 'Calendar');
+	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
+	await chooseRadio(page, 'Friends');
+	await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
 	expect(
 		network.every((row) => row.method === 'GET' || /meeting_times\/preferences/.test(row.path))
 	).toBe(true);

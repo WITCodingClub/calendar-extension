@@ -414,7 +414,7 @@ export class API {
 	}
 
 	public static async processCourses(
-		courses: any[]
+		courses: ProcessingTerm['courses']
 	): Promise<{ user_pub: string; ics_url: string }> {
 		const response = await request('/process_courses', { method: 'POST', body: courses });
 		if (!response.ok) {
@@ -426,11 +426,11 @@ export class API {
 		return response.json();
 	}
 
-	public static async reprocessCourses(courses: any[]): Promise<{
+	public static async reprocessCourses(courses: ProcessingTerm['courses']): Promise<{
 		ics_url: string;
 		removed_enrollments: number;
 		removed_courses: Array<{ crn: number; title: string; course_number: number }>;
-		processed_courses: any[];
+		processed_courses: unknown[];
 	}> {
 		const response = await request('/courses/reprocess', { method: 'POST', body: { courses } });
 		if (!response.ok) {
@@ -551,13 +551,13 @@ export class API {
 
 	// University calendar preferences
 	public static async getCalendarPreferences(): Promise<{
-		global: any;
+		global: unknown;
 		uni_cal_global: {
 			color_id?: string;
 			reminder_settings?: { time: string | number; type: string; method: string }[] | null;
 		} | null;
-		event_types: Record<string, any>;
-		uni_cal_categories: Record<string, any>;
+		event_types: Record<string, unknown>;
+		uni_cal_categories: Record<string, { color_id?: string | number | null } | null>;
 	}> {
 		return requestJson('/calendar_preferences', 'Failed to fetch the calendar preferences');
 	}

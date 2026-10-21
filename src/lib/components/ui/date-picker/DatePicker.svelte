@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Button, Layer } from 'm3-svelte';
 	import { todayDate } from '$lib/datetime';
 	import { validDate } from '$lib/friends/schedule';
@@ -28,9 +29,9 @@
 	} = $props();
 
 	let currentView = $state<'calendar' | 'month' | 'year'>('calendar');
-	let focusedYear = $state(year);
+	let focusedYear = $state(untrack(() => year));
 	let focusedMonth = $state(
-		validDate(date) ? Number(date.slice(5, 7)) - 1 : Number(today.slice(5, 7)) - 1
+		untrack(() => (validDate(date) ? Number(date.slice(5, 7)) - 1 : Number(today.slice(5, 7)) - 1))
 	);
 	let chosenDate = $derived(date);
 	const prefix = (month: number) =>

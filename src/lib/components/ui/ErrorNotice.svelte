@@ -21,7 +21,7 @@
 	{#if error}{error}{/if}
 	{@render children?.()}
 	{#if includeStatusLink}
-		{' '}Please check the
+		&#32;Please check the
 		<a
 			class="text-on-error underline"
 			href="https://stats.uptimerobot.com/QS76oPqfzz"
@@ -29,7 +29,7 @@
 		> for updates.
 	{/if}
 	{#if includeSelfServiceHint}
-		{' '}Also, make sure you sign into
+		&#32;Also, make sure you sign into
 		<a
 			href="https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory"
 			target="_blank"
@@ -37,7 +37,7 @@
 		> first, then try again.
 	{/if}
 	{#if includeStatusLink || includeSelfServiceHint}
-		{' '}If the issue persists, please submit a bug report on
+		&#32;If the issue persists, please submit a bug report on
 		<a
 			class="text-on-error underline"
 			href="https://github.com/WITCodingClub/calendar-backend/issues"

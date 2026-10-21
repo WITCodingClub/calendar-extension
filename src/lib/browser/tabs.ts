@@ -45,8 +45,15 @@ async function witContainerId(): Promise<string | undefined> {
 
 		const storeIds = new Set<string>();
 		for (const store of await chrome.cookies.getAllCookieStores()) storeIds.add(store.id);
-		for (const identity of (await (globalThis as any).browser?.contextualIdentities?.query({})) ??
-			[]) {
+		for (const identity of (await (
+			globalThis as typeof globalThis & {
+				browser?: {
+					contextualIdentities?: {
+						query: (details: Record<string, never>) => Promise<{ cookieStoreId: string }[]>;
+					};
+				};
+			}
+		).browser?.contextualIdentities?.query({})) ?? []) {
 			storeIds.add(identity.cookieStoreId);
 		}
 

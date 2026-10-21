@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import DateField from '$lib/components/ui/DateField.svelte';
 	import { Button, Dialog, SelectOutlined, TextFieldOutlined } from 'm3-svelte';
 	import { calendarDateTime, dateLabel, formatTime, minutesTime } from '$lib/datetime';
@@ -32,12 +33,12 @@
 	let mode = $state<'details' | 'edit' | 'delete' | 'leave' | 'closed'>('details');
 	let busy = $state(false);
 	let error = $state('');
-	let title = $state(meeting.title);
-	let location = $state(meeting.location ?? '');
-	let startDate = $state(meeting.start_time.slice(0, 10));
-	let startTime = $state(meeting.start_time.slice(11, 16));
+	let title = $state(untrack(() => meeting.title));
+	let location = $state(untrack(() => meeting.location ?? ''));
+	let startDate = $state(untrack(() => meeting.start_time.slice(0, 10)));
+	let startTime = $state(untrack(() => meeting.start_time.slice(11, 16)));
 	let duration = $state(
-		String((Date.parse(meeting.end_time) - Date.parse(meeting.start_time)) / 60000)
+		untrack(() => String((Date.parse(meeting.end_time) - Date.parse(meeting.start_time)) / 60000))
 	);
 	let customDuration = $state(false);
 	let exactStart = $state(false);

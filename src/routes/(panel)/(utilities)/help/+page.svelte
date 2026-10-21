@@ -5,28 +5,28 @@
 
 	const importGuides = [
 		{
-			href: 'https://support.microsoft.com/en-us/office/import-calendars-into-outlook-8e8364e1-400e-4c0f-a573-fe76b5a2d379#:~:text=Add%20internet%20calendars',
+			href: 'support.microsoft.com/en-us/office/import-calendars-into-outlook-8e8364e1-400e-4c0f-a573-fe76b5a2d379#:~:text=Add%20internet%20calendars',
 			img: outlook,
 			title: 'Outlook',
 			description: 'ICS import guide',
 			domain: 'support.microsoft.com'
 		},
 		{
-			href: 'https://support.apple.com/en-mn/guide/iphone/ipha0d932e96/ios#:~:text=Subscribe%20to%20iCal%20(.ics)',
+			href: 'support.apple.com/en-mn/guide/iphone/ipha0d932e96/ios#:~:text=Subscribe%20to%20iCal%20(.ics)',
 			img: apple,
 			title: 'Apple Calendar (iPhone)',
 			description: 'ICS import guide',
 			domain: 'support.apple.com'
 		},
 		{
-			href: 'https://support.apple.com/en-mn/guide/calendar/icl1022/mac#:~:text=share%20calendars.-,Subscribe%20to%20a%20calendar,-To%20subscribe%20to',
+			href: 'support.apple.com/en-mn/guide/calendar/icl1022/mac#:~:text=share%20calendars.-,Subscribe%20to%20a%20calendar,-To%20subscribe%20to',
 			img: apple,
 			title: 'Apple Calendar (Mac)',
 			description: 'ICS import guide',
 			domain: 'support.apple.com'
 		},
 		{
-			href: 'https://flexibits.com/fantastical/help/getting-started#adding-a-calendar-subscription',
+			href: 'flexibits.com/fantastical/help/getting-started#adding-a-calendar-subscription',
 			img: fantastical,
 			title: 'Fantastical',
 			description: 'ICS import guide',
@@ -94,7 +94,7 @@
 		<div class="gap-2 flex flex-col">
 			{#each importGuides as guide (guide.href)}
 				<a
-					href={guide.href}
+					href={`https://${guide.href}`}
 					target="_blank"
 					rel="noopener noreferrer"
 					class="gap-3 rounded-xl bg-surface-container-lowest p-3 hover:bg-surface-container-high flex flex-row items-center transition-colors"
