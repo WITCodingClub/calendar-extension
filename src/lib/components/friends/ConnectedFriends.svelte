@@ -32,7 +32,7 @@
 	let friendsStarted = false;
 	let managementStarted = false;
 	const inFlight = new SvelteMap<string, Promise<void>>();
-	const busyInFlight = new Map<string, Promise<void>>();
+	const busyInFlight = new SvelteMap<string, Promise<void>>();
 	const generations: Record<string, number> = {};
 	const waiting: Array<() => void> = [];
 	let running = 0;

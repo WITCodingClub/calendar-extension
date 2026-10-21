@@ -104,7 +104,7 @@ export async function handleUnauthorized(): Promise<void> {
 		if (browser) {
 			resetStores();
 			if (!isPublicAuthPath(window.location.pathname)) {
-				await goto('/', { replaceState: true });
+				await goto(resolve('/'), { replaceState: true });
 			}
 		}
 	})();

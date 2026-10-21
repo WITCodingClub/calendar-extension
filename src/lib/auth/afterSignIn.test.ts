@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const goto = vi.fn(async (_url: string) => {});
+const goto = vi.fn<(url: string) => Promise<void>>(async () => {});
 vi.mock('$app/navigation', () => ({ goto: (url: string) => goto(url) }));
+vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 vi.mock('$app/environment', () => ({ browser: false }));
 const userSettings = vi.hoisted(() =>
 	vi.fn(async (): Promise<{ usage_stats_enabled?: boolean | null }> => ({}))
@@ -18,7 +19,9 @@ vi.mock('./passkeys', () => ({
 }));
 
 const telemetry = vi.hoisted(() => ({ asked: false }));
-const rememberUsageStatsAnswer = vi.hoisted(() => vi.fn(async (_enabled: boolean) => {}));
+const rememberUsageStatsAnswer = vi.hoisted(() =>
+	vi.fn<(enabled: boolean) => Promise<void>>(async () => {})
+);
 vi.mock('../browser/telemetry', () => ({
 	usageStatsAsked: vi.fn(async () => telemetry.asked),
 	rememberUsageStatsAnswer

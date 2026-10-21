@@ -1,4 +1,5 @@
 import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
 import { browser } from '$app/environment';
 import { API } from '../api';
 import { AuthError } from './session';
@@ -67,7 +68,7 @@ export async function isPasskeySetupPending(): Promise<boolean> {
 
 export async function finishPasskeySetup(): Promise<void> {
 	await chrome.storage.local.remove(OFFER_PASSKEY_SETUP_KEY);
-	await goto('/onboard');
+	await goto(resolve('/onboard'));
 }
 
 async function usageStatsAnswerOnAccount(): Promise<boolean | undefined> {
@@ -93,26 +94,26 @@ export async function continueAfterSignIn(options?: { offerPasskey?: boolean }):
 			if (options?.offerPasskey) {
 				await chrome.storage.local.set({ [OFFER_PASSKEY_SETUP_KEY]: true });
 			}
-			await goto('/usage-stats');
+			await goto(resolve('/usage-stats'));
 			return;
 		}
 		await rememberUsageStatsAnswer(answer);
 	}
 
 	if (browser && localStorage.getItem('isOtherCalendar') === 'true') {
-		await goto('/calendar');
+		await goto(resolve('/calendar'));
 		return;
 	}
 
 	const googleCalendar = await getGoogleCalendarState();
 	if (googleCalendar === 'connected') {
 		await chrome.storage.local.remove(OFFER_PASSKEY_SETUP_KEY);
-		await goto('/calendar');
+		await goto(resolve('/calendar'));
 		return;
 	}
 
 	if (googleCalendar === 'needs_reauth') {
-		await goto('/gcalendar');
+		await goto(resolve('/gcalendar'));
 		return;
 	}
 
@@ -121,9 +122,9 @@ export async function continueAfterSignIn(options?: { offerPasskey?: boolean }):
 
 	if (shouldOffer && (await shouldPromptPasskeySetup())) {
 		await chrome.storage.local.set({ [OFFER_PASSKEY_SETUP_KEY]: true });
-		await goto('/passkey-setup');
+		await goto(resolve('/passkey-setup'));
 		return;
 	}
 
-	await goto('/onboard');
+	await goto(resolve('/onboard'));
 }

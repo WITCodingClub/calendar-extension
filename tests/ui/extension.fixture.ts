@@ -228,6 +228,11 @@ export const test = base.extend<{ extension: Extension }>({
 			const page = await context.newPage();
 			context.on('page', (other) => other.on('pageerror', (error) => errors.push(error.message)));
 			page.on('pageerror', (error) => errors.push(error.message));
+			page.on('console', (message) => {
+				if (message.type() === 'warning' && message.text().includes('svelte.dev/e/derived_inert')) {
+					errors.push(message.text());
+				}
+			});
 			if (!live) await page.clock.setFixedTime(new Date(now));
 			const open = async (route = 'calendar', signedIn = true) => {
 				// Storage setup happens in the extension worker using the actual Chrome API.
@@ -271,7 +276,7 @@ export const test = base.extend<{ extension: Extension }>({
 			expect(unexpected, 'Unexpected external request (no production egress permitted)').toEqual(
 				[]
 			);
-			expect(errors, 'Uncaught UI errors').toEqual([]);
+			expect(errors, 'Uncaught UI errors or inert derived warnings').toEqual([]);
 		} finally {
 			await context?.close();
 			for (const socket of sockets) socket.destroy();

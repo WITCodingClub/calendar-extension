@@ -27,13 +27,16 @@
 
 	// This layout stays mounted while the user moves between the calendar and
 	// friends pages, so their session lasts until the panel closes.
+	let generation = $state(0);
 	let session: PanelSession | undefined;
 	setPanelSession(() => (session ??= new PanelSession()));
-	let ui: PanelUi | undefined;
-	setPanelUi(() => (ui ??= new PanelUi()));
+	const ui = $derived.by(() => {
+		void generation;
+		return new PanelUi();
+	});
+	setPanelUi(() => ui);
 	let settings: PanelSettings | undefined;
 	setPanelSettings(() => (settings ??= new PanelSettings()));
-	let generation = $state(0);
 
 	onMount(() => {
 		function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>) {
@@ -56,7 +59,6 @@
 			featureFlags.clearCache();
 			session = undefined;
 			settings = undefined;
-			ui = undefined;
 			generation += 1;
 		}
 

@@ -28,7 +28,7 @@ type RawFriendMeeting = {
 	};
 };
 
-type RawFriendCourse = {
+export type RawFriendCourse = {
 	title: string;
 	start_date?: string | null;
 	end_date?: string | null;
