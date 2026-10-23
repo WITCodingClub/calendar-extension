@@ -154,7 +154,9 @@ test('comparison uses real schedules, owner strips, privacy, missing data and da
 	await expect(group).toContainText('Busy · Availability only');
 	await group.getByRole('button', { name: 'Close', exact: true }).click();
 	await chooseRadio(comparison, 'List');
-	await comparison.getByRole('button', { name: 'Show Tuesday, Oct 6, 2026', exact: true }).click();
+	await expect(
+		comparison.getByRole('button', { name: 'Show Tuesday, Oct 6, 2026', exact: true })
+	).toHaveAttribute('aria-pressed', 'true');
 	await comparison.getByRole('button', { name: 'Next week', exact: true }).click();
 	await expect(
 		comparison.getByRole('region', { name: 'Schedule list for Tuesday, Oct 13, 2026' })

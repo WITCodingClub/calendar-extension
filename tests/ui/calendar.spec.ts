@@ -178,6 +178,9 @@ test('two distinct event dialogs reuse loaded preferences', async ({ extension }
 	await chooseRadio(page, 'List view');
 	await page.setViewportSize({ width: 1280, height: 900 });
 	await expect(page.getByRole('radio', { name: 'List view' })).toBeChecked();
+	await expect(
+		page.getByRole('region', { name: 'Schedule list for Tuesday, Oct 6, 2026', exact: true })
+	).toBeVisible();
 	expect(network.filter((row) => row.path === '/api/meeting_times/:event/preference')).toHaveLength(
 		0
 	);

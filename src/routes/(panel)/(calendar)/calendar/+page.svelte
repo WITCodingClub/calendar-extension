@@ -653,7 +653,7 @@
 	);
 	$effect(() => {
 		if (dates.includes(ui.calendarDay)) return;
-		const previous = ui.calendarDay ? new Date(ui.calendarDay + 'T12:00:00Z').getUTCDay() - 1 : 0;
+		const previous = new Date((ui.calendarDay || todayDate()) + 'T12:00:00Z').getUTCDay() - 1;
 		ui.calendarDay = dates[Math.min(4, Math.max(0, previous))];
 	});
 	onMount(() => {
