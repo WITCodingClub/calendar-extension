@@ -33,9 +33,7 @@ test('a failed backfill-state read recovers through Retry', async ({ extension }
 		await route.fulfill({ status: 503, json: { error: 'Backfill state unavailable' } });
 	});
 	await extension.open('settings');
-	const notice = extension.page
-		.getByRole('status')
-		.filter({ hasText: 'Course history and academic sync did not finish.' });
+	const notice = extension.page.getByRole('dialog', { name: 'Course sync needs attention' });
 	await expect(notice).toContainText('Backfill state unavailable');
 	await notice.getByRole('button', { name: 'Retry', exact: true }).click();
 	await expect
@@ -154,9 +152,7 @@ test('grade AJAX sign-in failures recover through Sign in and Retry without repl
 	await page.bringToFront();
 	await page.setViewportSize({ width: 320, height: 900 });
 	await extension.open('settings');
-	const notice = page
-		.getByRole('status')
-		.filter({ hasText: 'Course history and academic sync did not finish.' });
+	const notice = page.getByRole('dialog', { name: 'Course sync needs attention' });
 	await expect(notice).toBeVisible();
 	await fitsViewport(page, notice);
 	expect(writes).toEqual([]);

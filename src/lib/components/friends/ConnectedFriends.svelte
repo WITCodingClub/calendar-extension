@@ -696,12 +696,7 @@
 			)
 	};
 	ui.busyActions = { load: loadBusyRange, invalidate: discardBusy };
-	session.ownScheduleProcessed = (term) => {
-		discardBusy('you');
-		ui.scheduleStatus[term] ??= {};
-		ui.scheduleStatus[term].you = 'loaded';
-		delete ui.scheduleErrors[term]?.you;
-	};
+	session.ownScheduleProcessed = () => discardBusy('you');
 	$effect(() => {
 		const from = ui.preferences.from;
 		const until = ui.preferences.until;

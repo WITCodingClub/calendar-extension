@@ -7,7 +7,7 @@
 	import { PanelSettings, setPanelSettings } from '$lib/panel/settings';
 	import { resetStores } from '$lib/stores';
 	import { getUsableJwt } from '$lib/auth/session';
-	import { Button } from 'm3-svelte';
+	import { Button, Dialog } from 'm3-svelte';
 	import { getCourseSync } from '$lib/panel/courseSync';
 	import { openStudentSignIn } from '$lib/calendar/academicProfile';
 
@@ -46,6 +46,7 @@
 		void generation;
 		return getCourseSync((session ??= new PanelSession()));
 	});
+	let syncDialogOpen = $derived(Boolean($courseSync.message));
 
 	async function startBackfills() {
 		const current = (session ??= new PanelSession());
@@ -88,41 +89,48 @@
 	});
 </script>
 
-{#if $courseSync.message}
-	<div class="sync-recovery" role="status">
-		<p>{$courseSync.message}</p>
-		{#if $courseSync.loginUrl}
-			<p>After signing in, return here and select Retry.</p>
-			<Button variant="text" onclick={() => openStudentSignIn($courseSync.loginUrl!)}>
-				Sign in to LeopardWeb
+<Dialog
+	headline="Course sync needs attention"
+	aria-label="Course sync needs attention"
+	role="dialog"
+	bind:open={syncDialogOpen}
+>
+	<p>{$courseSync.message}</p>
+	{#if $courseSync.loginUrl}
+		<p>After signing in, return here and select Retry.</p>
+	{/if}
+	{#snippet buttons()}
+		<div class="sync-actions">
+			<Button variant="text" onclick={() => (syncDialogOpen = false)}>Close</Button>
+			{#if $courseSync.loginUrl}
+				<Button
+					variant="text"
+					disabled={$courseSync.running}
+					onclick={() => openStudentSignIn($courseSync.loginUrl!)}
+				>
+					Sign in to LeopardWeb
+				</Button>
+			{/if}
+			<Button
+				variant="tonal"
+				disabled={$courseSync.running}
+				onclick={() => courseSync.run(undefined, true)}
+			>
+				{$courseSync.running ? 'Retrying…' : 'Retry'}
 			</Button>
-		{/if}
-		<Button
-			variant="tonal"
-			disabled={$courseSync.running}
-			onclick={() => courseSync.run(undefined, true)}
-		>
-			{$courseSync.running ? 'Retrying…' : 'Retry'}
-		</Button>
-	</div>
-{/if}
+		</div>
+	{/snippet}
+</Dialog>
 
 {#key generation}
 	{@render children()}
 {/key}
 
 <style>
-	.sync-recovery {
+	.sync-actions {
 		display: flex;
 		flex-wrap: wrap;
+		justify-content: flex-end;
 		gap: 0.5rem;
-		margin: 1rem;
-		padding: 1rem;
-		border-radius: 1rem;
-		background: rgb(var(--m3-scheme-surface-container));
-	}
-	.sync-recovery p {
-		flex-basis: 100%;
-		margin: 0;
 	}
 </style>
