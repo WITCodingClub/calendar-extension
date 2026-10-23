@@ -4,16 +4,21 @@ import type { PanelSession } from '../panel/session';
 import { enrolledTerms } from '../stores';
 import type { ProcessingTerm } from '../types';
 import { getCourseSync } from '../panel/courseSync';
+import { StudentPageAuthError, withStudentPage } from './academicProfile';
 
 export const REGISTRATION_HISTORY_URL =
 	'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory';
 
+export type ImportedTerms = { tabId: number; terms: TermOption[]; usedTermId: string };
+
 type TermOption = { id: string; name: string };
 type Registration = { courseReferenceNumber: string; term: string; courseNumber: string };
 type RegistrationsLookupResult =
-	| { error: string }
+	| { error: string; loginRequired?: boolean }
 	| { termOptions: TermOption[]; registrations: Registration[]; usedTermId: string };
-type TermCoursesLookupResult = { error: string } | { courses: ProcessingTerm['courses'] };
+type TermCoursesLookupResult =
+	| { error: string; loginRequired?: boolean }
+	| { courses: ProcessingTerm['courses'] };
 
 async function lookupRegistrations(
 	termIdArg: string,
@@ -42,6 +47,7 @@ async function lookupRegistrations(
 			`https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/reset?term=${actualTermId}`,
 			{
 				credentials: 'include',
+				signal: AbortSignal.timeout(30_000),
 				headers: {
 					Accept: 'application/json, text/javascript, */*; q=0.01',
 					'X-Requested-With': 'XMLHttpRequest',
@@ -49,6 +55,14 @@ async function lookupRegistrations(
 				}
 			}
 		);
+		if (
+			r.status === 401 ||
+			r.status === 403 ||
+			r.redirected ||
+			!r.headers.get('content-type')?.includes('application/json')
+		)
+			return { error: 'Please sign in to LeopardWeb and select Retry.', loginRequired: true };
+		if (!r.ok) throw new Error(`LeopardWeb returned ${r.status}`);
 		const data = await r.json();
 
 		return {
@@ -68,6 +82,7 @@ async function lookupTermCourses(term: string): Promise<TermCoursesLookupResult>
 			`/StudentRegistrationSsb/ssb/registrationHistory/reset?term=${encodeURIComponent(term)}`,
 			{
 				credentials: 'include',
+				signal: AbortSignal.timeout(30_000),
 				headers: {
 					Accept: 'application/json',
 					'X-Requested-With': 'XMLHttpRequest',
@@ -75,6 +90,13 @@ async function lookupTermCourses(term: string): Promise<TermCoursesLookupResult>
 				}
 			}
 		);
+		if (
+			response.status === 401 ||
+			response.status === 403 ||
+			response.redirected ||
+			!response.headers.get('content-type')?.includes('application/json')
+		)
+			return { error: 'Please sign in to LeopardWeb and select Retry.', loginRequired: true };
 		if (!response.ok) throw new Error(`LeopardWeb returned ${response.status}`);
 		const data = await response.json();
 		if (!Array.isArray(data?.data?.registrations))
@@ -125,6 +147,66 @@ function saveEnrolledTerms(termOptions: TermOption[]): void {
 		enrolledTerms.set(termOptions);
 		API.userSettings({ enrolled_terms: termOptions }).catch(() => {});
 	}
+}
+
+export function backfillPastTerms(session: PanelSession, imported?: ImportedTerms) {
+	return session.backfills.run(
+		'past_terms',
+		async () => {
+			const process = async (tabId: number) => {
+				let termOptions = imported?.terms;
+				if (!termOptions) {
+					const results = await chrome.scripting.executeScript({
+						target: { tabId },
+						world: 'MAIN',
+						func: lookupRegistrations,
+						args: ['']
+					});
+					if (!session.active) return;
+					const result = results[0]?.result;
+					if (!result || 'error' in result) {
+						if (result?.loginRequired) throw new StudentPageAuthError(REGISTRATION_HISTORY_URL);
+						throw new Error(result?.error || 'Could not read enrolled terms from LeopardWeb.');
+					}
+					termOptions = result.termOptions;
+					saveEnrolledTerms(termOptions);
+				}
+				const terms = termOptions.filter((term) => /^\d{6}$/.test(term.id)).map((term) => term.id);
+				if (!terms.length)
+					throw new Error(
+						'LeopardWeb did not return any enrolled terms. Select Retry to try again.'
+					);
+				let loginError: StudentPageAuthError | undefined;
+				const complete = await session.termProcessing.start(
+					terms.filter((term) => term !== imported?.usedTermId),
+					async (term) => {
+						if (loginError) throw loginError;
+						const results = await chrome.scripting.executeScript({
+							target: { tabId },
+							world: 'MAIN',
+							func: lookupTermCourses,
+							args: [term]
+						});
+						const result = results[0]?.result;
+						if (!result || 'error' in result) {
+							if (result?.loginRequired) {
+								loginError = new StudentPageAuthError(REGISTRATION_HISTORY_URL);
+								throw loginError;
+							}
+							throw new Error(result?.error || 'Could not read courses from LeopardWeb.');
+						}
+						return result.courses;
+					}
+				);
+				if (loginError) throw loginError;
+				return { complete };
+			};
+			return imported
+				? process(imported.tabId)
+				: withStudentPage(REGISTRATION_HISTORY_URL, process, () => session.active);
+		},
+		Boolean(imported)
+	);
 }
 
 export async function importSchedule(
@@ -192,33 +274,18 @@ export async function importSchedule(
 
 		const response = await API.processCourses(coursesArray);
 		if (!session.active) return;
-		const remaining = termOptions.filter((term) => term.id !== usedTermId && /^\d+$/.test(term.id));
-		let otherTerms = Promise.resolve();
-		if (remaining.length) {
-			const importTabId = tabToUse.id;
-			const closeImportTab = shouldCloseTab;
-			shouldCloseTab = false;
-			otherTerms = session.termProcessing
-				.start(
-					remaining.map((term) => term.id),
-					async (term) => {
-						const results = await chrome.scripting.executeScript({
-							target: { tabId: importTabId },
-							world: 'MAIN',
-							func: lookupTermCourses,
-							args: [term]
-						});
-						const result = results[0]?.result;
-						if (!result || 'error' in result)
-							throw new Error(result?.error || 'Unexpected response from LeopardWeb');
-						return result.courses;
-					}
-				)
-				.finally(async () => {
-					if (closeImportTab) await chrome.tabs.remove(importTabId).catch(() => {});
-				});
-		}
-		void otherTerms.then(() => getCourseSync(session).run(true));
+		const importTabId = tabToUse.id;
+		const closeImportTab = shouldCloseTab;
+		shouldCloseTab = false;
+		void getCourseSync(session)
+			.run({
+				tabId: importTabId,
+				terms: termOptions,
+				usedTermId
+			})
+			.finally(async () => {
+				if (closeImportTab) await chrome.tabs.remove(importTabId).catch(() => {});
+			});
 
 		if (typeof response === 'string') {
 			return { ics_url: response, termId: usedTermId };

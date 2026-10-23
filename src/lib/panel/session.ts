@@ -25,7 +25,7 @@ export class PanelSession {
 	ownScheduleProcessed: ((term: string) => void) | undefined;
 	readonly termProcessing = new TermProcessing(
 		API,
-		() => this.active && this.workspaceMounted,
+		() => this.active,
 		async (term) => {
 			this.invalidateOwnSchedule(term);
 			const version = this.ownScheduleVersions[term];

@@ -242,7 +242,7 @@
 			let status = await API.userIsProcessed(termId);
 			if (!fresh()) return;
 			if (status.status === 'pending' || status.status === 'processing') {
-				await session.termProcessing.wait(termId, status);
+				await session.termProcessing.wait(termId, status, fresh);
 				if (!fresh()) return;
 				status = await API.userIsProcessed(termId);
 			}
