@@ -128,7 +128,27 @@ test('comparison waits for terms before choosing among historical enrollments', 
 });
 
 test('two distinct event dialogs reuse loaded preferences', async ({ extension }) => {
-	const { page, open, network } = extension;
+	const { page, context, open, network } = extension;
+	await context.route(origin + '/api/user/finals?term_uid=202610', (route) =>
+		route.fulfill({
+			json: {
+				term_uid: 202610,
+				schedule_published: true,
+				finals: [
+					{
+						id: 'exam-test',
+						course: 'TEST101 Final Test',
+						crn: '12345',
+						date: '2026-10-06',
+						start_time: '08:00',
+						end_time: '10:00',
+						location: 'TH 101',
+						location_name: 'Test Hall 101'
+					}
+				]
+			}
+		})
+	);
 	await open();
 	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
 	await expect
@@ -181,6 +201,26 @@ test('two distinct event dialogs reuse loaded preferences', async ({ extension }
 	await expect(
 		page.getByRole('region', { name: 'Schedule list for Tuesday, Oct 6, 2026', exact: true })
 	).toBeVisible();
+	await page.getByRole('button', { name: /Final exam: TEST101 Final Test/ }).click();
+	const finalDialog = page.getByRole('dialog', { name: 'Final exam details' });
+	await expect(finalDialog).toBeVisible();
+	for (const detail of [
+		'Tuesday, Oct 6, 2026',
+		'08:00 - 10:00',
+		'Test Hall 101',
+		'TH 101',
+		'12345'
+	])
+		await expect(finalDialog).toContainText(detail);
+	for (const width of [320, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		await fitsViewport(page, finalDialog);
+	}
+	await finalDialog.getByRole('button', { name: 'Close', exact: true }).click();
+	await chooseRadio(page, 'Calendar view');
+	await expect(page.getByRole('button', { name: /Final exam: TEST101 Final Test/ })).toHaveCount(1);
+	await page.getByRole('button', { name: 'Next week', exact: true }).click();
+	await expect(page.getByRole('button', { name: /Final exam: TEST101 Final Test/ })).toHaveCount(0);
 	expect(network.filter((row) => row.path === '/api/meeting_times/:event/preference')).toHaveLength(
 		0
 	);

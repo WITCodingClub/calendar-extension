@@ -1,7 +1,7 @@
 import { getContext, setContext } from 'svelte';
 import { API } from '../api';
 import { PreferenceCache } from '../calendar/preferenceCache';
-import type { Course, Friend, ProcessedEvents, TermResponse } from '../types';
+import type { Course, FinalsResponse, Friend, ProcessedEvents, TermResponse } from '../types';
 import type { FriendGroup } from '../friends/types';
 import type { SavedMeetingsResponse } from '../friends/savedMeetings';
 import { busyRangeKey, type BusyBlocksResponse } from '../friends/schedule';
@@ -125,12 +125,14 @@ export class PanelSession {
 
 	#terms: Promise<TermResponse> | undefined;
 	#processed = new Map<string, Promise<ProcessedEvents>>();
+	#finals = new Map<string, Promise<FinalsResponse>>();
 	readonly ownScheduleVersions: Record<string, number> = {};
 
 	invalidateOwnSchedule(term: string): void {
 		this.invalidateBusyBlocks('you');
 		this.ownScheduleVersions[term] = (this.ownScheduleVersions[term] ?? 0) + 1;
 		this.#processed.delete(term);
+		this.#finals.delete(term);
 		this.preferences.invalidateTerm(term);
 		this.refreshedTerms.delete(term);
 	}
@@ -142,6 +144,17 @@ export class PanelSession {
 			if (this.#processed.get(term) === request) this.#processed.delete(term);
 		});
 		this.#processed.set(term, request);
+		return request;
+	}
+
+	loadFinals(term: string): Promise<FinalsResponse> {
+		const cached = this.#finals.get(term);
+		if (cached) return cached;
+		const request = API.getFinals(term).catch((error) => {
+			if (this.#finals.get(term) === request) this.#finals.delete(term);
+			throw error;
+		});
+		this.#finals.set(term, request);
 		return request;
 	}
 

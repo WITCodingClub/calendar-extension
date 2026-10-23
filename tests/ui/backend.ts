@@ -146,6 +146,8 @@ export function responseFor(
 			return { time_zone: 'America/New_York', start_date: start, end_date: end, busy };
 		}
 		switch (path) {
+			case '/api/user/finals':
+				return { term_uid: Number(query.get('term_uid')), schedule_published: false, finals: [] };
 			case '/api/user/backfills':
 				return {
 					past_terms: { completed: true, completed_at: now },
