@@ -185,6 +185,12 @@ export interface OkResponse {
 	ok: boolean;
 }
 
+export type BackfillName = 'academic_data' | 'past_terms';
+export type BackfillState = Record<
+	BackfillName,
+	{ completed: boolean; completed_at: string | null }
+>;
+
 export interface FriendProcessedEventsResponse {
 	processed_courses: RawFriendCourse[];
 }

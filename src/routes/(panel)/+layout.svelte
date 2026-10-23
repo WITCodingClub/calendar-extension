@@ -6,6 +6,9 @@
 	import { PanelSession, setPanelSession } from '$lib/panel/session';
 	import { PanelSettings, setPanelSettings } from '$lib/panel/settings';
 	import { resetStores } from '$lib/stores';
+	import { getUsableJwt, AuthError } from '$lib/auth/session';
+	import { backfillAcademicData } from '$lib/calendar/academicSync';
+	import { snackbar } from 'm3-svelte';
 
 	let { children } = $props();
 
@@ -38,6 +41,23 @@
 	let settings: PanelSettings | undefined;
 	setPanelSettings(() => (settings ??= new PanelSettings()));
 
+	async function startBackfills() {
+		const current = (session ??= new PanelSession());
+		try {
+			if (!(await getUsableJwt()) || !current.active) return;
+			const result = await backfillAcademicData(current.backfills, () => current.active);
+			if (current.active && result?.warnings.length)
+				snackbar(result.warnings.join(' '), undefined, true);
+		} catch (error) {
+			if (current.active && !(error instanceof AuthError))
+				snackbar(
+					`Academic data backfill did not finish: ${error instanceof Error ? error.message : 'Try reopening the panel.'}`,
+					undefined,
+					true
+				);
+		}
+	}
+
 	onMount(() => {
 		function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>) {
 			const change = changes.environment_data;
@@ -60,9 +80,11 @@
 			session = undefined;
 			settings = undefined;
 			generation += 1;
+			void startBackfills();
 		}
 
 		chrome.storage.onChanged.addListener(onStorageChanged);
+		void startBackfills();
 		return () => {
 			chrome.storage.onChanged.removeListener(onStorageChanged);
 			if (session) session.active = false;

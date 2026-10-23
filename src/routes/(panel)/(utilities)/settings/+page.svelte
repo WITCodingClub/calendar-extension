@@ -30,6 +30,8 @@
 	import { onMount } from 'svelte';
 	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
 	import { resolveUniCalColor, UNI_CAL_DEFAULT_COLOR } from '$lib/calendar/colors';
+	import { backfillAcademicData } from '$lib/calendar/academicSync';
+	import { getPanelSession } from '$lib/panel/session';
 
 	const UNI_CAL_REMINDER_DEFAULT_OFFSET = '15:hours';
 	const UNI_CAL_REMINDER_CHOICES = [
@@ -46,6 +48,7 @@
 
 	let userSettings = $derived($storedUserSettings);
 	const session = getPanelSettings();
+	const backfills = getPanelSession().backfills;
 	let email = $state<string | undefined>(undefined);
 	let currentEnvironment = $state<Environment>('prod');
 	let authenticatedEnvironments = $state<Environment[]>([]);
@@ -59,6 +62,33 @@
 	let isAddingPasskey = $state(false);
 	let newPasskeyName = $state('');
 	let usageStats = $state(false);
+	let testingAcademicProfile = $state(false);
+	let academicProfileJson = $state('');
+	let academicProfileError = $state('');
+
+	async function testAcademicProfile() {
+		if (testingAcademicProfile) return;
+		testingAcademicProfile = true;
+		academicProfileJson = '';
+		academicProfileError = '';
+		try {
+			const result = await backfillAcademicData(
+				backfills,
+				() => session.active,
+				true,
+				(data) => {
+					if (session.active) academicProfileJson = JSON.stringify(data, null, 2);
+				}
+			);
+			if (session.active && result) academicProfileJson = JSON.stringify(result, null, 2);
+		} catch (error) {
+			if (session.active)
+				academicProfileError =
+					error instanceof Error ? error.message : 'Could not read the academic profile.';
+		} finally {
+			testingAcademicProfile = false;
+		}
+	}
 	const UNI_CAL_COLOR_STORAGE_KEY = 'uniCalColor';
 	const UNI_EVENTS_COLLAPSED_KEY = 'uniEventsCollapsed';
 	let uniCalColor = $state<string>(
@@ -993,4 +1023,28 @@
 	<p class="m-0 px-2 pb-1 text-xs text-on-surface-variant text-center break-all">
 		{email ? `Signed in as ${email}` : 'Loading your account…'}
 	</p>
+	<section
+		class="min-w-0 gap-3 rounded-2xl bg-surface-container p-4 flex flex-col"
+		aria-labelledby="academic-profile-test-heading"
+	>
+		<h2 id="academic-profile-test-heading" class="m-0 text-base font-bold text-on-surface">
+			Academic profile test (temporary)
+		</h2>
+		<p class="m-0 text-sm text-on-surface-variant">
+			Read and send your academic profile and final course outcomes to your account.
+		</p>
+		<Button variant="tonal" onclick={testAcademicProfile} disabled={testingAcademicProfile}>
+			{testingAcademicProfile ? 'Reading and sending academic data…' : 'Test academic profile'}
+		</Button>
+		{#if academicProfileError}
+			<p role="alert" class="m-0 text-sm text-error">{academicProfileError}</p>
+		{/if}
+		{#if academicProfileJson}
+			<pre
+				aria-label="Academic profile JSON"
+				class="m-0 max-h-96 rounded-xl bg-surface-container-lowest p-3 text-xs text-on-surface overflow-auto break-all whitespace-pre-wrap"><code
+					>{academicProfileJson}</code
+				></pre>
+		{/if}
+	</section>
 </div>

@@ -146,6 +146,11 @@ export function responseFor(
 			return { time_zone: 'America/New_York', start_date: start, end_date: end, busy };
 		}
 		switch (path) {
+			case '/api/user/backfills':
+				return {
+					past_terms: { completed: true, completed_at: now },
+					academic_data: { completed: true, completed_at: now }
+				};
 			case '/api/user/preferences/version':
 				return { version: 'a'.repeat(64) };
 			case '/api/v1/catalog/terms/current':

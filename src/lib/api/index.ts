@@ -1,5 +1,7 @@
 import type {
 	CatalogTerm,
+	BackfillName,
+	BackfillState,
 	ConnectedAccount,
 	CurrentTerm,
 	ProcessingTerm,
@@ -57,12 +59,103 @@ import {
 	type SavedMeetingInput
 } from '../friends/savedMeetings';
 import { getBaseUrl, getJwtToken, readJson, request, requestJson } from './client';
+import type { AcademicProfile, StoredAcademicProfile } from '../calendar/academicProfile';
+import type { CourseOutcomes, CourseOutcomesResult } from '../calendar/courseOutcomes';
 
 export { ApiError } from './client';
 
 const PREFERENCE_VERSION = /^[a-f0-9]{64}$/;
 
 export class API {
+	public static async getBackfills(): Promise<BackfillState> {
+		return this.readBackfills(
+			await requestJson('/user/backfills', 'Failed to read backfill state')
+		);
+	}
+
+	public static async completeBackfill(name: BackfillName): Promise<BackfillState> {
+		const state = this.readBackfills(
+			await requestJson(`/user/backfills/${name}`, 'Failed to record completed backfill', {
+				method: 'PUT'
+			})
+		);
+		if (!state[name].completed) throw new Error('The backfill was not recorded as complete');
+		return state;
+	}
+
+	private static readBackfills(value: unknown): BackfillState {
+		if (!value || typeof value !== 'object') throw new Error('Invalid backfill state');
+		for (const name of ['past_terms', 'academic_data']) {
+			const entry = (value as Record<string, unknown>)[name];
+			if (!entry || typeof entry !== 'object') throw new Error('Invalid backfill state');
+			const fields = entry as Record<string, unknown>;
+			if (
+				typeof fields.completed !== 'boolean' ||
+				(fields.completed_at !== null && typeof fields.completed_at !== 'string') ||
+				(fields.completed && !fields.completed_at)
+			)
+				throw new Error('Invalid backfill state');
+		}
+		return value as BackfillState;
+	}
+
+	public static async saveAcademicProfile(
+		profile: AcademicProfile
+	): Promise<StoredAcademicProfile> {
+		const data = await requestJson<StoredAcademicProfile>(
+			'/user/academic_profile',
+			'Failed to save academic profile',
+			{ method: 'PUT', body: profile }
+		);
+		if (
+			!Array.isArray(data?.programs) ||
+			data.programs.some(
+				(program) =>
+					!program ||
+					typeof program.name !== 'string' ||
+					![true, false, null].includes(program.matched)
+			)
+		)
+			throw new Error('Invalid academic profile response');
+		return data;
+	}
+
+	public static async saveCourseOutcomes(
+		outcomes: CourseOutcomes,
+		active: () => boolean = () => true
+	): Promise<CourseOutcomesResult> {
+		if (outcomes.terms.some((term) => term.courses.length > 30))
+			throw new Error(
+				'The backend supports at most 30 course outcomes per term. No outcomes were sent.'
+			);
+		const terms: CourseOutcomesResult['terms'] = [];
+		for (let index = 0; index < outcomes.terms.length; index += 30) {
+			if (!active()) throw new Error('The academic data session ended. Try again.');
+			const batch = outcomes.terms.slice(index, index + 30);
+			const data = await requestJson<CourseOutcomesResult>(
+				'/user/course_outcomes',
+				'Failed to save course outcomes',
+				{ method: 'PUT', body: { terms: batch } }
+			);
+			if (
+				!Array.isArray(data?.terms) ||
+				data.terms.length !== batch.length ||
+				data.terms.some(
+					(result, position) =>
+						!result ||
+						result.term !== batch[position].term ||
+						!Number.isSafeInteger(result.updated) ||
+						result.updated < 0 ||
+						!Array.isArray(result.unknown_crns) ||
+						result.unknown_crns.some((crn) => typeof crn !== 'string')
+				)
+			)
+				throw new Error('Invalid course outcomes response');
+			terms.push(...data.terms);
+		}
+		return { terms };
+	}
+
 	public static get baseUrl(): Promise<string> {
 		return getBaseUrl();
 	}
