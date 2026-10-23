@@ -199,6 +199,12 @@
 		const byDay: Record<string, ComparisonGridEvent[]> = {};
 		for (const [day, events] of Object.entries(grid.byDay))
 			byDay[day] = events.map((item) => {
+				if (String(item.meeting.id).startsWith('final:'))
+					return {
+						...item,
+						bgColor: 'rgb(var(--m3-scheme-error-container))',
+						textColor: 'rgb(var(--m3-scheme-on-error-container))'
+					};
 				const occurrence = savedData.occurrences.find(
 					(occurrence) => occurrence.id === item.meeting.id
 				);
@@ -887,18 +893,23 @@
 		{/snippet}
 		<div class="gap-3 min-w-0 flex flex-col break-words">
 			<h3 class="text-lg font-medium">{activeFinal.course}</h3>
-			<p>{dateLabel(activeFinal.date)}, {activeFinal.date.slice(0, 4)}</p>
+			<p><strong>Date:</strong> {dateLabel(activeFinal.date)}, {activeFinal.date.slice(0, 4)}</p>
 			<p>
+				<strong>Time:</strong>
 				{formatTime(activeFinal.start_time, militaryTime)} - {formatTime(
 					activeFinal.end_time,
 					militaryTime
 				)}
 			</p>
-			<p>Location: {activeFinal.location_name || activeFinal.location || 'Not provided'}</p>
-			{#if activeFinal.location && activeFinal.location !== activeFinal.location_name}
-				<p>Room: {activeFinal.location}</p>
+			<p class="text-sm text-on-surface-variant">Times are in America/New_York (campus time).</p>
+			<p>
+				<strong>Location:</strong>
+				{activeFinal.location_name || activeFinal.location || 'Not provided'}
+			</p>
+			{#if activeFinal.location_name && activeFinal.location && activeFinal.location !== activeFinal.location_name}
+				<p><strong>Location code:</strong> {activeFinal.location}</p>
 			{/if}
-			<p>CRN: {activeFinal.crn}</p>
+			<p><strong>CRN:</strong> {activeFinal.crn || 'Not provided'}</p>
 		</div>
 	</Dialog>
 {/if}

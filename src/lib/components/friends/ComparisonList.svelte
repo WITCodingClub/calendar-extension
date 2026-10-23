@@ -44,6 +44,7 @@
 		{#each ordered as item (`${item.ownerId ?? 'group'}:${item.meeting.id}`)}<li
 				class:proposed={item.preview}
 				class:saved-meeting={Boolean(item.savedMeeting)}
+				class:final-exam={String(item.meeting.id).startsWith('final:')}
 			>
 				<Button
 					variant="text"
@@ -81,6 +82,16 @@
 </section>
 
 <style>
+	li.final-exam {
+		border-color: rgb(var(--m3-scheme-error));
+		background: rgb(var(--m3-scheme-error-container));
+	}
+
+	.final-exam .list-row,
+	.final-exam .row-time {
+		color: rgb(var(--m3-scheme-on-error-container));
+	}
+
 	.saved-icon {
 		width: 1rem;
 		height: 1rem;
