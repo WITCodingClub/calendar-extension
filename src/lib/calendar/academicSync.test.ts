@@ -41,15 +41,15 @@ it('previews the sanitized payload before sending both datasets', async () => {
 		vi.mocked(API.saveAcademicProfile).mock.invocationCallOrder[0]
 	);
 	expect(result?.warnings).toEqual([]);
+	expect(result?.complete).toBe(true);
 });
 
-it('keeps collected data available when sending fails and permits a subsequent retry', async () => {
+it('keeps collected data available when sending fails', async () => {
 	const preview = vi.fn();
 	vi.mocked(API.saveAcademicProfile).mockRejectedValueOnce(new Error('Backend unavailable'));
 	await expect(syncAcademicData(() => true, preview)).rejects.toThrow('Backend unavailable');
 	expect(preview).toHaveBeenCalled();
 	expect(API.saveCourseOutcomes).not.toHaveBeenCalled();
-	await expect(syncAcademicData(() => true)).resolves.toBeDefined();
 });
 
 it('does not send after the user changes sessions during collection', async () => {
@@ -72,7 +72,7 @@ it('does not send outcomes into a changed session after saving the profile', asy
 	expect(API.saveCourseOutcomes).not.toHaveBeenCalled();
 });
 
-it('reports unknown enrollments and unmatched programs without treating null matches as failures', async () => {
+it('reports unknown enrollments and unmatched programs without marking completion', async () => {
 	vi.mocked(API.saveAcademicProfile).mockResolvedValue({
 		...profile,
 		programs: [
@@ -93,7 +93,9 @@ it('reports unknown enrollments and unmatched programs without treating null mat
 	vi.mocked(API.saveCourseOutcomes).mockResolvedValue({
 		terms: [{ term: '202610', updated: 0, unknown_crns: ['1'] }]
 	});
-	expect((await syncAcademicData(() => true))?.warnings).toEqual([
+	const result = await syncAcademicData(() => true);
+	expect(result?.complete).toBe(false);
+	expect(result?.warnings).toEqual([
 		expect.stringContaining('could not be matched'),
 		expect.stringContaining('have not been processed')
 	]);

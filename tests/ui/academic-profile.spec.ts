@@ -82,14 +82,22 @@ const expected = {
 	]
 };
 
-test('Student Profile HTML matches the issue payload and excludes unrelated data', async ({
+test('extracts a private-field-free profile despite an empty secondary placeholder', async ({
 	extension
 }) => {
-	const { page } = extension;
-	await page.setContent(
-		`<div>W number: private, GPA: private</div>${html([...rows, ['GPA', 'private'], ['Grade', 'private'], ['Student ID', 'private']])}`
-	);
-	expect(await page.evaluate(lookupAcademicProfile)).toEqual({ profile: expected });
+	const primary = html([
+		...rows,
+		['GPA', 'private'],
+		['Grade', 'private'],
+		['Student ID', 'private']
+	]);
+	for (const secondary of [
+		'<div id="secondary-curriculum-details"></div>',
+		'<div id="secondary-curriculum-details"><div class="row"><strong>Major:</strong><span>Not Provided</span></div></div>'
+	]) {
+		await extension.page.setContent(primary + secondary);
+		expect(await extension.page.evaluate(lookupAcademicProfile)).toEqual({ profile: expected });
+	}
 });
 
 test('major and minor concentrations remain separate and text whitespace is normalized', async ({
@@ -147,18 +155,6 @@ test('includes a rendered secondary curriculum in the full program list', async 
 			]
 		}
 	});
-});
-
-test('an empty secondary curriculum placeholder does not block a loaded primary profile', async ({
-	extension
-}) => {
-	for (const secondary of [
-		'<div id="secondary-curriculum-details"></div>',
-		'<div id="secondary-curriculum-details"><div class="row"><strong>Major:</strong><span>Not Provided</span></div></div>'
-	]) {
-		await extension.page.setContent(html() + secondary);
-		expect(await extension.page.evaluate(lookupAcademicProfile)).toEqual({ profile: expected });
-	}
 });
 
 test('missing optional program and catalog labels are sent as null', async ({ extension }) => {

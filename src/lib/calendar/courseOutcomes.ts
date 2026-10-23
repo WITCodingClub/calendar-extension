@@ -49,7 +49,7 @@ export async function lookupCourseOutcomes(): Promise<CollectedOutcomes | { erro
 		await load(`term?filter=&page=1&max=10&_=${Date.now()}`);
 		await load(`level?filter=&term=-1&page=1&max=10&_=${Date.now()}`);
 		await load('gpa?term=-1&level=UG');
-		const terms = new Map<string, Map<string, CourseOutcome>>();
+		const terms = new Map<string, CourseOutcomes['terms'][number]['courses']>();
 		const unsupported = new Set<string>();
 		const seen = new Set<string>();
 		let offset = 0;
@@ -84,7 +84,7 @@ export async function lookupCourseOutcomes(): Promise<CollectedOutcomes | { erro
 				if (!/^\d{6}$/.test(term) || !/^\d{1,10}$/.test(crn) || seen.has(`${term}:${crn}`))
 					throw new Error('LeopardWeb returned invalid or repeated courses. Try again.');
 				seen.add(`${term}:${crn}`);
-				if (!terms.has(term)) terms.set(term, new Map());
+				if (!terms.has(term)) terms.set(term, []);
 				if (
 					(row.finalGrade != null && typeof row.finalGrade !== 'string') ||
 					(row.historyFinalGrade != null && typeof row.historyFinalGrade !== 'string')
@@ -101,7 +101,7 @@ export async function lookupCourseOutcomes(): Promise<CollectedOutcomes | { erro
 				else if (grade === 'F') outcome = 'failed';
 				else if (grade === 'W') outcome = 'withdrawn';
 				else if (grade === 'I' || grade === 'IC') outcome = 'incomplete';
-				if (outcome) terms.get(term)!.set(crn, outcome);
+				if (outcome) terms.get(term)!.push({ crn, outcome });
 				else unsupported.add(term);
 			}
 			offset += page.data.length;
@@ -112,10 +112,7 @@ export async function lookupCourseOutcomes(): Promise<CollectedOutcomes | { erro
 			outcomes: {
 				terms: Array.from(terms)
 					.filter(([term]) => !unsupported.has(term))
-					.map(([term, courses]) => ({
-						term,
-						courses: Array.from(courses, ([crn, outcome]) => ({ crn, outcome }))
-					}))
+					.map(([term, courses]) => ({ term, courses }))
 			},
 			warnings: Array.from(
 				unsupported,

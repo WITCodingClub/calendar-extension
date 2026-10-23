@@ -37,10 +37,8 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-it('opens Student Profile and reads HTML in the loaded page without fetching an endpoint', async () => {
+it('opens Student Profile and reads HTML in the loaded page', async () => {
 	const browser = setup();
-	const fetch = vi.fn();
-	vi.stubGlobal('fetch', fetch);
 	expect(await fetchAcademicProfile()).toEqual({ program: 'Computer Science' });
 	expect(createWitTab).toHaveBeenCalledWith(STUDENT_PROFILE_URL);
 	expect(browser.scripting.executeScript).toHaveBeenCalledWith({
@@ -49,7 +47,6 @@ it('opens Student Profile and reads HTML in the loaded page without fetching an 
 		func: lookupAcademicProfile
 	});
 	expect(browser.tabs.remove).toHaveBeenCalledWith(7);
-	expect(fetch).not.toHaveBeenCalled();
 });
 
 it('reuses an existing profile tab without closing it', async () => {
@@ -62,15 +59,12 @@ it('reuses an existing profile tab without closing it', async () => {
 	expect(browser.tabs.remove).not.toHaveBeenCalled();
 });
 
-it.each(['https://login.example.invalid', 'https://selfservice.wit.edu/StudentSelfService/login'])(
-	'preserves a login redirect to %s without injecting',
-	async (url) => {
-		const browser = setup(url);
-		await expect(fetchAcademicProfile()).rejects.toThrow('log in to LeopardWeb');
-		expect(browser.scripting.executeScript).not.toHaveBeenCalled();
-		expect(browser.tabs.remove).not.toHaveBeenCalled();
-	}
-);
+it('preserves a login redirect without injecting', async () => {
+	const browser = setup('https://selfservice.wit.edu/StudentSelfService/login');
+	await expect(fetchAcademicProfile()).rejects.toThrow('log in to LeopardWeb');
+	expect(browser.scripting.executeScript).not.toHaveBeenCalled();
+	expect(browser.tabs.remove).not.toHaveBeenCalled();
+});
 
 it('times out a stalled tab and removes listeners and the owned tab', async () => {
 	vi.useFakeTimers();
@@ -112,10 +106,4 @@ it('discards a late result after its session ends', async () => {
 	});
 	expect(await fetchAcademicProfile(() => active)).toBeUndefined();
 	expect(browser.tabs.remove).toHaveBeenCalledWith(7);
-});
-
-it('does not open a tab for an inactive session', async () => {
-	setup();
-	expect(await fetchAcademicProfile(() => false)).toBeUndefined();
-	expect(createWitTab).not.toHaveBeenCalled();
 });

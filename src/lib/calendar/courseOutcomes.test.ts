@@ -33,15 +33,35 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-it('performs the three initialization requests in order and follows every courses page', async () => {
-	setup(Array.from({ length: 13 }, (_, index) => course(index + 1, 'B-')));
-	const result = await lookupCourseOutcomes();
-	expect(result).toMatchObject({
-		outcomes: { terms: [{ term: '202620', courses: expect.any(Array) }] },
+it('initializes in order and converts final grades across every course page', async () => {
+	const grades = [
+		['A', 'c_or_better'],
+		['A-', 'c_or_better'],
+		['B+', 'c_or_better'],
+		['B-', 'c_or_better'],
+		['C', 'c_or_better'],
+		['P', 'c_or_better'],
+		['C-', 'passed_below_c'],
+		['D+', 'passed_below_c'],
+		['D', 'passed_below_c'],
+		['D-', 'passed_below_c'],
+		['F', 'failed'],
+		['W', 'withdrawn'],
+		['I', 'incomplete'],
+		['IC', 'incomplete']
+	];
+	setup(grades.map(([grade], index) => course(index + 1, grade)));
+	expect(await lookupCourseOutcomes()).toEqual({
+		outcomes: {
+			terms: [
+				{
+					term: '202620',
+					courses: grades.map(([, outcome], index) => ({ crn: String(index + 1), outcome }))
+				}
+			]
+		},
 		warnings: []
 	});
-	if ('error' in result) throw new Error(result.error);
-	expect(result.outcomes.terms[0].courses).toHaveLength(13);
 	expect(
 		fetchMock.mock.calls.map(([path]) =>
 			new URL(path, 'https://selfservice.wit.edu').pathname.split('/').at(-1)
@@ -54,60 +74,30 @@ it('performs the three initialization requests in order and follows every course
 	});
 });
 
-it.each([
-	['A', 'c_or_better'],
-	['A-', 'c_or_better'],
-	['B+', 'c_or_better'],
-	['B-', 'c_or_better'],
-	['C', 'c_or_better'],
-	['P', 'c_or_better'],
-	['C-', 'passed_below_c'],
-	['D+', 'passed_below_c'],
-	['D', 'passed_below_c'],
-	['D-', 'passed_below_c'],
-	['F', 'failed'],
-	['W', 'withdrawn'],
-	['I', 'incomplete'],
-	['IC', 'incomplete']
-])('converts final grade %s to outcome %s', async (grade, outcome) => {
-	setup([course(1, grade)]);
-	expect(await lookupCourseOutcomes()).toEqual({
-		outcomes: { terms: [{ term: '202620', courses: [{ crn: '1', outcome }] }] },
-		warnings: []
-	});
-});
-
-it('uses the corrected historical final grade over a stale incomplete', async () => {
+it('prefers corrected historical grades and returns only safe final outcomes', async () => {
 	setup([
-		course(1, 'IC', { historyFinalGrade: 'B-', calculatedFinalGrade: 'B-', midtermGrade: 'F' }),
-		course(2, null, { historyFinalGrade: 'C', midtermGrade: 'A' })
+		course(1, 'IC', { historyFinalGrade: ' B- ', calculatedFinalGrade: 'F', midtermGrade: 'F' }),
+		course(2, null, {
+			historyFinalGrade: 'C',
+			studentPidm: 'private',
+			gpa: 'private',
+			qualityPoints: 'private',
+			w_number: 'private'
+		}),
+		course(3, null, { midtermGrade: 'F', calculatedFinalGrade: 'A' })
 	]);
-	expect(await lookupCourseOutcomes()).toMatchObject({
+	expect(await lookupCourseOutcomes()).toEqual({
 		outcomes: {
 			terms: [
 				{
+					term: '202620',
 					courses: [
 						{ crn: '1', outcome: 'c_or_better' },
 						{ crn: '2', outcome: 'c_or_better' }
 					]
 				}
 			]
-		}
-	});
-});
-
-it('skips midterms and calculated grades and returns only safe fields', async () => {
-	setup([
-		course(1, null, { midtermGrade: 'F', calculatedFinalGrade: 'A' }),
-		course(2, 'B-', {
-			studentPidm: 'private',
-			gpa: 'private',
-			qualityPoints: 'private',
-			w_number: 'private'
-		})
-	]);
-	expect(await lookupCourseOutcomes()).toEqual({
-		outcomes: { terms: [{ term: '202620', courses: [{ crn: '2', outcome: 'c_or_better' }] }] },
+		},
 		warnings: []
 	});
 });
