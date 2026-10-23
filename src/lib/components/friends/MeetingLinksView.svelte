@@ -1,6 +1,7 @@
 <script lang="ts">
 	import DateField from '$lib/components/ui/DateField.svelte';
-	import { Button, Dialog, SelectOutlined, TextFieldOutlined } from 'm3-svelte';
+	import { Button, Dialog, TextFieldOutlined } from 'm3-svelte';
+	import SelectOutlined from '$lib/components/ui/SelectOutlined.svelte';
 	import type {
 		MeetingLink,
 		MeetingLinkInput,
