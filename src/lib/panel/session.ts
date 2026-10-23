@@ -5,9 +5,7 @@ import type { Course, Friend, ProcessedEvents, TermResponse } from '../types';
 import type { FriendGroup } from '../friends/types';
 import type { SavedMeetingsResponse } from '../friends/savedMeetings';
 import { busyRangeKey, type BusyBlocksResponse } from '../friends/schedule';
-import { processedData, icsUrl } from '../stores';
 import { TermProcessing } from './termProcessing';
-import { get } from 'svelte/store';
 import { snackbar } from 'm3-svelte';
 import { Backfills } from './backfills';
 
@@ -28,13 +26,6 @@ export class PanelSession {
 		() => this.active,
 		async (term) => {
 			this.invalidateOwnSchedule(term);
-			const version = this.ownScheduleVersions[term];
-			const events = await this.loadProcessedEvents(term);
-			if (!this.active || this.ownScheduleVersions[term] !== version) return;
-			processedData.update((data) => [
-				...data.filter((entry) => String(entry.termId) !== term),
-				{ termId: term, responseData: { classes: events.classes, ics_url: get(icsUrl) ?? '' } }
-			]);
 			this.ownScheduleProcessed?.(term);
 		},
 		(term, error) => {

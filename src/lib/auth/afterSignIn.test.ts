@@ -142,7 +142,8 @@ it('deduplicates terms, skips processed and empty terms, and respects the 12-ter
 	expect(await s.processing.start(['old', 'empty', ...terms, terms[0]], s.load)).toBe(true);
 	expect(s.api.processCoursesBatch.mock.calls.map(([batch]) => batch.length)).toEqual([12, 1]);
 	expect(s.load).not.toHaveBeenCalledWith('old');
-	expect(s.completed).toHaveBeenCalledTimes(14);
+	expect(s.completed).toHaveBeenCalledTimes(13);
+	expect(s.completed).not.toHaveBeenCalledWith('old');
 	expect(s.failed).not.toHaveBeenCalled();
 	expect(s.processing.pending.size).toBe(0);
 });

@@ -73,7 +73,7 @@ export class TermProcessing {
 					const status = await this.api.userIsProcessed(term);
 					if (!this.active()) return false;
 					if (status.processed) {
-						await finish(term, () => this.completed(term));
+						await finish(term, async () => {});
 					} else if (status.status === 'pending' || status.status === 'processing') {
 						existing.push(
 							finish(term, async () => {

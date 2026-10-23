@@ -5,7 +5,8 @@ import { importSchedule, REGISTRATION_HISTORY_URL } from './leopardWeb';
 import { backfillAcademicData } from './academicSync';
 import { API } from '../api';
 import { snackbar } from 'm3-svelte';
-import type { PanelSession } from '../panel/session';
+import { PanelSession } from '../panel/session';
+import { processedData } from '../stores';
 import { Backfills } from '../panel/backfills';
 import { backfillPastTerms } from './leopardWeb';
 
@@ -29,13 +30,22 @@ function sessionWith(start = vi.fn(async () => true)) {
 }
 
 vi.mock('../api', () => ({
-	API: { processCourses: vi.fn(), userSettings: vi.fn(async () => ({})) }
+	API: {
+		processCourses: vi.fn(),
+		userSettings: vi.fn(async () => ({})),
+		userIsProcessed: vi.fn(),
+		processCoursesBatch: vi.fn(),
+		getProcessedEvents: vi.fn()
+	}
 }));
 vi.mock('./academicSync', () => ({
 	backfillAcademicData: vi.fn(async () => ({ complete: true, warnings: [] }))
 }));
 vi.mock('m3-svelte', () => ({ snackbar: vi.fn() }));
-vi.mock('../stores', () => ({ enrolledTerms: { set: vi.fn() } }));
+vi.mock('../stores', () => ({
+	enrolledTerms: { set: vi.fn() },
+	processedData: { update: vi.fn() }
+}));
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -112,6 +122,24 @@ it('discovers all terms without fetching a current calendar and leaves failed ru
 	expect(start).toHaveBeenCalledWith(['202710', '202620'], expect.any(Function));
 	expect(API.processCourses).not.toHaveBeenCalled();
 	expect(api.completeBackfill).not.toHaveBeenCalled();
+});
+
+it('completes background processing without replacing cached calendar data', async () => {
+	vi.mocked(API.userIsProcessed).mockResolvedValue({ processed: false, status: 'not_started' });
+	vi.mocked(API.processCoursesBatch).mockResolvedValue({
+		user_pub: 'test',
+		ics_url: 'test',
+		terms: [{ term: '202610', status: 'processed' }]
+	});
+	vi.mocked(API.getProcessedEvents).mockResolvedValue({ classes: [] });
+	const session = new PanelSession();
+	expect(
+		await session.termProcessing.start(['202610'], async () => [
+			{ crn: '12345', term: '202610', courseNumber: '1000' }
+		])
+	).toBe(true);
+	expect(processedData.update).not.toHaveBeenCalled();
+	expect(API.getProcessedEvents).not.toHaveBeenCalled();
 });
 
 it('queues retry after an overlapping failed automatic run', async () => {
