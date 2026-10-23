@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import DateField from '$lib/components/ui/DateField.svelte';
-	import { Button, Dialog, SelectOutlined, TextFieldOutlined } from 'm3-svelte';
+	import { Button, Dialog, TextFieldOutlined } from 'm3-svelte';
+	import SelectOutlined from '$lib/components/ui/SelectOutlined.svelte';
 	import { calendarDateTime, dateLabel, formatTime, minutesTime } from '$lib/datetime';
 	import {
 		providerLabel,

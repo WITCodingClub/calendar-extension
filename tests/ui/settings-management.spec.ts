@@ -4,6 +4,15 @@ import { origin } from './backend';
 
 test('Settings starts Google account connection without an email', async ({ extension }) => {
 	const { page, context, network, worker } = extension;
+	await page.addInitScript(() => {
+		const supports = CSS.supports.bind(CSS);
+		CSS.supports = (property: string, value?: string) =>
+			property === 'appearance' && value === 'base-select'
+				? false
+				: value === undefined
+					? supports(property)
+					: supports(property, value);
+	});
 	const endpoint = `${origin}/api/user/google_calendar`;
 	await context.route(endpoint, async (route) => {
 		if (route.request().method() !== 'POST') return route.fallback();
@@ -11,6 +20,13 @@ test('Settings starts Google account connection without an email', async ({ exte
 	});
 	await extension.open('settings');
 	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
+	const format = page.getByRole('combobox').filter({ hasText: '24-hour' });
+	await format.click();
+	await expect(page.getByRole('listbox')).toBeVisible();
+	await expect(page.getByRole('option', { name: '12-hour', exact: true })).toBeVisible();
+	await format.press('Escape');
+	await expect(page.getByRole('listbox')).toBeHidden();
+	await expect(format).toBeFocused();
 	const loaded = network.filter((row) => row.path === '/api/user/extension_config').length;
 	await worker.evaluate(async () => {
 		const { environment_data: data } = await chrome.storage.local.get('environment_data');

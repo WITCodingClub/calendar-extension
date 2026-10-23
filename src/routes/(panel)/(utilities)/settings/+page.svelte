@@ -24,7 +24,8 @@
 	import { setUsageStatsEnabled, track, usageStatsEnabled } from '$lib/browser/telemetry';
 	import { copyIcsUrl } from '$lib/browser/clipboard';
 	import { openOAuthWindow } from '$lib/auth/popup';
-	import { Button, SelectOutlined, snackbar, Switch } from 'm3-svelte';
+	import { Button, snackbar, Switch } from 'm3-svelte';
+	import SelectOutlined from '$lib/components/ui/SelectOutlined.svelte';
 	import { getPanelSettings } from '$lib/panel/settings';
 	import { onMount } from 'svelte';
 	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
