@@ -6,7 +6,14 @@
 	import CalendarGrid from '$lib/components/calendar/CalendarGrid.svelte';
 	import WeekNavigation from '$lib/components/ui/WeekNavigation.svelte';
 	import { comparisonGrid, ownerColor, type ComparisonDetail } from '$lib/friends/gridEvents';
-	import { dateLabel, formatTime, minutesTime, timeMinutes, weekDates } from '$lib/datetime';
+	import {
+		dateLabel,
+		formatTime,
+		minutesTime,
+		timeMinutes,
+		todayDate,
+		weekDates
+	} from '$lib/datetime';
 	import { savedMeetingCourses } from '$lib/friends/savedMeetings';
 	import { busyEndMinutes } from '$lib/friends/schedule';
 	import type { CalendarPresentation } from '$lib/calendar/layout';
@@ -75,7 +82,7 @@
 	});
 	$effect(() => {
 		if (dates.includes(selectedDay)) return;
-		const previousDay = selectedDay ? new Date(`${selectedDay}T12:00:00Z`).getUTCDay() - 1 : 0;
+		const previousDay = new Date(`${selectedDay || todayDate()}T12:00:00Z`).getUTCDay() - 1;
 		selectedDay = dates[Math.min(4, Math.max(0, previousDay))];
 	});
 	const time = (value: number) => formatTime(minutesTime(value), militaryTime);
