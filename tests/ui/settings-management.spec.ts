@@ -59,9 +59,21 @@ test('legacy routes and navigation reach Settings without changing values', asyn
 	const { page, network } = extension;
 	await extension.open('help');
 	await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
+	await expect
+		.poll(() =>
+			network.some((row) => row.path === '/api/user/backfills' && row.totalMs !== undefined)
+		)
+		.toBe(true);
 	await page.goto(extension.baseUrl + '/calendar.html?view=help');
 	await expect(page).toHaveURL(/\/help(?:\.html)?$/);
 	await expect(page.getByRole('heading', { name: 'Import ICS calendar' })).toBeVisible();
+	await expect
+		.poll(
+			() =>
+				network.filter((row) => row.path === '/api/user/backfills' && row.totalMs !== undefined)
+					.length
+		)
+		.toBe(2);
 	await page.goto(extension.baseUrl + '/calendar.html?view=settings');
 	await expect(page).toHaveURL(/\/settings(?:\.html)?$/);
 	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();

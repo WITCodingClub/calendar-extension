@@ -3,6 +3,7 @@ import { createWitTab } from '../browser/tabs';
 import type { PanelSession } from '../panel/session';
 import { enrolledTerms } from '../stores';
 import type { ProcessingTerm } from '../types';
+import { getCourseSync } from '../panel/courseSync';
 
 export const REGISTRATION_HISTORY_URL =
 	'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory';
@@ -192,11 +193,12 @@ export async function importSchedule(
 		const response = await API.processCourses(coursesArray);
 		if (!session.active) return;
 		const remaining = termOptions.filter((term) => term.id !== usedTermId && /^\d+$/.test(term.id));
+		let otherTerms = Promise.resolve();
 		if (remaining.length) {
 			const importTabId = tabToUse.id;
 			const closeImportTab = shouldCloseTab;
 			shouldCloseTab = false;
-			void session.termProcessing
+			otherTerms = session.termProcessing
 				.start(
 					remaining.map((term) => term.id),
 					async (term) => {
@@ -216,6 +218,7 @@ export async function importSchedule(
 					if (closeImportTab) await chrome.tabs.remove(importTabId).catch(() => {});
 				});
 		}
+		void otherTerms.then(() => getCourseSync(session).run(true));
 
 		if (typeof response === 'string') {
 			return { ics_url: response, termId: usedTermId };

@@ -148,6 +148,11 @@ export function responseFor(
 		switch (path) {
 			case '/api/user/finals':
 				return { term_uid: Number(query.get('term_uid')), schedule_published: false, finals: [] };
+			case '/api/user/backfills':
+				return {
+					past_terms: { completed: true, completed_at: now },
+					academic_data: { completed: true, completed_at: now }
+				};
 			case '/api/user/preferences/version':
 				return { version: 'a'.repeat(64) };
 			case '/api/v1/catalog/terms/current':

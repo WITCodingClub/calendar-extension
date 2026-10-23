@@ -19,6 +19,7 @@ vi.mock('../auth/session', () => ({
 }));
 
 import { API } from './index';
+import type { AcademicProfile } from '../calendar/academicProfile';
 
 const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>();
 
@@ -32,6 +33,107 @@ function json(body: unknown, status = 200) {
 beforeEach(() => {
 	fetchMock.mockReset();
 	vi.stubGlobal('fetch', fetchMock);
+});
+
+describe('academic data endpoints', () => {
+	it('reads and completes the independent server-side backfill flags', async () => {
+		const initial = {
+			past_terms: { completed: false, completed_at: null },
+			academic_data: { completed: false, completed_at: null }
+		};
+		const done = {
+			...initial,
+			academic_data: { completed: true, completed_at: '2026-10-23T12:00:00Z' }
+		};
+		fetchMock.mockResolvedValueOnce(json(initial)).mockResolvedValueOnce(json(done));
+		expect(await API.getBackfills()).toEqual(initial);
+		expect(await API.completeBackfill('academic_data')).toEqual(done);
+		expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+			['https://calendar.example.test/api/user/backfills', 'GET'],
+			['https://calendar.example.test/api/user/backfills/academic_data', 'PUT']
+		]);
+	});
+	it('rejects malformed or unconfirmed backfill state', async () => {
+		fetchMock.mockResolvedValueOnce(json({}));
+		await expect(API.getBackfills()).rejects.toThrow('Invalid backfill state');
+		fetchMock.mockResolvedValueOnce(
+			json({
+				past_terms: { completed: false, completed_at: null },
+				academic_data: { completed: false, completed_at: null }
+			})
+		);
+		await expect(API.completeBackfill('academic_data')).rejects.toThrow('not recorded');
+	});
+	const profile: AcademicProfile = {
+		source: 'leopardweb',
+		level: 'Undergraduate',
+		class_standing: null,
+		admit_type: null,
+		admit_term: null,
+		programs: []
+	};
+	it('sends the academic profile with normal extension authentication', async () => {
+		fetchMock.mockResolvedValue(json({ ...profile, programs: [] }));
+		await API.saveAcademicProfile(profile);
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe('https://calendar.example.test/api/user/academic_profile');
+		expect(init?.method).toBe('PUT');
+		expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer header.payload.signature');
+		expect(JSON.parse(String(init?.body))).toEqual(profile);
+	});
+	it('sends complete per-term outcome lists in batches of at most thirty terms', async () => {
+		const terms = Array.from({ length: 31 }, (_, index) => ({
+			term: `${2000 + index}10`,
+			courses: [{ crn: '1', outcome: 'c_or_better' as const }]
+		}));
+		fetchMock.mockImplementation(async (_url, init) =>
+			json({
+				terms: JSON.parse(String(init?.body)).terms.map((term: { term: string }) => ({
+					term: term.term,
+					updated: 1,
+					unknown_crns: []
+				}))
+			})
+		);
+		expect((await API.saveCourseOutcomes({ terms })).terms).toHaveLength(31);
+		expect(
+			fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).terms.length)
+		).toEqual([30, 1]);
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			'https://calendar.example.test/api/user/course_outcomes'
+		);
+		expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
+	});
+	it('skips an empty outcomes payload and rejects oversized terms before sending', async () => {
+		expect(await API.saveCourseOutcomes({ terms: [] })).toEqual({ terms: [] });
+		await expect(
+			API.saveCourseOutcomes({
+				terms: [
+					{
+						term: '202610',
+						courses: Array.from({ length: 31 }, (_, index) => ({
+							crn: String(index),
+							outcome: 'failed'
+						}))
+					}
+				]
+			})
+		).rejects.toThrow('30 course outcomes');
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+	it('preserves invalid_term errors for display and rejects malformed outcome responses', async () => {
+		fetchMock.mockResolvedValueOnce(
+			json({ error: 'Invalid catalog term', code: 'invalid_term' }, 422)
+		);
+		await expect(API.saveAcademicProfile(profile)).rejects.toMatchObject({
+			status: 422,
+			code: 'invalid_term'
+		});
+		fetchMock.mockResolvedValueOnce(json({ terms: [] }));
+		await expect(
+			API.saveCourseOutcomes({ terms: [{ term: '202610', courses: [] }] })
+		).rejects.toThrow('Invalid course outcomes response');
+	});
 });
 
 describe('API.requestOAuthForEmail', () => {

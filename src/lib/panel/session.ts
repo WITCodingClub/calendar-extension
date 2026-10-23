@@ -9,6 +9,7 @@ import { processedData, icsUrl } from '../stores';
 import { TermProcessing } from './termProcessing';
 import { get } from 'svelte/store';
 import { snackbar } from 'm3-svelte';
+import { Backfills } from './backfills';
 
 // The data that the calendar and friends pages load once. The (panel) layout
 // owns one session and keeps it while the user moves between those pages.
@@ -19,6 +20,7 @@ export class PanelSession {
 	// False after the session ended. Check it before a write to a store that
 	// outlives the session, such as userSettings.
 	active = true;
+	readonly backfills = new Backfills(API, () => this.active);
 	workspaceMounted = false;
 	ownScheduleProcessed: ((term: string) => void) | undefined;
 	readonly termProcessing = new TermProcessing(
