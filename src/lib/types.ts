@@ -206,6 +206,23 @@ export interface ProcessedEvents {
 	classes: Course[];
 }
 
+export interface FinalExam {
+	id: string;
+	course: string;
+	crn: string;
+	date: string;
+	start_time: string;
+	end_time: string;
+	location: string | null;
+	location_name: string | null;
+}
+
+export interface FinalsResponse {
+	term_uid: number;
+	schedule_published: boolean;
+	finals: FinalExam[];
+}
+
 export interface Term {
 	uid: number;
 	season: string;

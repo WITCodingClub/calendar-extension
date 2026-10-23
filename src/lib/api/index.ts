@@ -5,6 +5,7 @@ import type {
 	ProcessingTerm,
 	BatchProcessingResponse,
 	FeatureFlagsResponse,
+	FinalsResponse,
 	FriendListResponse,
 	FriendProcessedEventsResponse,
 	FriendRequestAcceptResponse,
@@ -151,6 +152,13 @@ export class API {
 		);
 		validateCourses(data?.classes);
 		return data;
+	}
+
+	public static async getFinals(termUid: string): Promise<FinalsResponse> {
+		return requestJson(
+			`/user/finals?term_uid=${encodeURIComponent(termUid)}`,
+			'Failed to fetch your final exams'
+		);
 	}
 
 	public static async getFriends(): Promise<FriendListResponse> {

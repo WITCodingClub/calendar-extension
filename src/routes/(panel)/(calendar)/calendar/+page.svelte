@@ -9,12 +9,14 @@
 	} from '$lib/stores';
 	import type {
 		Course,
+		FinalExam,
+		FinalsResponse,
 		GetPreferencesResponse,
 		MeetingTime,
 		ResponseData,
 		TermResponse
 	} from '$lib/types';
-	import { Button, Chip, ConnectedButtons, LoadingIndicator, snackbar } from 'm3-svelte';
+	import { Button, Chip, ConnectedButtons, Dialog, LoadingIndicator, snackbar } from 'm3-svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { API } from '$lib/api';
@@ -28,13 +30,14 @@
 		stackMeetings
 	} from '$lib/calendar/layout';
 	import { fetchRegistrationEvents, importSchedule } from '$lib/calendar/leopardWeb';
+	import { finalExamCourses } from '$lib/calendar/finals';
 	import {
 		applyPreferences,
 		fetchPreferences,
 		mergeProcessedClasses,
 		upsertProcessedTerm
 	} from '$lib/calendar/processedTerms';
-	import { todayDate, weekDates, dateLabel } from '$lib/datetime';
+	import { todayDate, weekDates, dateLabel, formatTime } from '$lib/datetime';
 	import { DAYS } from '$lib/calendar/days';
 	import ComparisonList from '$lib/components/friends/ComparisonList.svelte';
 	import type { ComparisonGridEvent } from '$lib/friends/comparison';
@@ -61,6 +64,10 @@
 	let jwt_token: string | undefined = $state(undefined);
 	let processedData: Course[] | undefined = $derived(responseData?.classes);
 	let savedData = $state.raw<SavedMeetingsResponse>({ meetings: [], occurrences: [] });
+	let finals = $state.raw<FinalsResponse>();
+	let finalsError = $state(false);
+	let finalsReload = $state(0);
+	let activeFinal = $state<FinalExam>();
 	let selectedSavedOccurrence = $state('');
 	let terms = $state<TermResponse | undefined>(undefined);
 	const termDates = $derived.by(() => {
@@ -88,6 +95,9 @@
 	);
 	const calendarCourses = $derived([
 		...(processedData ?? []),
+		...(historicSchedule || !finals?.schedule_published
+			? []
+			: finalExamCourses(finals.finals, dates)),
 		...(historicSchedule ? [] : savedMeetingCourses(savedData, dates))
 	]);
 	$effect(() => {
@@ -113,6 +123,28 @@
 	// The router destroys this page when the user opens the friends page. The
 	// session keeps what this page already loaded, so coming back sends no requests.
 	const session = getPanelSession();
+	$effect(() => {
+		const term = ui.term;
+		void finalsReload;
+		finals = undefined;
+		finalsError = false;
+		activeFinal = undefined;
+		if (!term || !jwt_token || !processedData) return;
+		let current = true;
+		session.loadFinals(term).then(
+			(data) => {
+				if (current && session.active) finals = data;
+			},
+			(error) => {
+				if (!current || !session.active) return;
+				console.error('Failed to load final exams:', error);
+				finalsError = true;
+			}
+		);
+		return () => {
+			current = false;
+		};
+	});
 	// Terms whose preference refresh already ran on this page. A failed refresh
 	// is not recorded in the session, and this set stops an endless retry.
 	const refreshTried = new SvelteSet<string>();
@@ -210,6 +242,11 @@
 	});
 
 	function selectCalendarEvent(item: { course: Course; meeting: MeetingTime }) {
+		const exam = finals?.finals.find((exam) => `final:${exam.id}` === item.meeting.id);
+		if (exam) {
+			activeFinal = exam;
+			return;
+		}
 		const occurrence = savedData.occurrences.find(
 			(occurrence) => occurrence.id === item.meeting.id
 		);
@@ -744,6 +781,12 @@
 			onownselect={selectCalendarEvent}
 		/>
 	{:else}
+		{#if finalsError}
+			<p role="status" class="text-sm text-on-surface-variant">
+				Could not load final exams.
+				<Button variant="text" onclick={() => finalsReload++}>Retry</Button>
+			</p>
+		{/if}
 		{#if processedData}
 			{#if !historicSchedule}<WeekNavigation bind:week={ui.week} />{/if}
 			<ConnectedButtons>
@@ -824,4 +867,38 @@
 		onclose={closeEditor}
 		onsave={saveEventPreferences}
 	/>
+{/if}
+
+{#if activeFinal}
+	<Dialog
+		bind:open={
+			() => Boolean(activeFinal),
+			(open) => {
+				if (!open) activeFinal = undefined;
+			}
+		}
+		headline="Final exam details"
+		role="dialog"
+		aria-label="Final exam details"
+		closedby="closerequest"
+	>
+		{#snippet buttons()}
+			<Button variant="text" onclick={() => (activeFinal = undefined)}>Close</Button>
+		{/snippet}
+		<div class="gap-3 min-w-0 flex flex-col break-words">
+			<h3 class="text-lg font-medium">{activeFinal.course}</h3>
+			<p>{dateLabel(activeFinal.date)}, {activeFinal.date.slice(0, 4)}</p>
+			<p>
+				{formatTime(activeFinal.start_time, militaryTime)} - {formatTime(
+					activeFinal.end_time,
+					militaryTime
+				)}
+			</p>
+			<p>Location: {activeFinal.location_name || activeFinal.location || 'Not provided'}</p>
+			{#if activeFinal.location && activeFinal.location !== activeFinal.location_name}
+				<p>Room: {activeFinal.location}</p>
+			{/if}
+			<p>CRN: {activeFinal.crn}</p>
+		</div>
+	</Dialog>
 {/if}
