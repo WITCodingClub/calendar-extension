@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Button, SelectOutlined } from 'm3-svelte';
+	import { Button } from 'm3-svelte';
+	import SelectOutlined from '$lib/components/ui/SelectOutlined.svelte';
 	import { untrack } from 'svelte';
 	import DateField from '$lib/components/ui/DateField.svelte';
 	import { CAMPUS_TIME_ZONE, campusDate, formatCampusDate, todayDate } from '$lib/datetime';

@@ -1,14 +1,8 @@
 <script lang="ts">
 	import DateField from '$lib/components/ui/DateField.svelte';
 	import { ADD_PERSON_ICON } from '$lib/icons';
-	import {
-		Button,
-		Checkbox,
-		ListItem,
-		SelectOutlined,
-		TextFieldOutlined,
-		VariableTabs
-	} from 'm3-svelte';
+	import { Button, Checkbox, ListItem, TextFieldOutlined, VariableTabs } from 'm3-svelte';
+	import SelectOutlined from '$lib/components/ui/SelectOutlined.svelte';
 	import {
 		CAMPUS_TIME_ZONE,
 		calendarDateTime,
