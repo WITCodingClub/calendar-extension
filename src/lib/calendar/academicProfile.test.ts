@@ -40,7 +40,7 @@ afterEach(() => {
 it('opens Student Profile and reads HTML in the loaded page', async () => {
 	const browser = setup();
 	expect(await fetchAcademicProfile()).toEqual({ program: 'Computer Science' });
-	expect(createWitTab).toHaveBeenCalledWith(STUDENT_PROFILE_URL);
+	expect(createWitTab).toHaveBeenCalledWith(STUDENT_PROFILE_URL, false);
 	expect(browser.scripting.executeScript).toHaveBeenCalledWith({
 		target: { tabId: 7 },
 		world: 'MAIN',
@@ -52,18 +52,22 @@ it('opens Student Profile and reads HTML in the loaded page', async () => {
 it('reuses an existing profile tab without closing it', async () => {
 	const browser = setup();
 	browser.tabs.query.mockResolvedValue([
-		{ id: 7, url: STUDENT_PROFILE_URL.replace(/#$/, '') } as chrome.tabs.Tab
+		{ id: 7, url: STUDENT_PROFILE_URL.replace(/#$/, ''), active: false } as chrome.tabs.Tab
 	]);
 	await fetchAcademicProfile();
+	expect(browser.tabs.query).toHaveBeenCalledWith({ url: STUDENT_PROFILE_URL.replace(/#$/, '') });
 	expect(createWitTab).not.toHaveBeenCalled();
 	expect(browser.tabs.remove).not.toHaveBeenCalled();
 });
 
-it('preserves a login redirect without injecting', async () => {
+it('closes a background login redirect and returns an actionable sign-in URL without injecting', async () => {
 	const browser = setup('https://selfservice.wit.edu/StudentSelfService/login');
-	await expect(fetchAcademicProfile()).rejects.toThrow('log in to LeopardWeb');
+	await expect(fetchAcademicProfile()).rejects.toMatchObject({
+		name: 'StudentPageAuthError',
+		url: STUDENT_PROFILE_URL
+	});
 	expect(browser.scripting.executeScript).not.toHaveBeenCalled();
-	expect(browser.tabs.remove).not.toHaveBeenCalled();
+	expect(browser.tabs.remove).toHaveBeenCalledWith(7);
 });
 
 it('times out a stalled tab and removes listeners and the owned tab', async () => {

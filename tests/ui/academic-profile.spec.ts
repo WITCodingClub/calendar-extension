@@ -1,6 +1,7 @@
 import { test, expect } from './extension.fixture';
-import { lookupAcademicProfile } from '../../src/lib/calendar/academicProfile';
-import { chooseRadio } from './helpers';
+import { lookupAcademicProfile, STUDENT_PROFILE_URL } from '../../src/lib/calendar/academicProfile';
+import { STUDENT_GRADES_URL } from '../../src/lib/calendar/courseOutcomes';
+import { chooseRadio, fitsViewport } from './helpers';
 import { origin } from './backend';
 
 test('backfill flags load once across panel navigation and reload for a changed session', async ({
@@ -24,7 +25,7 @@ test('backfill flags load once across panel navigation and reload for a changed 
 		.toBe(2);
 });
 
-test('a failed backfill-state read retries when the panel opens again', async ({ extension }) => {
+test('a failed backfill-state read recovers through Retry', async ({ extension }) => {
 	let fail = true;
 	await extension.context.route(`${origin}/api/user/backfills`, async (route) => {
 		if (!fail) return route.fallback();
@@ -32,13 +33,15 @@ test('a failed backfill-state read retries when the panel opens again', async ({
 		await route.fulfill({ status: 503, json: { error: 'Backfill state unavailable' } });
 	});
 	await extension.open('settings');
-	await expect(
-		extension.page.getByText(/Academic data backfill did not finish: Backfill state unavailable/)
-	).toBeVisible();
-	await extension.page.reload();
+	const notice = extension.page
+		.getByRole('status')
+		.filter({ hasText: 'Course history and academic sync did not finish.' });
+	await expect(notice).toContainText('Backfill state unavailable');
+	await notice.getByRole('button', { name: 'Retry', exact: true }).click();
 	await expect
 		.poll(() => extension.network.filter((row) => row.path === '/api/user/backfills').length)
 		.toBe(1);
+	await expect(notice).not.toBeVisible();
 });
 
 const rows = [
@@ -81,6 +84,100 @@ const expected = {
 		}
 	]
 };
+
+test('grade AJAX sign-in failures recover through Sign in and Retry without replacing user tabs', async ({
+	extension
+}) => {
+	const { context, page, worker } = extension;
+	extension.allowedProbeHosts.add('selfservice.wit.edu');
+	const writes: string[] = [];
+	const state = {
+		past_terms: { completed: true, completed_at: '2026-10-06T16:00:00Z' },
+		academic_data: { completed: false, completed_at: null as string | null }
+	};
+	await context.route(`${origin}/api/user/backfills`, async (route) => {
+		if (route.request().method() !== 'GET') return route.fallback();
+		await route.fulfill({ json: state });
+	});
+	for (const path of ['academic_profile', 'backfills/academic_data']) {
+		await context.route(`${origin}/api/user/${path}`, async (route) => {
+			if (route.request().method() !== 'PUT') return route.fallback();
+			writes.push(path);
+			if (path === 'backfills/academic_data')
+				state.academic_data = { completed: true, completed_at: '2026-10-06T16:00:00Z' };
+			const body = route.request().postDataJSON();
+			if (path === 'academic_profile') expect(body).toEqual(expected);
+			await route.fulfill({
+				json:
+					path === 'academic_profile'
+						? {
+								...expected,
+								programs: expected.programs.map((program) => ({ ...program, matched: true }))
+							}
+						: state
+			});
+		});
+	}
+	await context.route(STUDENT_PROFILE_URL.split('#')[0], async (route) => {
+		if (route.request().method() !== 'GET') return route.fallback();
+		await route.fulfill({ contentType: 'text/html', body: html() });
+	});
+	let gradeVisits = 0;
+	await context.route(STUDENT_GRADES_URL, async (route) => {
+		if (route.request().method() !== 'GET') return route.fallback();
+		gradeVisits++;
+		await route.fulfill({
+			contentType: 'text/html',
+			body: `<h1>${gradeVisits > 1 ? 'Synthetic sign-in complete' : 'Student Grades'}</h1>`
+		});
+	});
+	await context.route(
+		'https://selfservice.wit.edu/StudentSelfService/studentGrades/*',
+		async (route) => {
+			const name = new URL(route.request().url()).pathname.split('/').at(-1);
+			if (
+				route.request().method() !== 'GET' ||
+				!['term', 'level', 'gpa', 'courses'].includes(name!)
+			)
+				return route.fallback();
+			await route.fulfill({
+				status: gradeVisits === 1 ? 401 : 200,
+				json: name === 'courses' ? { success: true, totalCount: 0, pageOffset: '0', data: [] } : {}
+			});
+		}
+	);
+	const profile = await context.newPage();
+	await profile.goto(STUDENT_PROFILE_URL);
+	const grades = await context.newPage();
+	await grades.goto(STUDENT_GRADES_URL);
+	const initialTabs = context.pages();
+	await page.bringToFront();
+	await page.setViewportSize({ width: 320, height: 900 });
+	await extension.open('settings');
+	const notice = page
+		.getByRole('status')
+		.filter({ hasText: 'Course history and academic sync did not finish.' });
+	await expect(notice).toBeVisible();
+	await fitsViewport(page, notice);
+	expect(writes).toEqual([]);
+	expect(
+		await worker.evaluate(async () =>
+			(await chrome.tabs.query({ active: true })).map((tab) => tab.url)
+		)
+	).toEqual([`${extension.baseUrl}/settings.html`]);
+	await notice.getByRole('button', { name: 'Sign in to LeopardWeb', exact: true }).click();
+	await expect(grades.getByRole('heading', { name: 'Synthetic sign-in complete' })).toBeVisible();
+	await expect(notice).toContainText('After signing in, return here and select Retry.');
+	await page.bringToFront();
+	await notice.getByRole('button', { name: 'Retry', exact: true }).click();
+	await expect.poll(() => writes).toEqual(['academic_profile', 'backfills/academic_data']);
+	await expect(notice).not.toBeVisible();
+	expect(context.pages()).toEqual(initialTabs);
+	expect(profile.isClosed() || grades.isClosed()).toBe(false);
+	await expect(profile).toHaveURL(STUDENT_PROFILE_URL);
+	await expect(grades).toHaveURL(STUDENT_GRADES_URL);
+	expect(extension.proxyDenied).toContain('selfservice.wit.edu');
+});
 
 test('extracts a private-field-free profile despite an empty secondary placeholder', async ({
 	extension

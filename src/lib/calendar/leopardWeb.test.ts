@@ -2,13 +2,16 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { importSchedule, REGISTRATION_HISTORY_URL } from './leopardWeb';
 import { backfillAcademicData } from './academicSync';
 import { API } from '../api';
-import { snackbar } from 'm3-svelte';
+import { get } from 'svelte/store';
+import { getCourseSync } from '../panel/courseSync';
 import type { PanelSession } from '../panel/session';
 
 vi.mock('../api', () => ({
 	API: { processCourses: vi.fn(), userSettings: vi.fn(async () => ({})) }
 }));
-vi.mock('./academicSync', () => ({ backfillAcademicData: vi.fn(async () => ({ warnings: [] })) }));
+vi.mock('./academicSync', () => ({
+	backfillAcademicData: vi.fn(async () => ({ complete: true, warnings: [] }))
+}));
 vi.mock('m3-svelte', () => ({ snackbar: vi.fn() }));
 vi.mock('../stores', () => ({ enrolledTerms: { set: vi.fn() } }));
 
@@ -68,10 +71,6 @@ it('reports academic failures without losing the imported course response', asyn
 	} as unknown as PanelSession;
 	await expect(importSchedule(session, '202710')).resolves.toMatchObject({ termId: '202710' });
 	await vi.waitFor(() =>
-		expect(snackbar).toHaveBeenCalledWith(
-			expect.stringContaining('Courses imported'),
-			undefined,
-			true
-		)
+		expect(get(getCourseSync(session)).message).toContain('Profile save failed')
 	);
 });

@@ -30,25 +30,50 @@ beforeEach(() => {
 	});
 });
 
-it('previews the sanitized payload before sending both datasets', async () => {
-	const preview = vi.fn();
+it('sends both datasets and reports successful completion', async () => {
 	const active = () => true;
-	const result = await syncAcademicData(active, preview);
-	expect(preview).toHaveBeenCalledWith({ profile, outcomes, warnings: [] });
+	const result = await syncAcademicData(active);
 	expect(API.saveAcademicProfile).toHaveBeenCalledWith(profile);
 	expect(API.saveCourseOutcomes).toHaveBeenCalledWith(outcomes, active);
-	expect(preview.mock.invocationCallOrder[0]).toBeLessThan(
-		vi.mocked(API.saveAcademicProfile).mock.invocationCallOrder[0]
-	);
 	expect(result?.warnings).toEqual([]);
 	expect(result?.complete).toBe(true);
 });
 
-it('keeps collected data available when sending fails', async () => {
-	const preview = vi.fn();
+it.each(['Graduate', 'Undergraduate / Graduate', null, ''])(
+	'rejects unsupported or unknown profile level %s before collecting or saving',
+	async (level) => {
+		vi.mocked(fetchAcademicProfile).mockResolvedValue({ ...profile, level });
+		await expect(syncAcademicData(() => true)).rejects.toThrow('undergraduate records only');
+		expect(fetchCourseOutcomes).not.toHaveBeenCalled();
+		expect(API.saveAcademicProfile).not.toHaveBeenCalled();
+		expect(API.saveCourseOutcomes).not.toHaveBeenCalled();
+	}
+);
+
+it('rejects mixed undergraduate and graduate programs before saving a partial result', async () => {
+	vi.mocked(fetchAcademicProfile).mockResolvedValue({
+		...profile,
+		programs: ['Bachelor of Science', 'Master of Science'].map((degree) => ({
+			role: 'major',
+			code: null,
+			name: 'Computer Science',
+			degree,
+			college: null,
+			department: null,
+			concentration: null,
+			study_path: null,
+			catalog_term: null
+		}))
+	});
+	await expect(syncAcademicData(() => true)).rejects.toThrow('undergraduate records only');
+	expect(fetchCourseOutcomes).not.toHaveBeenCalled();
+	expect(API.saveAcademicProfile).not.toHaveBeenCalled();
+	expect(API.saveCourseOutcomes).not.toHaveBeenCalled();
+});
+
+it('stops sending when the profile save fails', async () => {
 	vi.mocked(API.saveAcademicProfile).mockRejectedValueOnce(new Error('Backend unavailable'));
-	await expect(syncAcademicData(() => true, preview)).rejects.toThrow('Backend unavailable');
-	expect(preview).toHaveBeenCalled();
+	await expect(syncAcademicData(() => true)).rejects.toThrow('Backend unavailable');
 	expect(API.saveCourseOutcomes).not.toHaveBeenCalled();
 });
 
@@ -97,6 +122,6 @@ it('reports unknown enrollments and unmatched programs without marking completio
 	expect(result?.complete).toBe(false);
 	expect(result?.warnings).toEqual([
 		expect.stringContaining('could not be matched'),
-		expect.stringContaining('have not been processed')
+		expect.stringContaining('Fetch your courses, then select Retry.')
 	]);
 });

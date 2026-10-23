@@ -3,6 +3,20 @@ import { createWitTab } from '../browser/tabs';
 export const STUDENT_PROFILE_URL =
 	'https://selfservice.wit.edu/StudentSelfService/studentProfile/studentProfile#';
 
+export class StudentPageAuthError extends Error {
+	constructor(readonly url: string) {
+		super('Please sign in to LeopardWeb and try syncing your academic data again.');
+		this.name = 'StudentPageAuthError';
+	}
+}
+
+export async function openStudentSignIn(url: string): Promise<chrome.tabs.Tab | undefined> {
+	const [tab] = await chrome.tabs.query({ url: url.split('#')[0], currentWindow: true });
+	return tab?.id != null
+		? chrome.tabs.update(tab.id, { url, active: true })
+		: createWitTab(url, true);
+}
+
 export type AcademicProfile = {
 	source: 'leopardweb' | 'student';
 	level: string | null;
@@ -138,24 +152,55 @@ export async function lookupAcademicProfile(): Promise<
 export async function fetchAcademicProfile(
 	active: () => boolean = () => true
 ): Promise<AcademicProfile | undefined> {
-	return (await readStudentPage(STUDENT_PROFILE_URL, lookupAcademicProfile, active))?.profile;
+	return (
+		await readStudentPage<{ profile: AcademicProfile }>(
+			STUDENT_PROFILE_URL,
+			lookupAcademicProfile,
+			active
+		)
+	)?.profile;
 }
 
 export async function readStudentPage<T extends object>(
 	url: string,
-	lookup: () => Promise<T | { error: string }>,
+	lookup: () => Promise<T | { error: string; loginRequired?: boolean }>,
+	active: () => boolean
+): Promise<T | undefined> {
+	return withStudentPage(
+		url,
+		async (tabId) => {
+			const results = await chrome.scripting.executeScript({
+				target: { tabId },
+				world: 'MAIN',
+				func: lookup
+			});
+			if (!active()) return;
+			const result = results[0]?.result;
+			if (result && 'error' in result && result.loginRequired) throw new StudentPageAuthError(url);
+			if (!result || 'error' in result)
+				throw new Error(result?.error || 'LeopardWeb did not return academic data. Try again.');
+			return result;
+		},
+		active
+	);
+}
+
+export async function withStudentPage<T>(
+	url: string,
+	work: (tabId: number) => Promise<T>,
 	active: () => boolean
 ): Promise<T | undefined> {
 	if (!active()) return;
-	const [current] = await chrome.tabs.query({ active: true, currentWindow: true });
-	if (!active()) return;
 	const isProfile = (candidate?: string) => candidate?.split('#')[0] === url.split('#')[0];
-	const owned = !isProfile(current?.url);
-	const tab = owned ? await createWitTab(url) : current;
+	const tabs = await chrome.tabs.query({ url: url.split('#')[0] });
+	if (!active()) return;
+	const current = tabs.find((tab) => isProfile(tab.url));
+	const owned = !current;
+	const tab = owned ? await createWitTab(url, false) : current;
 	if (tab?.id == null) throw new Error('Could not open the LeopardWeb student profile. Try again.');
 	const tabId = tab.id;
-	let keepLogin = false;
 	try {
+		if (!active()) return;
 		await new Promise<void>((resolve, reject) => {
 			const cleanup = () => {
 				clearTimeout(timeout);
@@ -195,23 +240,13 @@ export async function readStudentPage<T extends object>(
 		});
 		if (!active()) return;
 		const loaded = await chrome.tabs.get(tabId);
-		if (!isProfile(loaded.url)) {
-			keepLogin = true;
-			throw new Error(
-				'Please log in to LeopardWeb (selfservice.wit.edu) and try importing your academic profile again.'
-			);
-		}
-		const results = await chrome.scripting.executeScript({
-			target: { tabId },
-			world: 'MAIN',
-			func: lookup
-		});
 		if (!active()) return;
-		const result = results[0]?.result;
-		if (!result || 'error' in result)
-			throw new Error(result?.error || 'LeopardWeb did not return an academic profile. Try again.');
-		return result;
+		if (!isProfile(loaded.url)) {
+			throw new StudentPageAuthError(url);
+		}
+		const result = await work(tabId);
+		return active() ? result : undefined;
 	} finally {
-		if (owned && !keepLogin) await chrome.tabs.remove(tabId).catch(() => undefined);
+		if (owned) await chrome.tabs.remove(tabId).catch(() => undefined);
 	}
 }

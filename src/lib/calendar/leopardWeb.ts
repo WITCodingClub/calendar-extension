@@ -3,8 +3,7 @@ import { createWitTab } from '../browser/tabs';
 import type { PanelSession } from '../panel/session';
 import { enrolledTerms } from '../stores';
 import type { ProcessingTerm } from '../types';
-import { backfillAcademicData } from './academicSync';
-import { snackbar } from 'm3-svelte';
+import { getCourseSync } from '../panel/courseSync';
 
 export const REGISTRATION_HISTORY_URL =
 	'https://selfservice.wit.edu/StudentRegistrationSsb/ssb/registrationHistory/registrationHistory';
@@ -219,21 +218,7 @@ export async function importSchedule(
 					if (closeImportTab) await chrome.tabs.remove(importTabId).catch(() => {});
 				});
 		}
-		void otherTerms
-			.then(async () => {
-				if (!session.active) return;
-				const result = await backfillAcademicData(session.backfills, () => session.active, true);
-				if (session.active && result?.warnings.length)
-					snackbar(result.warnings.join(' '), undefined, true);
-			})
-			.catch((error) => {
-				if (session.active)
-					snackbar(
-						`Courses imported, but academic data could not be sent: ${error instanceof Error ? error.message : 'Try again in Settings.'}`,
-						undefined,
-						true
-					);
-			});
+		void otherTerms.then(() => getCourseSync(session).run(true));
 
 		if (typeof response === 'string') {
 			return { ics_url: response, termId: usedTermId };

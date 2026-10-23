@@ -6,9 +6,10 @@
 	import { PanelSession, setPanelSession } from '$lib/panel/session';
 	import { PanelSettings, setPanelSettings } from '$lib/panel/settings';
 	import { resetStores } from '$lib/stores';
-	import { getUsableJwt, AuthError } from '$lib/auth/session';
-	import { backfillAcademicData } from '$lib/calendar/academicSync';
-	import { snackbar } from 'm3-svelte';
+	import { getUsableJwt } from '$lib/auth/session';
+	import { Button } from 'm3-svelte';
+	import { getCourseSync } from '$lib/panel/courseSync';
+	import { openStudentSignIn } from '$lib/calendar/academicProfile';
 
 	let { children } = $props();
 
@@ -41,21 +42,15 @@
 	let settings: PanelSettings | undefined;
 	setPanelSettings(() => (settings ??= new PanelSettings()));
 
+	const courseSync = $derived.by(() => {
+		void generation;
+		return getCourseSync((session ??= new PanelSession()));
+	});
+
 	async function startBackfills() {
 		const current = (session ??= new PanelSession());
-		try {
-			if (!(await getUsableJwt()) || !current.active) return;
-			const result = await backfillAcademicData(current.backfills, () => current.active);
-			if (current.active && result?.warnings.length)
-				snackbar(result.warnings.join(' '), undefined, true);
-		} catch (error) {
-			if (current.active && !(error instanceof AuthError))
-				snackbar(
-					`Academic data backfill did not finish: ${error instanceof Error ? error.message : 'Try reopening the panel.'}`,
-					undefined,
-					true
-				);
-		}
+		if (!(await getUsableJwt()) || !current.active) return;
+		await getCourseSync(current).run();
 	}
 
 	onMount(() => {
@@ -93,6 +88,41 @@
 	});
 </script>
 
+{#if $courseSync.message}
+	<div class="sync-recovery" role="status">
+		<p>{$courseSync.message}</p>
+		{#if $courseSync.loginUrl}
+			<p>After signing in, return here and select Retry.</p>
+			<Button variant="text" onclick={() => openStudentSignIn($courseSync.loginUrl!)}>
+				Sign in to LeopardWeb
+			</Button>
+		{/if}
+		<Button
+			variant="tonal"
+			disabled={$courseSync.running}
+			onclick={() => courseSync.run(undefined, true)}
+		>
+			{$courseSync.running ? 'Retrying…' : 'Retry'}
+		</Button>
+	</div>
+{/if}
+
 {#key generation}
 	{@render children()}
 {/key}
+
+<style>
+	.sync-recovery {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin: 1rem;
+		padding: 1rem;
+		border-radius: 1rem;
+		background: rgb(var(--m3-scheme-surface-container));
+	}
+	.sync-recovery p {
+		flex-basis: 100%;
+		margin: 0;
+	}
+</style>

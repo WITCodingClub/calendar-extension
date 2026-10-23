@@ -32,6 +32,10 @@ export class Backfills {
 		return this.#loading;
 	}
 
+	resetAttempts(): void {
+		this.#attempted.clear();
+	}
+
 	run<T extends BackfillResult>(
 		name: BackfillName,
 		work: () => Promise<T | undefined>,
@@ -40,8 +44,9 @@ export class Backfills {
 		const pending = this.#pending.get(name) as Promise<T | undefined> | undefined;
 		if (pending)
 			return force
-				? pending.then((result) =>
-						result?.complete || !this.active() ? result : this.run(name, work, true)
+				? pending.then(
+						(result) => (result?.complete || !this.active() ? result : this.run(name, work, true)),
+						() => this.run(name, work, true)
 					)
 				: pending;
 		if (!this.active() || (!force && this.#attempted.has(name))) return Promise.resolve(undefined);

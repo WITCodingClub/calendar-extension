@@ -67,14 +67,15 @@ async function witContainerId(): Promise<string | undefined> {
 	}
 }
 
-export async function createWitTab(url: string): Promise<chrome.tabs.Tab> {
+export async function createWitTab(url: string, active = true): Promise<chrome.tabs.Tab> {
 	const cookieStoreId = await witContainerId();
 	try {
 		return await chrome.tabs.create({
 			url,
+			active,
 			...(cookieStoreId ? { cookieStoreId } : {})
 		} as chrome.tabs.CreateProperties);
 	} catch {
-		return await chrome.tabs.create({ url });
+		return await chrome.tabs.create({ url, active });
 	}
 }

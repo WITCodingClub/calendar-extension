@@ -17,7 +17,10 @@ export type CourseOutcomesResult = {
 };
 export type CollectedOutcomes = { outcomes: CourseOutcomes; warnings: string[] };
 
-export async function lookupCourseOutcomes(): Promise<CollectedOutcomes | { error: string }> {
+export async function lookupCourseOutcomes(): Promise<
+	CollectedOutcomes | { error: string; loginRequired?: boolean }
+> {
+	let loginRequired = false;
 	try {
 		const token = document.querySelector('meta[name="synchronizerToken"]')?.getAttribute('content');
 		const deadline = Date.now() + 90_000;
@@ -37,8 +40,10 @@ export async function lookupCourseOutcomes(): Promise<CollectedOutcomes | { erro
 				response.status === 403 ||
 				response.redirected ||
 				!response.headers.get('content-type')?.includes('application/json')
-			)
+			) {
+				loginRequired = true;
 				throw new Error('Please log in to LeopardWeb and try loading course outcomes again.');
+			}
 			if (!response.ok)
 				throw new Error(
 					`LeopardWeb returned ${response.status} while loading course outcomes. Try again.`
@@ -79,6 +84,10 @@ export async function lookupCourseOutcomes(): Promise<CollectedOutcomes | { erro
 				if (!value || typeof value !== 'object')
 					throw new Error('LeopardWeb returned an invalid course. Try again.');
 				const row = value as Record<string, unknown>;
+				if (row.levelCode != null && row.levelCode !== 'UG')
+					throw new Error(
+						'Course outcomes currently support undergraduate records only. Your academic data sync was not completed; saved outcomes were preserved.'
+					);
 				const term = String(row.termCode ?? '').trim();
 				const crn = String(row.courseReferenceNumber ?? '').trim();
 				if (!/^\d{6}$/.test(term) || !/^\d{1,10}$/.test(crn) || seen.has(`${term}:${crn}`))
@@ -122,6 +131,7 @@ export async function lookupCourseOutcomes(): Promise<CollectedOutcomes | { erro
 		};
 	} catch (error) {
 		return {
+			...(loginRequired ? { loginRequired } : {}),
 			error:
 				error instanceof Error && error.name === 'Error'
 					? error.message

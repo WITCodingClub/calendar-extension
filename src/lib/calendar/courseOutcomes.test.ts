@@ -110,6 +110,14 @@ it('omits an entire term with unsupported grades to preserve its stored outcomes
 	});
 });
 
+it('rejects non-undergraduate rows on a later page without returning partial outcomes', async () => {
+	setup([course(1, 'B-', { levelCode: 'UG' }), course(2, 'A', { levelCode: 'GR' })], 1);
+	expect(await lookupCourseOutcomes()).toEqual({
+		error: expect.stringContaining('undergraduate records only')
+	});
+	expect(fetchMock).toHaveBeenCalledTimes(5);
+});
+
 it('accepts a response returning all thirteen records despite a page size of ten', async () => {
 	setup(
 		Array.from({ length: 13 }, (_, index) => course(index + 1, 'B-')),
@@ -134,13 +142,22 @@ it.each([
 
 it.each([401, 403, 500])('does not continue after LeopardWeb returns %s', async (status) => {
 	fetchMock.mockResolvedValue(json({}, status));
-	expect(await lookupCourseOutcomes()).toEqual({ error: expect.any(String) });
+	expect(await lookupCourseOutcomes()).toEqual({
+		error: expect.any(String),
+		...(status === 401 || status === 403 ? { loginRequired: true } : {})
+	});
 	expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
-it('rejects a redirected or HTML login response', async () => {
-	fetchMock.mockResolvedValue(
-		new Response('<form>Sign in</form>', { headers: { 'content-type': 'text/html' } })
-	);
-	expect(await lookupCourseOutcomes()).toEqual({ error: expect.stringContaining('log in') });
+it.each(['redirect', 'html'])('flags a %s login response as requiring sign-in', async (kind) => {
+	const response =
+		kind === 'html'
+			? new Response('<form>Sign in</form>', { headers: { 'content-type': 'text/html' } })
+			: json({});
+	if (kind === 'redirect') Object.defineProperty(response, 'redirected', { value: true });
+	fetchMock.mockResolvedValue(response);
+	expect(await lookupCourseOutcomes()).toEqual({
+		error: expect.stringContaining('log in'),
+		loginRequired: true
+	});
 });
