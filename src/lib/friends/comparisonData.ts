@@ -1,4 +1,5 @@
 import { DAYS } from '../calendar/days';
+import { meetsOn } from '../calendar/layout';
 import { timeMinutes, weekDates, hasExpired } from '../datetime';
 import { mergeBusy } from './availability';
 import { busyEndMinutes, busyForRange, busyRangeKey } from './schedule';
@@ -55,12 +56,7 @@ export function comparisonPeople(
 							if (person.sharing === 'Full schedule' && scheduleStatus === 'loaded') {
 								for (const course of courses)
 									for (const meeting of course.meeting_times ?? []) {
-										if (
-											!meeting[day.key] ||
-											(meeting.start_date && meeting.start_date.slice(0, 10) > date) ||
-											(meeting.end_date && meeting.end_date.slice(0, 10) < date)
-										)
-											continue;
+										if (!meeting[day.key] || !meetsOn(meeting, date)) continue;
 										const start = timeMinutes(meeting.begin_time)!;
 										const end = busyEndMinutes(meeting.end_time)!;
 										if (!rawBusy.some((block) => block.start <= start && block.end >= end))
