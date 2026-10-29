@@ -35,7 +35,8 @@ export function dayClasses(date: string, selected: string[], source: ScheduleCla
 			selected.includes(item.personId) &&
 			item.days.includes(weekday) &&
 			item.startDate <= date &&
-			item.endDate >= date
+			item.endDate >= date &&
+			!item.excludedDates.includes(date)
 	);
 }
 
@@ -194,7 +195,8 @@ export function schedulingClasses(courses: Course[], personId = 'you'): Schedule
 			start: meeting.begin_time,
 			end: meeting.end_time,
 			startDate: meeting.start_date?.slice(0, 10) || '',
-			endDate: meeting.end_date?.slice(0, 10) || '9999-12-31'
+			endDate: (meeting.effective_end_date || meeting.end_date)?.slice(0, 10) || '9999-12-31',
+			excludedDates: meeting.excluded_dates ?? []
 		}))
 	);
 }

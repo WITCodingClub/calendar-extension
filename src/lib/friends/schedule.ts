@@ -9,6 +9,8 @@ type RawFriendMeeting = {
 	day_of_week?: string;
 	start_date?: string | null;
 	end_date?: string | null;
+	effective_end_date?: string | null;
+	excluded_dates?: string[];
 	monday?: boolean;
 	tuesday?: boolean;
 	wednesday?: boolean;
@@ -101,6 +103,8 @@ export function mapFriendCourses(
 					end_time: end,
 					start_date: m.start_date || c.start_date || c.term?.start_date || '',
 					end_date: m.end_date || c.end_date || c.term?.end_date || '',
+					effective_end_date: m.effective_end_date,
+					excluded_dates: m.excluded_dates,
 					location: {
 						building: {
 							name: m.location?.building?.name ?? '',
@@ -223,7 +227,7 @@ export function validateCourses(value: unknown): void {
 					: !WEEKDAYS.includes(meeting.day_of_week?.toLowerCase()))
 			)
 				throw new Error('Invalid class meeting days returned.');
-			for (const key of ['start_date', 'end_date']) {
+			for (const key of ['start_date', 'end_date', 'effective_end_date']) {
 				if (meeting[key] != null && meeting[key] !== '' && !validDate(meeting[key]))
 					throw new Error('Invalid class date returned.');
 			}
@@ -233,6 +237,12 @@ export function validateCourses(value: unknown): void {
 				meeting.start_date.slice(0, 10) > meeting.end_date.slice(0, 10)
 			)
 				throw new Error('Class start date is after its end date.');
+			if (
+				meeting.excluded_dates !== undefined &&
+				(!Array.isArray(meeting.excluded_dates) ||
+					!meeting.excluded_dates.every((date: unknown) => validDate(date)))
+			)
+				throw new Error('Invalid class excluded dates returned.');
 			if (
 				meeting.location !== undefined &&
 				(!meeting.location ||

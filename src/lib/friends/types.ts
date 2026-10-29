@@ -24,6 +24,7 @@ export type ScheduleClass = {
 	end: string;
 	startDate: string;
 	endDate: string;
+	excludedDates: string[];
 };
 export type MeetingPreferences = {
 	preset: string;

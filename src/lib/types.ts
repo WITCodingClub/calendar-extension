@@ -49,6 +49,8 @@ export interface MeetingTime {
 	end_time: string;
 	start_date: string | null;
 	end_date: string | null;
+	effective_end_date?: string | null;
+	excluded_dates?: string[];
 	location: Location;
 	monday: boolean;
 	tuesday: boolean;
