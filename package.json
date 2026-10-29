@@ -45,10 +45,15 @@
 		"typescript": "5.9.2",
 		"typescript-eslint": "8.72.0",
 		"vite": "7.3.7",
-		"vitest": "4.1.11"
+		"vitest": "4.1.12"
 	},
 	"dependencies": {
 		"@types/chrome": "0.1.27",
 		"m3-svelte": "5.12.0"
+	},
+	"overrides": {
+		"@tailwindcss/typography": {
+			"postcss-selector-parser": "6.1.5"
+		}
 	}
 }
