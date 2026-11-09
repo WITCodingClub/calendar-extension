@@ -175,6 +175,7 @@ export function responseFor(
 			case '/api/friends':
 				return { friends };
 			case '/api/friends/groups':
+			case '/api/friends/shared_groups':
 				return { groups: [] };
 			case '/api/meeting_links':
 				return { meeting_links: [] };

@@ -9,7 +9,7 @@ import type {
 	ProcessedEvents,
 	TermResponse
 } from '../types';
-import type { FriendGroup } from '../friends/types';
+import type { FriendGroup, SharedFriendGroup } from '../friends/types';
 import type { SavedMeetingsResponse } from '../friends/savedMeetings';
 import { busyRangeKey, type BusyBlocksResponse } from '../friends/schedule';
 import { TermProcessing } from './termProcessing';
@@ -57,6 +57,7 @@ export class PanelSession {
 	requestsLoadedAt = 0;
 	meetingLinks: { links: MeetingLink[]; loadedAt: number } | undefined;
 	groups: FriendGroup[] | undefined;
+	sharedGroups: SharedFriendGroup[] | undefined;
 	readonly savedMeetings = new Map<string, SavedMeetingsResponse>();
 	readonly pendingSavedMeetings = new Map<string, Promise<SavedMeetingsResponse>>();
 	// Mapped courses by term id, then by friend id.

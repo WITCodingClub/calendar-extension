@@ -14,7 +14,7 @@ import type {
 	FriendVisibility,
 	FriendVisibilityResponse
 } from '../types';
-import type { FriendGroup } from './types';
+import type { FriendGroup, SharedFriendGroup, SharedGroupStatus } from './types';
 import { record, text, timestamp } from './validate';
 
 function identity(value: unknown): value is FriendIdentity {
@@ -242,7 +242,47 @@ function parseGroup(value: unknown): FriendGroup {
 		throw new Error('Invalid friend group returned.');
 	const members = value.members.map((member) => member.id);
 	if (new Set(members).size !== members.length) throw new Error('Invalid friend group returned.');
-	return { id: value.id, name: value.name, members, expires_at: value.expires_at as string | null };
+	return {
+		id: value.id,
+		name: value.name,
+		members,
+		expires_at: value.expires_at as string | null,
+		color: typeof value.color === 'string' ? value.color : null,
+		shared: value.shared === true
+	};
+}
+
+function parseSharedGroup(value: unknown): SharedFriendGroup {
+	if (
+		!record(value) ||
+		!text(value.id) ||
+		!text(value.name) ||
+		(value.expires_at !== null && !timestamp(value.expires_at)) ||
+		!['active', 'hidden', 'opted_out'].includes(String(value.status)) ||
+		!identity(value.owner) ||
+		!Array.isArray(value.members) ||
+		!value.members.every(identity)
+	)
+		throw new Error('Invalid shared group returned.');
+	return {
+		id: value.id,
+		name: value.name,
+		color: typeof value.color === 'string' ? value.color : null,
+		status: value.status as SharedGroupStatus,
+		owner: value.owner as FriendIdentity,
+		members: value.members as FriendIdentity[],
+		expires_at: value.expires_at as string | null
+	};
+}
+
+export function sharedGroup(value: unknown): SharedFriendGroup {
+	return parseSharedGroup((value as { group?: unknown } | null)?.group);
+}
+
+export function sharedGroups(value: unknown): SharedFriendGroup[] {
+	const groups = (value as { groups?: unknown } | null)?.groups;
+	if (!Array.isArray(groups)) throw new Error('Invalid shared groups returned.');
+	return groups.map(parseSharedGroup);
 }
 
 export function friendGroup(value: unknown): FriendGroup {

@@ -41,7 +41,9 @@ import {
 	meetingLinkCreated,
 	friendVisibility,
 	friendGroups,
-	friendGroup
+	friendGroup,
+	sharedGroups,
+	sharedGroup
 } from '../friends/parse';
 import {
 	validatedTerms,
@@ -50,7 +52,7 @@ import {
 	type BusyBlocksResponse
 } from '../friends/schedule';
 import type { PasskeySummary } from '../auth/passkeys';
-import type { FriendGroup } from '../friends/types';
+import type { FriendGroup, SharedFriendGroup, SharedGroupStatus } from '../friends/types';
 import {
 	savedMeetings,
 	savedMeetingResponse,
@@ -402,7 +404,8 @@ export class API {
 		name: string | undefined,
 		memberIds: string[] | undefined,
 		groupId?: string,
-		expiresAt?: string | null
+		expiresAt?: string | null,
+		options?: { shared?: boolean; color?: string | null }
 	): Promise<FriendGroup> {
 		return friendGroup(
 			await requestJson(
@@ -410,8 +413,30 @@ export class API {
 				'Failed to save group',
 				{
 					method: groupId ? 'PATCH' : 'POST',
-					body: { name, member_ids: memberIds, expires_at: expiresAt }
+					body: { name, member_ids: memberIds, expires_at: expiresAt, ...options }
 				}
+			)
+		);
+	}
+
+	public static async getSharedGroups(): Promise<SharedFriendGroup[]> {
+		return sharedGroups(
+			await requestJson(
+				'/friends/shared_groups?include_hidden=true',
+				'Failed to fetch shared groups'
+			)
+		);
+	}
+
+	public static async setSharedGroupStatus(
+		id: string,
+		status: SharedGroupStatus
+	): Promise<SharedFriendGroup> {
+		return sharedGroup(
+			await requestJson(
+				`/friends/shared_groups/${encodeURIComponent(id)}`,
+				'Failed to update shared group',
+				{ method: 'PATCH', body: { status } }
 			)
 		);
 	}

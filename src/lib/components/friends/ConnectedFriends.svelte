@@ -298,8 +298,17 @@
 		ui.groupsLoading = !cached;
 		ui.groupsError = '';
 		try {
-			const groups = cached ?? (await API.getFriendGroups());
+			const [groups, shared] = await Promise.all([
+				cached ?? API.getFriendGroups(),
+				(cached && session.sharedGroups) ??
+					API.getSharedGroups().catch((error) => {
+						console.error('Failed to load shared groups', error);
+						return [];
+					})
+			]);
 			if (!fresh()) return;
+			ui.sharedGroups = shared.filter((group) => !hasExpired(group.expires_at, ui.now));
+			session.sharedGroups = ui.sharedGroups;
 			const ids = session.friends && new Set(session.friends.map((friend) => friend.id));
 			ui.groups = groups
 				.filter((group) => !hasExpired(group.expires_at, ui.now))
@@ -621,9 +630,9 @@
 
 	ui.groupActions = {
 		reload: () => loadGroups(),
-		save: (name, members, id, expiresAt) =>
+		save: (name, members, id, expiresAt, options) =>
 			changeGroup(id, async () => {
-				const group = await API.saveFriendGroup(name, members, id, expiresAt);
+				const group = await API.saveFriendGroup(name, members, id, expiresAt, options);
 				if (!session.active) return;
 				ui.groups =
 					id && ui.groups.some((existing) => existing.id === id)
@@ -638,7 +647,30 @@
 				if (!session.active) return;
 				ui.groups = ui.groups.filter((group) => group.id !== id);
 				session.groups = ui.groups;
-			})
+			}),
+		setSharedStatus: async (id, status) => {
+			if (!session.active || ui.groupLoadingId) return false;
+			ui.groupLoadingId = id;
+			ui.groupsError = '';
+			try {
+				const group = await API.setSharedGroupStatus(id, status);
+				if (!session.active) return false;
+				ui.sharedGroups = ui.sharedGroups.map((item) => (item.id === id ? group : item));
+				session.sharedGroups = ui.sharedGroups;
+				return true;
+			} catch (error) {
+				console.error('Failed to update shared group', error);
+				if (!session.active) return false;
+				if (error instanceof ApiError && error.status === 404) {
+					ui.sharedGroups = ui.sharedGroups.filter((item) => item.id !== id);
+					session.sharedGroups = ui.sharedGroups;
+					ui.groupsError = 'This group is no longer shared with you.';
+				} else ui.groupsError = errorMessage('Could not update group', error, 'Try again.');
+				return false;
+			} finally {
+				if (session.active) ui.groupLoadingId = '';
+			}
+		}
 	};
 
 	ui.friendActions = {

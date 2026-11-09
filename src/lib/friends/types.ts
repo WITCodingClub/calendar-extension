@@ -11,6 +11,18 @@ export type FriendGroup = {
 	name: string;
 	members: string[];
 	expires_at: string | null;
+	color?: string | null;
+	shared?: boolean;
+};
+export type SharedGroupStatus = 'active' | 'hidden' | 'opted_out';
+export type SharedFriendGroup = {
+	id: string;
+	name: string;
+	color: string | null;
+	status: SharedGroupStatus;
+	owner: FriendIdentity;
+	members: FriendIdentity[];
+	expires_at: string | null;
 };
 export type ScheduleClass = {
 	id: string;

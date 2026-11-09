@@ -1,5 +1,6 @@
 <script lang="ts">
 	import DateField from '$lib/components/ui/DateField.svelte';
+	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
 	import { ADD_PERSON_ICON } from '$lib/icons';
 	import { Button, Checkbox, ListItem, TextFieldOutlined, VariableTabs } from 'm3-svelte';
 	import SelectOutlined from '$lib/components/ui/SelectOutlined.svelte';
@@ -42,6 +43,8 @@
 	let groupMembers = $state<string[]>([]);
 	let groupExpiryDate = $state('');
 	let initialGroupExpiryDate = $state('');
+	let groupShared = $state(false);
+	let groupColor = $state<string | null>(null);
 	let refreshing = $state(false);
 	let saveStatus = $state('No changes');
 	let pendingExpiries = $state<Record<string, { date: string }>>({});
@@ -53,6 +56,9 @@
 	);
 	const searchedMembers = $derived(
 		ui.friends.filter((person) => person.name.toLowerCase().includes(memberSearch.toLowerCase()))
+	);
+	const searchedSharedGroups = $derived(
+		ui.sharedGroups.filter((group) => group.name.toLowerCase().includes(groupSearch.toLowerCase()))
 	);
 	const searchedGroups = $derived(
 		ui.groups.filter((group) => group.name.toLowerCase().includes(groupSearch.toLowerCase()))
@@ -70,6 +76,8 @@
 		!activeGroup ||
 			groupName.trim() !== activeGroup.name ||
 			groupExpiryDate !== initialGroupExpiryDate ||
+			groupShared !== Boolean(activeGroup.shared) ||
+			groupColor !== (activeGroup.color ?? null) ||
 			groupMembers.length !== activeGroup.members.length ||
 			groupMembers.some((id) => !activeGroup.members.includes(id))
 	);
@@ -130,6 +138,8 @@
 		groupMembers = [...(group?.members ?? [])];
 		groupExpiryDate = group?.expires_at ? campusDate(group.expires_at) : '';
 		initialGroupExpiryDate = groupExpiryDate;
+		groupShared = Boolean(group?.shared);
+		groupColor = group?.color ?? null;
 		ui.groupsError = '';
 		memberSearch = '';
 		saveStatus = 'No changes';
@@ -153,7 +163,13 @@
 				return;
 			}
 		}
-		if (!(await ui.groupActions?.save(name, [...groupMembers], groupId, expiresAt))) return;
+		if (
+			!(await ui.groupActions?.save(name, [...groupMembers], groupId, expiresAt, {
+				...(groupShared !== Boolean(activeGroup?.shared) && { shared: groupShared }),
+				...(groupColor !== (activeGroup?.color ?? null) && { color: groupColor })
+			}))
+		)
+			return;
 		editingGroup = false;
 		groupId = undefined;
 	}
@@ -308,6 +324,11 @@
 	}
 </script>
 
+{#snippet groupDot(color: string | null | undefined)}<span
+		aria-hidden="true"
+		class="group-dot"
+		style:background-color={color ?? 'transparent'}
+	></span>{/snippet}
 {#snippet addIcon()}<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"
 		><path fill="currentColor" d={ADD_PERSON_ICON} /></svg
 	>{/snippet}
@@ -605,6 +626,34 @@
 					<p class="text-xs text-on-surface-variant">
 						When the end date passes, the group disappears. Your friendships remain.
 					</p>
+					<label class="gap-3 flex items-center"
+						><Checkbox
+							><input
+								type="checkbox"
+								disabled={busy || unavailableGroup}
+								bind:checked={groupShared}
+							/></Checkbox
+						><span class="text-sm">Share with the friends in this group</span></label
+					>
+					<p class="text-xs text-on-surface-variant">
+						Members see the group, the other members, and their busy times. They can hide the group
+						or opt out.
+					</p>
+					<label class="gap-3 flex items-center"
+						><Checkbox
+							><input
+								type="checkbox"
+								disabled={busy || unavailableGroup}
+								bind:checked={
+									() => groupColor !== null, (value) => (groupColor = value ? '#039be5' : null)
+								}
+							/></Checkbox
+						><span class="text-sm">Give this group a color</span></label
+					>
+					{#if groupColor !== null}<ColorPicker
+							bind:value={groupColor}
+							label="Choose group color"
+						/>{/if}
 				</section>
 				<section class="gap-3 border-outline-variant pt-4 grid border-t">
 					<h4 class="text-xs font-semibold text-primary">Members</h4>
@@ -670,7 +719,7 @@
 						>{/if}
 				</div>
 				<p class="text-sm text-on-surface-variant">
-					Only you can see your groups. No invitations are sent.
+					Only you can see your groups unless you share them. No invitations are sent.
 				</p>
 				{#if !ui.groupsLoading && !searchedGroups.length}<p role="status">
 						{groupSearch
@@ -681,11 +730,58 @@
 					{#each searchedGroups as group (group.id)}
 						<ListItem
 							headline={group.name}
-							supporting={`${group.members.length} members${group.expires_at ? ` · Ends on ${formatCampusDate(group.expires_at)}` : ''}`}
+							supporting={`${group.members.length} members${group.shared ? ' · Shared' : ''}${group.expires_at ? ` · Ends on ${formatCampusDate(group.expires_at)}` : ''}`}
 							onclick={() => editGroup(group.id)}
-						/>
+						>
+							{#snippet leading()}{@render groupDot(group.color)}{/snippet}
+						</ListItem>
 					{/each}
 				</ul>
+				{#if searchedSharedGroups.length}
+					<section class="gap-2 grid" aria-labelledby="shared-groups-title">
+						<h3 id="shared-groups-title" class="text-xs font-semibold text-primary">
+							Shared with you
+						</h3>
+						<ul class="preview-list p-0 list-none">
+							{#each searchedSharedGroups as group (group.id)}
+								<ListItem
+									headline={group.name}
+									supporting={`From ${group.owner.name} · ${group.members.length} members${group.status === 'hidden' ? ' · Hidden' : group.status === 'opted_out' ? ' · Opted out' : ''}`}
+								>
+									{#snippet leading()}{@render groupDot(group.color)}{/snippet}
+									{#snippet trailing()}
+										{#if group.status === 'active'}
+											<Button
+												variant="text"
+												disabled={busy}
+												onclick={() => void ui.groupActions?.setSharedStatus(group.id, 'hidden')}
+												>Hide</Button
+											>
+											<Button
+												variant="text"
+												disabled={busy}
+												onclick={() =>
+													confirm(
+														'Opt out of this group? The other members will no longer see you or your busy times.',
+														async () => {
+															await ui.groupActions?.setSharedStatus(group.id, 'opted_out');
+														}
+													)}>Opt out</Button
+											>
+										{:else}
+											<Button
+												variant="text"
+												disabled={busy}
+												onclick={() => void ui.groupActions?.setSharedStatus(group.id, 'active')}
+												>{group.status === 'hidden' ? 'Show' : 'Opt back in'}</Button
+											>
+										{/if}
+									{/snippet}
+								</ListItem>
+							{/each}
+						</ul>
+					</section>
+				{/if}
 			{/if}
 		{:else}
 			<div class="gap-3 flex items-center justify-between">
@@ -865,5 +961,11 @@
 	}
 	.confirmation::backdrop {
 		background: rgb(var(--m3-scheme-scrim) / 0.35);
+	}
+	.group-dot {
+		width: 0.75rem;
+		height: 0.75rem;
+		border-radius: 9999px;
+		border: 1px solid rgb(var(--m3-scheme-outline));
 	}
 </style>
