@@ -266,6 +266,7 @@
 			if (!fresh()) return;
 			ui.incomingRequests = requests.incoming;
 			ui.outgoingRequests = requests.outgoing;
+			session.requestsLoadedAt = Date.now();
 		} catch (error) {
 			console.error('Failed to load friends data', error);
 			if (!fresh()) return;
@@ -794,7 +795,7 @@
 			if (management && !managementStarted) {
 				managementStarted = true;
 				friendsLoadedAt = Date.now();
-				void loadRequests();
+				if (Date.now() - session.requestsLoadedAt >= 300_000) void loadRequests();
 				void loadGroups(true);
 			} else if (manageOpen && Date.now() - friendsLoadedAt >= 300_000) void reloadFriendsData();
 		});
