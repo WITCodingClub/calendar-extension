@@ -161,11 +161,17 @@ export const test = base.extend<{ extension: Extension }>({
 				if (!live && allowedProbeHosts.has(url.hostname) && url.pathname === '/__egress_probe__')
 					return route.continue();
 				const safePath = url.pathname
-					.replace(/(\/friends\/)(?!(?:requests|groups|meetings)(?:\/|$))[^/]+/g, '$1:friend')
+					.replace(
+						/(\/friends\/)(?!(?:requests|groups|meetings|processed_events)(?:\/|$))[^/]+/g,
+						'$1:friend'
+					)
 					.replace(/(\/meeting_times\/)[^/]+(?=\/preference)/g, '$1:event');
 				if (live) {
 					// Staging reads only. Deliberate writes need their own authorized test scope.
-					const readPost = url.pathname === '/api/meeting_times/preferences';
+					const readPost = [
+						'/api/meeting_times/preferences',
+						'/api/friends/processed_events'
+					].includes(url.pathname);
 					const readGet =
 						/^(?:\/up|\/api\/(?:v1\/catalog\/terms\/(?:current|next)|friends(?:\/requests|\/groups|\/meetings|\/[^/]+\/(?:busy_blocks|processed_events(?:\/status)?))?|meeting_links|user(?:\/(?:backfills|busy_blocks|extension_config|notifications|oauth_credentials|passkeys|feature_flags|preferences\/version|processed_events(?:\/status)?))?|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference))$/.test(
 							url.pathname

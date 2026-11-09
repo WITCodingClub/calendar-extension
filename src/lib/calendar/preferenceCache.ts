@@ -18,13 +18,15 @@ export class PreferenceCache {
 	#terms = new Map<string, { preferences: Preferences; version?: string }>();
 	#pending = new Map<string, Promise<Preferences | undefined>>();
 	#versionRequest: Promise<void> | undefined;
+	#checkedAt = 0;
 	#listeners = new Set<() => void>();
 
 	constructor(private readonly readVersion: () => Promise<string | undefined>) {}
 
 	start(): () => void {
 		this.#active = true;
-		if (this.#hasTerms) void this.checkVersion().catch(() => {});
+		if (this.#hasTerms && Date.now() - this.#checkedAt >= PREFERENCE_CHECK_INTERVAL)
+			void this.checkVersion().catch(() => {});
 		const timer = setInterval(() => {
 			if (this.#supported && this.#hasTerms) {
 				void this.checkVersion().catch(() => {
@@ -49,6 +51,7 @@ export class PreferenceCache {
 		const request = this.readVersion()
 			.then((version) => {
 				if (!this.#active) return;
+				this.#checkedAt = Date.now();
 				if (version === undefined) {
 					// Older servers keep the existing per-event read behavior.
 					this.#supported = false;

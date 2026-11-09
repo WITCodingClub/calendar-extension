@@ -109,7 +109,7 @@
 		{militaryTime}
 		version={ui.meetingVersion}
 		busy={ui.savedMeetingBusy}
-		onload={(start, end) => load(start, end, true)}
+		onload={(start, end) => load(start, end)}
 		onmeeting={(meeting, occurrence) => (ui.savedMeetingDetail = { meeting, occurrence })}
 		ondata={(value) => {
 			data = value;

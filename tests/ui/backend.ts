@@ -220,6 +220,15 @@ export function responseFor(
 		if (match) return preference(match[1]);
 	}
 	if (method === 'POST') {
+		if (path === '/api/friends/processed_events' && String(body?.term_uid) === '202610')
+			return {
+				term_uid: 202610,
+				schedules: (body?.friend_ids as string[]).map((id) =>
+					schedules[id]
+						? { friend_id: id, classes: schedules[id], notifications_disabled: false }
+						: { friend_id: id, error: 'Not friends', code: 'NOT_FRIENDS' }
+				)
+			};
 		if (path === '/api/meeting_times/preferences' && Array.isArray(body?.meeting_time_ids))
 			return {
 				version: 'a'.repeat(64),

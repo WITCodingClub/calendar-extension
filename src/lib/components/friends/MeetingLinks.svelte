@@ -15,6 +15,7 @@
 	let bookingLoading = $state(false);
 	let bookingError = $state('');
 	let bookingVersion = 0;
+	let reloadLinks = false;
 	const current = () => {
 		if (!session.active) throw new Error('The session ended. Reopen your meeting links.');
 	};
@@ -77,13 +78,22 @@
 	onbusy={(value) => (ui.linkBusy = value)}
 	onload={async () => {
 		current();
+		const cached = session.meetingLinks;
+		if (!reloadLinks && cached && Date.now() - cached.loadedAt < 300_000) {
+			reloadLinks = true;
+			links = cached.links;
+			return links;
+		}
+		reloadLinks = true;
 		const response = await API.getMeetingLinks();
 		current();
 		links = response.meeting_links;
+		session.meetingLinks = { links, loadedAt: Date.now() };
 		return links;
 	}}
 	oncreate={async (input) => {
 		current();
+		session.meetingLinks = undefined;
 		const response = await API.createMeetingLink(input);
 		current();
 		return response.meeting_link;
@@ -93,6 +103,7 @@
 		const response = await API.revokeMeetingLink(id);
 		current();
 		links = links.map((item) => (item.id === id ? response.meeting_link : item));
+		if (session.meetingLinks) session.meetingLinks.links = links;
 		return response.meeting_link;
 	}}
 	onmeeting={(id) => void openBooking(id)}
