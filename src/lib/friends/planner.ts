@@ -23,7 +23,8 @@ export function copyDraft(draft: MeetingDraft): MeetingDraft {
 		...draft,
 		period: { ...draft.period },
 		slot: { ...draft.slot },
-		destinations: [...draft.destinations]
+		destinations: [...draft.destinations],
+		repeatDays: draft.repeatDays && [...draft.repeatDays]
 	};
 }
 
@@ -43,6 +44,9 @@ export function openMeetingDraft(ui: PanelUi, period: FreePeriod, start: number,
 		destinationDefaultsPending: !saved,
 		inviteFriends: saved?.inviteFriends ?? true,
 		frequency: saved?.frequency ?? 'one_time',
+		repeatInterval: saved?.repeatInterval,
+		repeatDays: saved?.repeatDays && [...saved.repeatDays],
+		repeatUntil: saved?.repeatUntil,
 		idempotencyKey: crypto.randomUUID()
 	};
 	ui.highlightedSlot = undefined;
@@ -70,6 +74,7 @@ export function draftSummary(ui: PanelUi): PlannerDraft | null {
 					.map((person) => person.name),
 				location: draft.location,
 				frequency: draft.frequency,
+				repeatInterval: draft.repeatInterval,
 				calendar: draft.destinations.join(','),
 				invite: draft.inviteFriends
 			}

@@ -5,10 +5,14 @@
 	import { getPanelSession } from '$lib/panel/session';
 	import { API, ApiError } from '$lib/api';
 	import {
+		FREQUENCIES,
 		providerLabel,
+		repeatLabel,
 		type CalendarDestination,
+		type SavedMeeting,
 		type SavedMeetingInput
 	} from '$lib/friends/savedMeetings';
+	import { WEEKDAYS } from '$lib/calendar/days';
 	import type { MeetingDraft } from '$lib/friends/types';
 	import { processedData, termClasses, userSettings } from '$lib/stores';
 	import {
@@ -144,6 +148,18 @@
 				const start = timeMinutes(draft.slot.start)!;
 				const end = busyEndMinutes(draft.slot.end)!;
 				if (end - start > 720) throw new Error('Meetings can last up to 12 hours.');
+				const repeats = draft.frequency !== 'one_time';
+				const interval = draft.repeatInterval ?? 1;
+				if (repeats && (!Number.isInteger(interval) || interval < 1 || interval > 30))
+					throw new Error('Repeat every 1 to 30 days, weeks, or months.');
+				if (
+					repeats &&
+					draft.repeatUntil &&
+					(draft.repeatUntil < draft.slot.date ||
+						draft.repeatUntil > shiftDate(draft.slot.date, 366))
+				)
+					throw new Error('End the repeats within a year of the first meeting.');
+				const startDay = WEEKDAYS[weekDates(draft.slot.date).indexOf(draft.slot.date)];
 				const payload: SavedMeetingInput = {
 					title,
 					location,
@@ -154,6 +170,13 @@
 						end === 1440 ? '00:00' : minutesTime(end)
 					),
 					frequency: draft.frequency,
+					...(repeats && { repeat_interval: interval }),
+					...(repeats &&
+						draft.frequency === 'weekly' &&
+						draft.repeatDays?.length && {
+							repeat_days: [...new Set([startDay, ...draft.repeatDays])]
+						}),
+					...(repeats && draft.repeatUntil && { repeat_until: draft.repeatUntil }),
 					invite_friends: draft.inviteFriends,
 					destinations: [...draft.destinations]
 				};
@@ -366,9 +389,15 @@
 		bind:frequency={
 			() => draft!.frequency,
 			(value) => {
-				if (value === 'one_time' || value === 'weekly') draft!.frequency = value;
+				if (FREQUENCIES.includes(value as SavedMeeting['frequency']))
+					draft!.frequency = value as SavedMeeting['frequency'];
 			}
 		}
+		bind:repeatInterval={
+			() => draft!.repeatInterval ?? 1, (value) => (draft!.repeatInterval = value)
+		}
+		bind:repeatDays={() => draft!.repeatDays ?? [], (value) => (draft!.repeatDays = value)}
+		bind:repeatUntil={() => draft!.repeatUntil ?? '', (value) => (draft!.repeatUntil = value)}
 		bind:calendar={
 			() => draft!.destinations[0] ?? '',
 			(value) => {
@@ -443,9 +472,14 @@
 				<p>{participants.map((person) => person.name).join(', ')}</p>
 				{#if draft.location}<p>{draft.location}</p>{/if}
 				<p class="m3-font-body-small">
-					{draft.destinations.map(providerLabel).join(', ')} - {draft.frequency === 'weekly'
-						? 'Weekly through the term'
-						: 'Once'} - Invites {draft.inviteFriends ? 'on' : 'off'}
+					{draft.destinations.map(providerLabel).join(', ')} - {repeatLabel({
+						frequency: draft.frequency,
+						repeat_interval: draft.repeatInterval
+					})}{draft.frequency !== 'one_time'
+						? draft.repeatUntil
+							? ` through ${dateLabel(draft.repeatUntil)}`
+							: ' through the term'
+						: ''} - Invites {draft.inviteFriends ? 'on' : 'off'}
 				</p>
 				{#if draft.error || validation}<p class="text-error" role="alert">
 						{draft.error || validation}

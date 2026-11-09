@@ -1,8 +1,15 @@
 import { getContext, setContext } from 'svelte';
 import { API } from '../api';
 import { PreferenceCache } from '../calendar/preferenceCache';
-import type { Course, FinalsResponse, Friend, ProcessedEvents, TermResponse } from '../types';
-import type { FriendGroup } from '../friends/types';
+import type {
+	Course,
+	FinalsResponse,
+	Friend,
+	MeetingLink,
+	ProcessedEvents,
+	TermResponse
+} from '../types';
+import type { FriendGroup, SharedFriendGroup } from '../friends/types';
 import type { SavedMeetingsResponse } from '../friends/savedMeetings';
 import { busyRangeKey, type BusyBlocksResponse } from '../friends/schedule';
 import { TermProcessing } from './termProcessing';
@@ -44,10 +51,13 @@ export class PanelSession {
 	readonly refreshedTerms = new Set<string>();
 	readonly preferences = new PreferenceCache(() => API.getPreferenceVersion());
 
-	// Accepted friends. Friend requests are not kept, because they change when
-	// other users act.
+	// Accepted friends. Requests and meeting links change when other users act,
+	// so their copies are reused only for a few minutes.
 	friends: Friend[] | undefined;
+	requestsLoadedAt = 0;
+	meetingLinks: { links: MeetingLink[]; loadedAt: number } | undefined;
 	groups: FriendGroup[] | undefined;
+	sharedGroups: SharedFriendGroup[] | undefined;
 	readonly savedMeetings = new Map<string, SavedMeetingsResponse>();
 	readonly pendingSavedMeetings = new Map<string, Promise<SavedMeetingsResponse>>();
 	// Mapped courses by term id, then by friend id.

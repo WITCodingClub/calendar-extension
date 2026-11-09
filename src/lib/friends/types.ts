@@ -1,4 +1,4 @@
-import type { FriendIdentity } from '../types';
+import type { FriendIdentity, Weekday } from '../types';
 import type { CalendarDestination, SavedMeeting, SavedMeetingInput } from './savedMeetings';
 
 export type Participant = FriendIdentity & {
@@ -10,6 +10,18 @@ export type FriendGroup = {
 	id: string;
 	name: string;
 	members: string[];
+	expires_at: string | null;
+	color?: string | null;
+	shared?: boolean;
+};
+export type SharedGroupStatus = 'active' | 'hidden' | 'opted_out';
+export type SharedFriendGroup = {
+	id: string;
+	name: string;
+	color: string | null;
+	status: SharedGroupStatus;
+	owner: FriendIdentity;
+	members: FriendIdentity[];
 	expires_at: string | null;
 };
 export type ScheduleClass = {
@@ -46,6 +58,7 @@ export type PlannerDraft = MinuteRange & {
 	participantNames: string[];
 	location?: string;
 	frequency?: string;
+	repeatInterval?: number;
 	calendar?: string;
 	invite?: boolean;
 };
@@ -66,6 +79,9 @@ export type MeetingDraft = {
 	destinations: CalendarDestination[];
 	inviteFriends: boolean;
 	frequency: SavedMeeting['frequency'];
+	repeatInterval?: number;
+	repeatDays?: Weekday[];
+	repeatUntil?: string;
 	idempotencyKey: string;
 	destinationDefaultsPending?: boolean;
 	submission?: SavedMeetingInput;

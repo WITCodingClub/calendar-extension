@@ -190,3 +190,18 @@ For additional screens, a data file can contain `responses` keyed by method and 
 Response keys match the pathname regardless of query parameters. Unknown requests are blocked and reported as missing mocks; actions never write to a real backend. The built-in responses cover calendar startup and class details. Other features may need extra responses. Fonts are loaded from Google Fonts when available, so consistent rendering requires the same browser, OS, and font availability.
 
 The website repository can own copies of the config and data files; the tool does not depend on their location or the UI-test fixtures.
+
+## Ownership and API changes
+
+The extension owns `scripts/screenshot-data.js` and must update its response adapters alongside API changes. The website owns sample content, selectors, actions, and capture layout in `scripts/screenshotConfig`. Run those real scenarios before releasing:
+
+```sh
+npm run build-dev
+node scripts/screenshot.js --config ../calendar-website/scripts/screenshotConfig/config.json
+```
+
+The existing API unit suite exercises Friends loading through the real screenshot response adapters, using local sample data without the website's temporary endpoint overrides. Failures identify `scripts/screenshot-data.js` as the adapter to update. This covers the exercised Friends reads and batch schedule contract, not every future feature or website selector; run the real website scenarios above when changing those flows.
+
+Friends batch schedules are derived from the existing `responses["GET /api/friends/<id>/processed_events"]` samples, limited to the requested `friend_ids`. Every requested friend must have a sample; missing samples remain unmocked failures. An explicit `responses["POST /api/friends/processed_events"]` always replaces the derived response, including intentional empty or null responses. Unknown endpoints still fail.
+
+After deploying a release containing this adapter, the website can remove the temporary batch response added in `51e8649`/`1205606` and its empty shared-groups override. Keep the per-friend schedule samples. No website migration is required for compatibility, but retaining the batch override bypasses derivation and requires maintaining duplicate schedules. Future endpoint adaptations belong in the extension; use website response overrides for deliberate scenario-specific behavior.

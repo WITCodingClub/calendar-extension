@@ -14,6 +14,9 @@
 		get groups() {
 			return ui.groups;
 		},
+		get sharedGroups() {
+			return ui.sharedGroups;
+		},
 		get incomingRequests() {
 			return ui.incomingRequests;
 		},

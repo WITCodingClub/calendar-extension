@@ -9,7 +9,7 @@
 	} from '$lib/friends/schedule';
 	import { endOfCampusDay, hasExpired } from '$lib/datetime';
 	import { processedData as storedProcessedData, termClasses } from '$lib/stores';
-	import type { Course, SharingLevel } from '$lib/types';
+	import type { Course, FriendScheduleEntry, SharingLevel } from '$lib/types';
 	import { friendRequestErrorMessage, requestInputMessage } from '$lib/friends/parse';
 	import { getPanelSession } from '$lib/panel/session';
 	import { snackbar } from 'm3-svelte';
@@ -36,6 +36,11 @@
 	const generations: Record<string, number> = {};
 	const waiting: Array<() => void> = [];
 	let running = 0;
+	type ScheduleWaiter = {
+		resolve: (entry: FriendScheduleEntry) => void;
+		reject: (error: unknown) => void;
+	};
+	const queuedSchedules = new SvelteMap<string, Map<string, ScheduleWaiter>>();
 
 	function report(message: string) {
 		snackbar(message, undefined, true);
@@ -55,6 +60,33 @@
 			if (next) next();
 			else --running;
 		}
+	}
+
+	function loadFriendSchedule(id: string, term: string) {
+		let batch = queuedSchedules.get(term);
+		if (!batch) {
+			const pending = new SvelteMap<string, ScheduleWaiter>();
+			batch = pending;
+			queuedSchedules.set(term, pending);
+			queueMicrotask(async () => {
+				queuedSchedules.delete(term);
+				try {
+					const entries = await API.getFriendSchedules([...pending.keys()], term);
+					for (const [friendId, { resolve, reject }] of pending) {
+						const entry = entries.find((item) => item.friend_id === friendId);
+						if (!entry) reject(new Error('The schedule was missing from the response'));
+						else if (entry.code) reject(new ApiError(entry.error ?? 'Request failed', 403, entry));
+						else resolve(entry);
+					}
+				} catch (error) {
+					for (const { reject } of pending.values()) reject(error);
+				}
+			});
+		}
+		batch.get(id)?.reject(new Error('The schedule request was replaced'));
+		return new Promise<FriendScheduleEntry>((resolve, reject) =>
+			batch.set(id, { resolve, reject })
+		);
 	}
 
 	function discardBusy(id: string) {
@@ -234,6 +266,7 @@
 			if (!fresh()) return;
 			ui.incomingRequests = requests.incoming;
 			ui.outgoingRequests = requests.outgoing;
+			session.requestsLoadedAt = Date.now();
 		} catch (error) {
 			console.error('Failed to load friends data', error);
 			if (!fresh()) return;
@@ -265,8 +298,17 @@
 		ui.groupsLoading = !cached;
 		ui.groupsError = '';
 		try {
-			const groups = cached ?? (await API.getFriendGroups());
+			const [groups, shared] = await Promise.all([
+				cached ?? API.getFriendGroups(),
+				(cached && session.sharedGroups) ??
+					API.getSharedGroups().catch((error) => {
+						console.error('Failed to load shared groups', error);
+						return [];
+					})
+			]);
 			if (!fresh()) return;
+			ui.sharedGroups = shared.filter((group) => !hasExpired(group.expires_at, ui.now));
+			session.sharedGroups = ui.sharedGroups;
 			const ids = session.friends && new Set(session.friends.map((friend) => friend.id));
 			ui.groups = groups
 				.filter((group) => !hasExpired(group.expires_at, ui.now))
@@ -375,19 +417,20 @@
 		}
 		ui.scheduleStatus[term][id] = 'loading';
 		delete ui.scheduleErrors[term][id];
-		const request = withScheduleSlot(async () => {
+		const run = async () => {
 			if (!fresh()) return;
 			try {
-				const response =
-					id === 'you'
-						? await session.loadProcessedEvents(term)
-						: await API.getFriendProcessedEvents(id, term);
-				if (!fresh()) return;
 				let courses: Course[];
 				if (id === 'you') {
+					const response = await session.loadProcessedEvents(term);
+					if (!fresh()) return;
 					courses = 'classes' in response ? response.classes : [];
 					validateCourses('classes' in response ? response.classes : undefined);
-				} else courses = mapFriendCourses(response, id);
+				} else {
+					const response = await loadFriendSchedule(id, term);
+					if (!fresh()) return;
+					courses = mapFriendCourses(response, id);
+				}
 				if (!fresh()) return;
 				if (id === 'you') {
 					storedProcessedData.update((data) => [
@@ -432,7 +475,8 @@
 						);
 				report(ui.scheduleErrors[term][id]);
 			}
-		});
+		};
+		const request = id === 'you' ? withScheduleSlot(run) : run();
 		inFlight.set(key, request);
 		void request.finally(() => {
 			if (inFlight.get(key) === request) inFlight.delete(key);
@@ -586,9 +630,9 @@
 
 	ui.groupActions = {
 		reload: () => loadGroups(),
-		save: (name, members, id, expiresAt) =>
+		save: (name, members, id, expiresAt, options) =>
 			changeGroup(id, async () => {
-				const group = await API.saveFriendGroup(name, members, id, expiresAt);
+				const group = await API.saveFriendGroup(name, members, id, expiresAt, options);
 				if (!session.active) return;
 				ui.groups =
 					id && ui.groups.some((existing) => existing.id === id)
@@ -603,7 +647,30 @@
 				if (!session.active) return;
 				ui.groups = ui.groups.filter((group) => group.id !== id);
 				session.groups = ui.groups;
-			})
+			}),
+		setSharedStatus: async (id, status) => {
+			if (!session.active || ui.groupLoadingId) return false;
+			ui.groupLoadingId = id;
+			ui.groupsError = '';
+			try {
+				const group = await API.setSharedGroupStatus(id, status);
+				if (!session.active) return false;
+				ui.sharedGroups = ui.sharedGroups.map((item) => (item.id === id ? group : item));
+				session.sharedGroups = ui.sharedGroups;
+				return true;
+			} catch (error) {
+				console.error('Failed to update shared group', error);
+				if (!session.active) return false;
+				if (error instanceof ApiError && error.status === 404) {
+					ui.sharedGroups = ui.sharedGroups.filter((item) => item.id !== id);
+					session.sharedGroups = ui.sharedGroups;
+					ui.groupsError = 'This group is no longer shared with you.';
+				} else ui.groupsError = errorMessage('Could not update group', error, 'Try again.');
+				return false;
+			} finally {
+				if (session.active) ui.groupLoadingId = '';
+			}
+		}
 	};
 
 	ui.friendActions = {
@@ -760,7 +827,7 @@
 			if (management && !managementStarted) {
 				managementStarted = true;
 				friendsLoadedAt = Date.now();
-				void loadRequests();
+				if (Date.now() - session.requestsLoadedAt >= 300_000) void loadRequests();
 				void loadGroups(true);
 			} else if (manageOpen && Date.now() - friendsLoadedAt >= 300_000) void reloadFriendsData();
 		});

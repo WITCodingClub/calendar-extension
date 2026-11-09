@@ -5,6 +5,7 @@
 	import { dateLabel, shiftDate, todayDate, CAMPUS_TIME_ZONE, formatTime } from '$lib/datetime';
 	import { REFRESH_ICON } from '$lib/icons';
 	import {
+		repeatLabel,
 		savedMeetings,
 		type SavedMeeting,
 		type SavedMeetingSelectionHandler,
@@ -156,8 +157,8 @@
 						</p>
 						<p class="people m3-font-body-small">{participants(item)}</p>
 						<p class="repeat m3-font-body-small">
-							{item.frequency === 'weekly'
-								? `Weekly${item.repeat_until ? ` through ${day(item.repeat_until)}` : ''}`
+							{item.frequency !== 'one_time'
+								? `${repeatLabel(item)}${item.repeat_until ? ` through ${day(item.repeat_until)}` : ''}`
 								: 'One-time meeting'}
 						</p>
 					</div>
