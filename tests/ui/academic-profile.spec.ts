@@ -1,7 +1,7 @@
 import { test, expect } from './extension.fixture';
 import { lookupAcademicProfile, STUDENT_PROFILE_URL } from '../../src/lib/calendar/academicProfile';
 import { STUDENT_GRADES_URL } from '../../src/lib/calendar/courseOutcomes';
-import { chooseRadio, fitsViewport } from './helpers';
+import { fitsViewport } from './helpers';
 import { origin } from './backend';
 
 test('backfill flags load once across panel navigation and reload for a changed session', async ({
@@ -12,7 +12,11 @@ test('backfill flags load once across panel navigation and reload for a changed 
 	await expect
 		.poll(() => network.filter((row) => row.path === '/api/user/backfills').length)
 		.toBe(1);
-	await chooseRadio(page, 'Settings');
+	await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+	await page
+		.getByRole('navigation', { name: 'Application navigation' })
+		.getByRole('button', { name: 'Settings', exact: true })
+		.click();
 	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
 	expect(network.filter((row) => row.path === '/api/user/backfills')).toHaveLength(1);
 	await worker.evaluate(async () => {

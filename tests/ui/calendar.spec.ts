@@ -33,7 +33,11 @@ test('a queued current term is polled without opening LeopardWeb', async ({ exte
 	await expect
 		.poll(() => extension.network.filter((row) => row.totalMs === undefined))
 		.toHaveLength(0);
-	await chooseRadio(page, 'Settings');
+	await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+	await page
+		.getByRole('navigation', { name: 'Application navigation' })
+		.getByRole('button', { name: 'Settings', exact: true })
+		.click();
 	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
 	const response = page.waitForResponse(endpoint);
 	release();
@@ -44,7 +48,11 @@ test('a queued current term is polled without opening LeopardWeb', async ({ exte
 		false
 	);
 	ready = true;
-	await chooseRadio(page, 'Calendar');
+	await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+	await page
+		.getByRole('navigation', { name: 'Application navigation' })
+		.getByRole('button', { name: 'Calendar', exact: true })
+		.click();
 	await expect(page.getByRole('button', { name: /Algorithms Test/ }).first()).toBeVisible();
 	await expect(page.getByRole('status').filter({ hasText: 'Loading your calendar…' })).toHaveCount(
 		0

@@ -17,11 +17,16 @@
 	});
 </script>
 
-<PanelShell title={settings ? 'Settings' : 'Help'} tab={settings ? 'settings' : 'help'} tabs={[]}>
+<PanelShell
+	title={settings ? 'Settings' : 'Help'}
+	mode=""
+	tab={settings ? 'settings' : 'help'}
+	tabs={[]}
+>
 	{#snippet headerContent()}
 		<div class="border-outline-variant bg-surface-container-high px-4 py-3 border-t">
 			<h2 class="m-0 text-sm font-bold text-on-surface">
-				{settings ? 'Calendar preferences' : 'Information'}
+				{settings ? 'Preferences' : 'Information'}
 			</h2>
 			<p class="m-0 mt-0.5 text-xs text-on-surface-variant">
 				{settings
