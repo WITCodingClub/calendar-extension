@@ -193,8 +193,11 @@ export type BackfillState = Record<
 	{ completed: boolean; completed_at: string | null }
 >;
 
-export interface FriendProcessedEventsResponse {
-	processed_courses: RawFriendCourse[];
+export interface FriendScheduleEntry {
+	friend_id: string;
+	classes?: RawFriendCourse[];
+	code?: string;
+	error?: string;
 }
 
 export interface Professor {

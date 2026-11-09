@@ -9,7 +9,7 @@
 	} from '$lib/friends/schedule';
 	import { endOfCampusDay, hasExpired } from '$lib/datetime';
 	import { processedData as storedProcessedData, termClasses } from '$lib/stores';
-	import type { Course, SharingLevel } from '$lib/types';
+	import type { Course, FriendScheduleEntry, SharingLevel } from '$lib/types';
 	import { friendRequestErrorMessage, requestInputMessage } from '$lib/friends/parse';
 	import { getPanelSession } from '$lib/panel/session';
 	import { snackbar } from 'm3-svelte';
@@ -36,6 +36,11 @@
 	const generations: Record<string, number> = {};
 	const waiting: Array<() => void> = [];
 	let running = 0;
+	type ScheduleWaiter = {
+		resolve: (entry: FriendScheduleEntry) => void;
+		reject: (error: unknown) => void;
+	};
+	const queuedSchedules = new SvelteMap<string, Map<string, ScheduleWaiter>>();
 
 	function report(message: string) {
 		snackbar(message, undefined, true);
@@ -55,6 +60,33 @@
 			if (next) next();
 			else --running;
 		}
+	}
+
+	function loadFriendSchedule(id: string, term: string) {
+		let batch = queuedSchedules.get(term);
+		if (!batch) {
+			const pending = new SvelteMap<string, ScheduleWaiter>();
+			batch = pending;
+			queuedSchedules.set(term, pending);
+			queueMicrotask(async () => {
+				queuedSchedules.delete(term);
+				try {
+					const entries = await API.getFriendSchedules([...pending.keys()], term);
+					for (const [friendId, { resolve, reject }] of pending) {
+						const entry = entries.find((item) => item.friend_id === friendId);
+						if (!entry) reject(new Error('The schedule was missing from the response'));
+						else if (entry.code) reject(new ApiError(entry.error ?? 'Request failed', 403, entry));
+						else resolve(entry);
+					}
+				} catch (error) {
+					for (const { reject } of pending.values()) reject(error);
+				}
+			});
+		}
+		batch.get(id)?.reject(new Error('The schedule request was replaced'));
+		return new Promise<FriendScheduleEntry>((resolve, reject) =>
+			batch.set(id, { resolve, reject })
+		);
 	}
 
 	function discardBusy(id: string) {
@@ -375,19 +407,20 @@
 		}
 		ui.scheduleStatus[term][id] = 'loading';
 		delete ui.scheduleErrors[term][id];
-		const request = withScheduleSlot(async () => {
+		const run = async () => {
 			if (!fresh()) return;
 			try {
-				const response =
-					id === 'you'
-						? await session.loadProcessedEvents(term)
-						: await API.getFriendProcessedEvents(id, term);
-				if (!fresh()) return;
 				let courses: Course[];
 				if (id === 'you') {
+					const response = await session.loadProcessedEvents(term);
+					if (!fresh()) return;
 					courses = 'classes' in response ? response.classes : [];
 					validateCourses('classes' in response ? response.classes : undefined);
-				} else courses = mapFriendCourses(response, id);
+				} else {
+					const response = await loadFriendSchedule(id, term);
+					if (!fresh()) return;
+					courses = mapFriendCourses(response, id);
+				}
 				if (!fresh()) return;
 				if (id === 'you') {
 					storedProcessedData.update((data) => [
@@ -432,7 +465,8 @@
 						);
 				report(ui.scheduleErrors[term][id]);
 			}
-		});
+		};
+		const request = id === 'you' ? withScheduleSlot(run) : run();
 		inFlight.set(key, request);
 		void request.finally(() => {
 			if (inFlight.get(key) === request) inFlight.delete(key);
