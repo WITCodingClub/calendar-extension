@@ -234,3 +234,87 @@ describe('API calls that moved to new paths', () => {
 		expect(JSON.parse(String(on?.body))).toEqual({ disabled: false });
 	});
 });
+
+describe('Friends screenshot API compatibility (update scripts/screenshot-data.js on drift)', () => {
+	const maintenance = 'Friends screenshot contract changed: update scripts/screenshot-data.js';
+	const classes = [{ title: 'Linear Algebra', meeting_times: [] }];
+	const samples = {
+		'GET /api/friends': {
+			friends: [
+				{ id: 'priya', name: 'Priya' },
+				{ id: 'sam', name: 'Sam' }
+			]
+		},
+		'GET /api/friends/priya/processed_events': { classes },
+		'GET /api/friends/sam/processed_events': { classes: [] }
+	};
+
+	async function useScreenshotMocks(responses: Record<string, unknown> = samples) {
+		const { createResponses } = await vi.importActual<{
+			createResponses: (data: {
+				responses: Record<string, unknown>;
+			}) => (method: string, pathname: string, body?: unknown) => unknown;
+		}>('../../../scripts/screenshot-data.js');
+		const responseFor = createResponses({ responses });
+		fetchMock.mockImplementation(async (url, init) => {
+			const method = init?.method ?? 'GET';
+			const pathname = new URL(url).pathname;
+			const response = responseFor(
+				method,
+				pathname,
+				init?.body ? JSON.parse(String(init.body)) : null
+			);
+			if (response === undefined) throw new Error(`${maintenance}: unmocked ${method} ${pathname}`);
+			return json(response, response === null ? 404 : 200);
+		});
+		return responseFor;
+	}
+
+	it('loads Friends reads and requested schedules through the screenshot adapters', async () => {
+		await useScreenshotMocks();
+		const friends = await API.getFriends();
+		expect(friends.friends, maintenance).toEqual(samples['GET /api/friends'].friends);
+		expect(await API.getFriendGroups(), maintenance).toEqual([]);
+		expect(await API.getSharedGroups(), maintenance).toEqual([]);
+		expect(await API.getFriendRequests(), maintenance).toEqual({ incoming: [], outgoing: [] });
+		expect(await API.getMeetingLinks(), maintenance).toEqual({ meeting_links: [] });
+		expect(await API.getSavedMeetings('2026-10-01', '2026-11-01'), maintenance).toEqual({
+			meetings: [],
+			occurrences: []
+		});
+		expect(
+			await API.getFriendSchedules(
+				friends.friends.map((friend) => friend.id),
+				'202710'
+			),
+			maintenance
+		).toEqual([
+			{ friend_id: 'priya', classes },
+			{ friend_id: 'sam', classes: [] }
+		]);
+		expect(await API.getFriendSchedules(['sam'], '202710'), maintenance).toEqual([
+			{ friend_id: 'sam', classes: [] }
+		]);
+	});
+
+	it('honors explicit batch overrides before deriving schedules', async () => {
+		await useScreenshotMocks({
+			...samples,
+			'POST /api/friends/processed_events': { schedules: [] }
+		});
+		expect(await API.getFriendSchedules(['priya'], '202710'), maintenance).toEqual([]);
+		await useScreenshotMocks({ ...samples, 'POST /api/friends/processed_events': null });
+		await expect(API.getFriendSchedules(['priya'], '202710')).rejects.toMatchObject({
+			status: 404
+		});
+	});
+
+	it('keeps missing samples and unknown requests unmocked', async () => {
+		const responseFor = await useScreenshotMocks();
+		await expect(API.getFriendSchedules(['priya', 'missing'], '202710')).rejects.toThrow(
+			maintenance
+		);
+		expect(responseFor('GET', '/api/future-feature'), maintenance).toBeUndefined();
+		expect(responseFor('POST', '/api/friends/processed_events', {}), maintenance).toBeUndefined();
+	});
+});

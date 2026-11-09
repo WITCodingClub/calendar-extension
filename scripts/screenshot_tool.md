@@ -200,7 +200,7 @@ npm run build-dev
 node scripts/screenshot.js --config ../calendar-website/scripts/screenshotConfig/config.json
 ```
 
-The existing Extension UI workflow also captures website `main` after building and running UI checks. This intentionally detects API and selector drift against current website inputs; it does not publish images or modify the website repository remotely.
+The existing API unit suite exercises Friends loading through the real screenshot response adapters, using local sample data without the website's temporary endpoint overrides. Failures identify `scripts/screenshot-data.js` as the adapter to update. This covers the exercised Friends reads and batch schedule contract, not every future feature or website selector; run the real website scenarios above when changing those flows.
 
 Friends batch schedules are derived from the existing `responses["GET /api/friends/<id>/processed_events"]` samples, limited to the requested `friend_ids`. Every requested friend must have a sample; missing samples remain unmocked failures. An explicit `responses["POST /api/friends/processed_events"]` always replaces the derived response, including intentional empty or null responses. Unknown endpoints still fail.
 
