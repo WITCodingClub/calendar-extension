@@ -4,6 +4,7 @@
 	import { busyEndMinutes } from '$lib/friends/schedule';
 	import { DAYS } from '$lib/calendar/days';
 	import { dateLabel, formatTime, timeMinutes } from '$lib/datetime';
+	import { repeatLabel } from '$lib/friends/savedMeetings';
 	import OwnerStrips from './OwnerStrips.svelte';
 	import SharedClassIcon from './SharedClassIcon.svelte';
 	import type { ComparisonGridEvent } from '$lib/friends/comparison';
@@ -65,8 +66,8 @@
 								militaryTime
 							)}</span
 						>{#if item.savedMeeting}<span class="row-time m3-font-body-small"
-								>Meeting · {item.savedMeeting.meeting.frequency === 'weekly' ? 'Weekly' : 'Once'} · {item
-									.savedMeeting.meeting.role === 'owner'
+								>Meeting · {repeatLabel(item.savedMeeting.meeting)} · {item.savedMeeting.meeting
+									.role === 'owner'
 									? 'You organize'
 									: `Organized by ${item.savedMeeting.meeting.owner.name}`}</span
 							>{/if}{#if item.ownerStrips?.length}<OwnerStrips
