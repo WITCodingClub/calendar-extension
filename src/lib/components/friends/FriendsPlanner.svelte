@@ -3,7 +3,7 @@
 	import { PEOPLE_ICON, REFRESH_ICON } from '$lib/icons';
 	import { dateLabel, formatTime, minutesTime, normalizeTime, timeMinutes } from '$lib/datetime';
 	import { validDate } from '$lib/friends/schedule';
-	import { providerLabel } from '$lib/friends/savedMeetings';
+	import { providerLabel, repeatLabel, type SavedMeeting } from '$lib/friends/savedMeetings';
 	import type {
 		Participant,
 		FriendGroup,
@@ -297,7 +297,13 @@
 	function draftMeta(item: PlannerDraft) {
 		const parts: string[] = [];
 		if (item.location?.trim()) parts.push(item.location.trim());
-		if (item.frequency === 'weekly') parts.push('Weekly');
+		if (item.frequency && item.frequency !== 'one_time')
+			parts.push(
+				repeatLabel({
+					frequency: item.frequency as SavedMeeting['frequency'],
+					repeat_interval: item.repeatInterval
+				})
+			);
 		if (item.calendar) parts.push(item.calendar.split(',').map(providerLabel).join(', '));
 		if (item.invite === true) parts.push('Invites on');
 		else if (item.invite === false) parts.push('Invites off');

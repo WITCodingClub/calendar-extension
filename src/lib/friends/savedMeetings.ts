@@ -6,7 +6,7 @@ import { record, timestamp } from './validate';
 
 export type CalendarDestination = 'google' | 'microsoft' | 'ics';
 
-const FREQUENCIES = ['one_time', 'daily', 'weekly', 'monthly'] as const;
+export const FREQUENCIES = ['one_time', 'daily', 'weekly', 'monthly'] as const;
 const repeatUnits = { daily: 'day', weekly: 'week', monthly: 'month' } as const;
 
 export function repeatLabel(meeting: Pick<SavedMeeting, 'frequency' | 'repeat_interval'>) {
@@ -80,6 +80,9 @@ export type SavedMeetingInput = {
 	end_time: string;
 	friend_ids: string[];
 	frequency?: SavedMeeting['frequency'];
+	repeat_interval?: number;
+	repeat_days?: Weekday[];
+	repeat_until?: string;
 	invite_friends?: boolean;
 	destinations?: SavedMeeting['destinations'];
 };
