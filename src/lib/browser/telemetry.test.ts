@@ -4,7 +4,9 @@ vi.mock('./environment', () => ({
 	EnvironmentManager: { getBaseUrl: vi.fn(async () => 'https://calendar.example.test') }
 }));
 
-const userSettings = vi.hoisted(() => vi.fn(async (_settings?: object) => ({})));
+const userSettings = vi.hoisted(() =>
+	vi.fn<(settings?: object) => Promise<object>>(async () => ({}))
+);
 vi.mock('../api', () => ({ API: { userSettings } }));
 
 import {

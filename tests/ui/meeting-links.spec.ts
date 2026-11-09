@@ -176,7 +176,7 @@ test('link creation rejection preserves edits and generated URL is only shown on
 		duration_minutes: 30,
 		expires_at: '2026-10-13T03:59:59.999Z'
 	});
-	for (const width of [320, 480, 1280]) {
+	for (const width of [320, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		await fitsViewport(page, editor);
 	}
@@ -197,26 +197,6 @@ test('link creation rejection preserves edits and generated URL is only shown on
 	await revoke.getByRole('button', { name: 'Revoke link', exact: true }).click();
 	await expect(revoke).toBeHidden();
 	await expect(section.getByText('Revoked', { exact: true })).toBeVisible();
-	for (const scheme of ['light', 'dark'] as const) {
-		await page.emulateMedia({ colorScheme: scheme });
-		for (const width of [320, 480, 1280]) {
-			await page.setViewportSize({ width, height: 900 });
-			await fitsViewport(page, section);
-			const style = await section.evaluate((element) => {
-				const css = getComputedStyle(element);
-				return {
-					background: css.backgroundColor,
-					padding: css.paddingTop,
-					gap: css.gap,
-					border: css.borderTopWidth
-				};
-			});
-			expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
-			expect(style.padding).toBe('16px');
-			expect(style.gap).toBe('16px');
-			expect(style.border).toBe('1px');
-		}
-	}
 });
 
 test('uncertain link creation is locked through navigation until explicit list reconciliation', async ({

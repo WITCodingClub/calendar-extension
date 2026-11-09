@@ -1,14 +1,13 @@
 import { getContext, setContext } from 'svelte';
 import { API } from '../api';
 import { PreferenceCache } from '../calendar/preferenceCache';
-import type { Course, Friend, ProcessedEvents, TermResponse } from '../types';
+import type { Course, FinalsResponse, Friend, ProcessedEvents, TermResponse } from '../types';
 import type { FriendGroup } from '../friends/types';
 import type { SavedMeetingsResponse } from '../friends/savedMeetings';
 import { busyRangeKey, type BusyBlocksResponse } from '../friends/schedule';
-import { processedData, icsUrl } from '../stores';
 import { TermProcessing } from './termProcessing';
-import { get } from 'svelte/store';
 import { snackbar } from 'm3-svelte';
+import { Backfills } from './backfills';
 
 // The data that the calendar and friends pages load once. The (panel) layout
 // owns one session and keeps it while the user moves between those pages.
@@ -19,20 +18,14 @@ export class PanelSession {
 	// False after the session ended. Check it before a write to a store that
 	// outlives the session, such as userSettings.
 	active = true;
+	readonly backfills = new Backfills(API, () => this.active);
 	workspaceMounted = false;
 	ownScheduleProcessed: ((term: string) => void) | undefined;
 	readonly termProcessing = new TermProcessing(
 		API,
-		() => this.active && this.workspaceMounted,
+		() => this.active,
 		async (term) => {
 			this.invalidateOwnSchedule(term);
-			const version = this.ownScheduleVersions[term];
-			const events = await this.loadProcessedEvents(term);
-			if (!this.active || this.ownScheduleVersions[term] !== version) return;
-			processedData.update((data) => [
-				...data.filter((entry) => String(entry.termId) !== term),
-				{ termId: term, responseData: { classes: events.classes, ics_url: get(icsUrl) ?? '' } }
-			]);
 			this.ownScheduleProcessed?.(term);
 		},
 		(term, error) => {
@@ -132,12 +125,14 @@ export class PanelSession {
 
 	#terms: Promise<TermResponse> | undefined;
 	#processed = new Map<string, Promise<ProcessedEvents>>();
+	#finals = new Map<string, Promise<FinalsResponse>>();
 	readonly ownScheduleVersions: Record<string, number> = {};
 
 	invalidateOwnSchedule(term: string): void {
 		this.invalidateBusyBlocks('you');
 		this.ownScheduleVersions[term] = (this.ownScheduleVersions[term] ?? 0) + 1;
 		this.#processed.delete(term);
+		this.#finals.delete(term);
 		this.preferences.invalidateTerm(term);
 		this.refreshedTerms.delete(term);
 	}
@@ -149,6 +144,17 @@ export class PanelSession {
 			if (this.#processed.get(term) === request) this.#processed.delete(term);
 		});
 		this.#processed.set(term, request);
+		return request;
+	}
+
+	loadFinals(term: string): Promise<FinalsResponse> {
+		const cached = this.#finals.get(term);
+		if (cached) return cached;
+		const request = API.getFinals(term).catch((error) => {
+			if (this.#finals.get(term) === request) this.#finals.delete(term);
+			throw error;
+		});
+		this.#finals.set(term, request);
 		return request;
 	}
 

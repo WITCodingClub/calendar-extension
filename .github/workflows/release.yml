@@ -73,7 +73,6 @@ jobs:
             -f event_type=extension-release \
             -f "client_payload[tag]=$RELEASE_TAG"
 
-
   publish:
     name: Publish to ${{ matrix.store }}
     needs: build-and-release

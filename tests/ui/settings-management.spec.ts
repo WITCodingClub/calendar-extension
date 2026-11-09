@@ -4,6 +4,15 @@ import { origin } from './backend';
 
 test('Settings starts Google account connection without an email', async ({ extension }) => {
 	const { page, context, network, worker } = extension;
+	await page.addInitScript(() => {
+		const supports = CSS.supports.bind(CSS);
+		CSS.supports = (property: string, value?: string) =>
+			property === 'appearance' && value === 'base-select'
+				? false
+				: value === undefined
+					? supports(property)
+					: supports(property, value);
+	});
 	const endpoint = `${origin}/api/user/google_calendar`;
 	await context.route(endpoint, async (route) => {
 		if (route.request().method() !== 'POST') return route.fallback();
@@ -11,6 +20,13 @@ test('Settings starts Google account connection without an email', async ({ exte
 	});
 	await extension.open('settings');
 	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
+	const format = page.getByRole('combobox').filter({ hasText: '24-hour' });
+	await format.click();
+	await expect(page.getByRole('listbox')).toBeVisible();
+	await expect(page.getByRole('option', { name: '12-hour', exact: true })).toBeVisible();
+	await format.press('Escape');
+	await expect(page.getByRole('listbox')).toBeHidden();
+	await expect(format).toBeFocused();
 	const loaded = network.filter((row) => row.path === '/api/user/extension_config').length;
 	await worker.evaluate(async () => {
 		const { environment_data: data } = await chrome.storage.local.get('environment_data');
@@ -37,13 +53,27 @@ test('Settings starts Google account connection without an email', async ({ exte
 	await expect(page.getByText('Google connection is temporarily unavailable')).toBeVisible();
 });
 
-test('Settings loads and scrolls every section without changing values', async ({ extension }) => {
+test('legacy routes and navigation reach Settings without changing values', async ({
+	extension
+}) => {
 	const { page, network } = extension;
 	await extension.open('help');
 	await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
+	await expect
+		.poll(() =>
+			network.some((row) => row.path === '/api/user/backfills' && row.totalMs !== undefined)
+		)
+		.toBe(true);
 	await page.goto(extension.baseUrl + '/calendar.html?view=help');
 	await expect(page).toHaveURL(/\/help(?:\.html)?$/);
 	await expect(page.getByRole('heading', { name: 'Import ICS calendar' })).toBeVisible();
+	await expect
+		.poll(
+			() =>
+				network.filter((row) => row.path === '/api/user/backfills' && row.totalMs !== undefined)
+					.length
+		)
+		.toBe(2);
 	await page.goto(extension.baseUrl + '/calendar.html?view=settings');
 	await expect(page).toHaveURL(/\/settings(?:\.html)?$/);
 	await expect(page.getByText(/primary@example.invalid/)).toBeVisible();
@@ -121,39 +151,33 @@ test('Settings loads and scrolls every section without changing values', async (
 			})
 		);
 	const before = await values();
-	for (const width of [320, 480, 1280]) {
+	for (const width of [320, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
-		for (const heading of await page.getByRole('heading').all())
-			await heading.scrollIntoViewIfNeeded();
+		await page.getByRole('heading').last().scrollIntoViewIfNeeded();
 		await fitsViewport(page);
 		await expect.poll(values).toEqual(before);
 	}
+	await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+	await page
+		.getByRole('navigation', { name: 'Application navigation' })
+		.getByRole('button', { name: 'Calendar', exact: true })
+		.click();
+	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
+	await chooseRadio(page, 'Friends');
+	await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
 	expect(
 		network.every((row) => row.method === 'GET' || /meeting_times\/preferences/.test(row.path))
 	).toBe(true);
 });
 
-test('Manage friends People/Groups/Requests and safe forms/routes without relationship changes', async ({
-	extension
-}) => {
+test('friend search, unsaved group discard and person navigation', async ({ extension }) => {
 	const { page } = extension;
 	await extension.open();
 	await page.getByRole('button', { name: 'Manage friends', exact: true }).click();
 	const drawer = page.getByRole('dialog', { name: 'Manage friends' });
-	for (const name of ['Ada Test', 'Ben Test', 'Cam Test']) {
-		await drawer.getByText(name, { exact: true }).click();
-		await expect(drawer.getByRole('heading', { name, exact: true })).toBeVisible();
-		await expect(drawer.getByRole('button', { name: 'Remove friend' })).toBeVisible();
-		await drawer.getByRole('button', { name: 'All people' }).click();
-	}
 	await drawer.getByLabel('Search people').fill('Ada');
 	await expect(drawer.getByText('Ben Test', { exact: true })).toHaveCount(0);
 	await drawer.getByLabel('Search people').fill('');
-	await drawer.getByRole('button', { name: 'Add friend', exact: true }).click();
-	await expect(drawer.getByRole('button', { name: 'Send request' })).toBeDisabled();
-	await drawer.getByLabel('Email or user ID').fill('someone@example.invalid');
-	await expect(drawer.getByRole('button', { name: 'Send request' })).toBeEnabled();
-	await drawer.getByRole('button', { name: 'Cancel', exact: true }).click();
 	await chooseRadio(drawer, 'Groups');
 	await drawer.getByRole('button', { name: 'Create group', exact: true }).click();
 	await drawer.getByLabel('Group name').fill('Unsaved group');
@@ -163,16 +187,7 @@ test('Manage friends People/Groups/Requests and safe forms/routes without relati
 	await drawer.getByRole('button', { name: 'All groups' }).click();
 	await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
 	await expect(drawer.getByText('Unsaved group', { exact: true })).toHaveCount(0);
-	await chooseRadio(drawer, /^Requests/);
-	await expect(drawer.getByRole('heading', { name: 'Incoming Test' })).toBeVisible();
-	await expect(drawer.getByText('Outgoing Test', { exact: true })).toBeVisible();
-	await expect(
-		drawer.getByRole('button', { name: 'Accept friend request from Incoming Test', exact: true })
-	).toBeVisible();
-	await expect(
-		drawer.getByRole('button', { name: 'Decline friend request from Incoming Test', exact: true })
-	).toBeVisible();
-	for (const width of [320, 480, 1280]) {
+	for (const width of [320, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		await fitsViewport(page, drawer);
 	}

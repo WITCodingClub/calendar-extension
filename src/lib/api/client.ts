@@ -1,4 +1,4 @@
-import { EnvironmentManager } from '../browser/environment';
+import { ENVIRONMENTS, EnvironmentManager } from '../browser/environment';
 import { AuthError, handleUnauthorized, isUsableJwt } from '../auth/session';
 
 export class ApiError extends Error {
@@ -24,25 +24,6 @@ export async function getBaseUrl(): Promise<string> {
 export async function getJwtToken(): Promise<string | undefined> {
 	const token = await EnvironmentManager.getJwtToken();
 	return token;
-}
-
-async function authedFetch(url: string, init?: RequestInit): Promise<Response> {
-	const token = await getJwtToken();
-	if (!isUsableJwt(token)) {
-		await handleUnauthorized();
-		throw new AuthError();
-	}
-
-	const sentAuth = new Headers(init?.headers).get('Authorization');
-	const response = await fetch(url, init);
-	if (response.status === 401) {
-		const currentToken = await getJwtToken();
-		if (currentToken && sentAuth === `Bearer ${currentToken}`) {
-			await handleUnauthorized();
-		}
-		throw new AuthError();
-	}
-	return response;
 }
 
 // Reads the body of a response that must succeed. A failed response becomes
@@ -79,9 +60,16 @@ export async function request(
 	path: string,
 	{ method = 'GET', body, headers, cache }: RequestOptions = {}
 ): Promise<Response> {
-	const baseUrl = await getBaseUrl();
-	const token = await getJwtToken();
-	return authedFetch(`${baseUrl}${path}`, {
+	const snapshot = await EnvironmentManager.getEnvironmentData();
+	const environment = snapshot.current_environment;
+	const baseUrl = `${ENVIRONMENTS[environment].baseUrl}/api`;
+	const token = snapshot.jwt_tokens[environment];
+	if (!isUsableJwt(token)) {
+		await handleUnauthorized();
+		throw new AuthError();
+	}
+
+	const init: RequestInit = {
 		method,
 		...(cache ? { cache } : {}),
 		headers: {
@@ -90,7 +78,23 @@ export async function request(
 			...headers
 		},
 		...(body === undefined ? {} : { body: JSON.stringify(body) })
-	});
+	};
+	const sentAuth = new Headers(init.headers).get('Authorization');
+	const response = await fetch(`${baseUrl}${path}`, init);
+	if (response.status === 401) {
+		const current = await EnvironmentManager.getEnvironmentData();
+		const currentToken = current.jwt_tokens[environment];
+		if (
+			current.current_environment === environment &&
+			currentToken &&
+			currentToken === token &&
+			sentAuth === `Bearer ${currentToken}`
+		) {
+			await handleUnauthorized();
+		}
+		throw new AuthError();
+	}
+	return response;
 }
 
 export async function requestJson<T = unknown>(

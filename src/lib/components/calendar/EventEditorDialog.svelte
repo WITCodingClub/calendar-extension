@@ -17,10 +17,10 @@
 		Chip,
 		ConnectedButtons,
 		Dialog,
-		SelectOutlined,
 		TextFieldOutlined,
 		TextFieldOutlinedMultiline
 	} from 'm3-svelte';
+	import SelectOutlined from '$lib/components/ui/SelectOutlined.svelte';
 	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
 	import { toDropdownColor } from '$lib/calendar/colors';
 	import {

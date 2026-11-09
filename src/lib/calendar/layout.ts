@@ -32,6 +32,15 @@ export function syntheticCourse(title: string, meeting: MeetingTime): Course {
 	};
 }
 
+export function meetsOn(meeting: MeetingTime, date: string): boolean {
+	const end = meeting.effective_end_date || meeting.end_date;
+	return (
+		!(meeting.start_date && date < meeting.start_date.slice(0, 10)) &&
+		!(end && date > end.slice(0, 10)) &&
+		!meeting.excluded_dates?.includes(date)
+	);
+}
+
 export function calendarStartHour(courses: Course[]): number {
 	return Math.min(
 		8,
@@ -84,13 +93,7 @@ export function stackMeetings(
 			for (const { key, order } of DAYS) {
 				if (!meeting[key as keyof MeetingTime]) continue;
 				const date = dates[order];
-				if (
-					!historic &&
-					date &&
-					((meeting.start_date && date < meeting.start_date.slice(0, 10)) ||
-						(meeting.end_date && date > meeting.end_date.slice(0, 10)))
-				)
-					continue;
+				if (!historic && date && !meetsOn(meeting, date)) continue;
 				const startHourValue = parseInt(meeting.begin_time.split(':')[0]);
 				const startMin = parseInt(meeting.begin_time.split(':')[1]);
 				const endHour = parseInt(meeting.end_time.split(':')[0]);

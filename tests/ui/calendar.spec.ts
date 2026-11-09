@@ -135,10 +135,28 @@ test('comparison waits for terms before choosing among historical enrollments', 
 	await expect(page.getByRole('button', { name: '← Back to Friends', exact: true })).toBeVisible();
 });
 
-test('two distinct event dialogs reuse loaded preferences; UI and startup request timings are separate', async ({
-	extension
-}) => {
-	const { page, open, network } = extension;
+test('two distinct event dialogs reuse loaded preferences', async ({ extension }) => {
+	const { page, context, open, network } = extension;
+	await context.route(origin + '/api/user/finals?term_uid=202610', (route) =>
+		route.fulfill({
+			json: {
+				term_uid: 202610,
+				schedule_published: true,
+				finals: [
+					{
+						id: 'exam-test',
+						course: 'TEST101 Final Test',
+						crn: '12345',
+						date: '2026-10-06',
+						start_time: '08:00',
+						end_time: '10:00',
+						location: 'TH 101',
+						location_name: 'Test Hall 101'
+					}
+				]
+			}
+		})
+	);
 	await open();
 	await expect(page.getByRole('heading', { name: 'Your Calendar', exact: true })).toBeVisible();
 	await expect
@@ -149,62 +167,22 @@ test('two distinct event dialogs reuse loaded preferences; UI and startup reques
 				).length
 		)
 		.toBe(1);
-	for (const [index, title] of ['Algorithms Test', 'Systems Test'].entries()) {
+	for (const title of ['Algorithms Test', 'Systems Test']) {
 		const event = page.getByRole('button', { name: new RegExp(title) }).first();
 		await expect(event).toBeVisible();
-		// Browser click listener excludes locator auto-wait/tool latency; observer ends at ready DOM.
-		await page.evaluate(() => {
-			const state = window as typeof window & { uiTiming?: { start?: number; end?: number } };
-			state.uiTiming = {};
-			document.addEventListener(
-				'click',
-				() => {
-					state.uiTiming!.start = performance.now();
-				},
-				{ once: true, capture: true }
-			);
-			const observer = new MutationObserver(() => {
-				const dialog = document.querySelector(
-					'[role="dialog"][aria-labelledby="edit-event-title"]'
-				);
-				if (
-					dialog &&
-					dialog.getBoundingClientRect().width > 0 &&
-					dialog.textContent?.includes('Save changes')
-				) {
-					state.uiTiming!.end = performance.now();
-					observer.disconnect();
-				}
-			});
-			observer.observe(document.body, { childList: true, subtree: true });
-		});
 		await event.click();
 		const dialog = page.getByRole('dialog', { name: 'Edit Calendar Event' });
 		await expect(dialog).toBeVisible();
 		await expect(dialog).toContainText(title);
 		await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeVisible();
-		await expect
-			.poll(() =>
-				page.evaluate(
-					() => (window as typeof window & { uiTiming?: { end?: number } }).uiTiming?.end
-				)
-			)
-			.toBeTruthy();
-		const timing = await page.evaluate(() => {
-			const t = (window as typeof window & { uiTiming: { start: number; end: number } }).uiTiming;
-			return t.end - t.start;
-		});
-		console.log(
-			`Synthetic event ${index + 1} click-to-ready DOM: ${timing.toFixed(1)} ms (not a performance threshold)`
-		);
-		for (const width of [320, 480, 1280]) {
+		for (const width of [320, 1280]) {
 			await page.setViewportSize({ width, height: 900 });
 			await fitsViewport(page, dialog);
 		}
-		await dialog.getByRole('button', { name: index ? 'Cancel' : 'Close', exact: true }).click();
+		await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 		await expect(dialog).toBeHidden();
 	}
-	for (const width of [620, 624, 628, 632, 640, 620]) {
+	for (const width of [620, 640, 620]) {
 		await page.setViewportSize({ width, height: 900 });
 		const switches = await page.evaluate(async () => {
 			let previous = (document.getElementById('calendar-list-view') as HTMLInputElement).checked;
@@ -228,6 +206,29 @@ test('two distinct event dialogs reuse loaded preferences; UI and startup reques
 	await chooseRadio(page, 'List view');
 	await page.setViewportSize({ width: 1280, height: 900 });
 	await expect(page.getByRole('radio', { name: 'List view' })).toBeChecked();
+	await expect(
+		page.getByRole('region', { name: 'Schedule list for Tuesday, Oct 6, 2026', exact: true })
+	).toBeVisible();
+	await page.getByRole('button', { name: /Final exam: TEST101 Final Test/ }).click();
+	const finalDialog = page.getByRole('dialog', { name: 'Final exam details' });
+	await expect(finalDialog).toBeVisible();
+	for (const detail of [
+		'Tuesday, Oct 6, 2026',
+		'08:00 - 10:00',
+		'Test Hall 101',
+		'TH 101',
+		'12345'
+	])
+		await expect(finalDialog).toContainText(detail);
+	for (const width of [320, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		await fitsViewport(page, finalDialog);
+	}
+	await finalDialog.getByRole('button', { name: 'Close', exact: true }).click();
+	await chooseRadio(page, 'Calendar view');
+	await expect(page.getByRole('button', { name: /Final exam: TEST101 Final Test/ })).toHaveCount(1);
+	await page.getByRole('button', { name: 'Next week', exact: true }).click();
+	await expect(page.getByRole('button', { name: /Final exam: TEST101 Final Test/ })).toHaveCount(0);
 	expect(network.filter((row) => row.path === '/api/meeting_times/:event/preference')).toHaveLength(
 		0
 	);

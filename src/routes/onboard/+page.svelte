@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button } from 'm3-svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { AuthError, checkBetaAccess } from '$lib/auth/session';
@@ -11,9 +12,9 @@
 		try {
 			const state = await getGoogleCalendarState();
 			if (state === 'connected') {
-				goto('/calendar');
+				goto(resolve('/calendar'));
 			} else if (state === 'needs_reauth') {
-				goto('/gcalendar');
+				goto(resolve('/gcalendar'));
 			}
 		} catch (err) {
 			if (err instanceof AuthError) {
@@ -26,7 +27,7 @@
 		const stored = browser ? localStorage.getItem('isOtherCalendar') === 'true' : false;
 		console.log(stored);
 		if (stored === true) {
-			goto('/calendar');
+			goto(resolve('/calendar'));
 		}
 	}
 
@@ -38,7 +39,7 @@
 
 	async function selectGoogleCalendar() {
 		track('calendar_choice_google');
-		goto('/gcalendar');
+		goto(resolve('/gcalendar'));
 	}
 
 	async function selectAllOtherCalendars() {
@@ -47,7 +48,7 @@
 			localStorage.setItem('isOtherCalendar', 'true');
 		}
 		console.log(true);
-		goto('/calendar');
+		goto(resolve('/calendar'));
 	}
 </script>
 

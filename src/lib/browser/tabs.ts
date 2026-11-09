@@ -45,8 +45,15 @@ async function witContainerId(): Promise<string | undefined> {
 
 		const storeIds = new Set<string>();
 		for (const store of await chrome.cookies.getAllCookieStores()) storeIds.add(store.id);
-		for (const identity of (await (globalThis as any).browser?.contextualIdentities?.query({})) ??
-			[]) {
+		for (const identity of (await (
+			globalThis as typeof globalThis & {
+				browser?: {
+					contextualIdentities?: {
+						query: (details: Record<string, never>) => Promise<{ cookieStoreId: string }[]>;
+					};
+				};
+			}
+		).browser?.contextualIdentities?.query({})) ?? []) {
 			storeIds.add(identity.cookieStoreId);
 		}
 
@@ -60,14 +67,15 @@ async function witContainerId(): Promise<string | undefined> {
 	}
 }
 
-export async function createWitTab(url: string): Promise<chrome.tabs.Tab> {
+export async function createWitTab(url: string, active = true): Promise<chrome.tabs.Tab> {
 	const cookieStoreId = await witContainerId();
 	try {
 		return await chrome.tabs.create({
 			url,
+			active,
 			...(cookieStoreId ? { cookieStoreId } : {})
 		} as chrome.tabs.CreateProperties);
 	} catch {
-		return await chrome.tabs.create({ url });
+		return await chrome.tabs.create({ url, active });
 	}
 }

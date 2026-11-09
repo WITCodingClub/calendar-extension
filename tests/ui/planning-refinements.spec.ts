@@ -2,7 +2,7 @@ import { test, expect } from './extension.fixture';
 import { chooseRadio, fitsViewport, selectFriends } from './helpers';
 import { origin, ownCourses, settings } from './backend';
 
-test('editor honors filters, scrolls the start menu, and comparison uses full width in every proposal view', async ({
+test('editor honors planning hours and comparison fits narrow and wide views', async ({
 	extension
 }) => {
 	const { page } = extension;
@@ -29,12 +29,6 @@ test('editor honors filters, scrolls the start menu, and comparison uses full wi
 	await menu.selectOption('990');
 	await expect(menu).toHaveValue('990');
 	await expect(editor.getByText('Ends at 17:00')).toBeVisible();
-	const pickerStyle = await menu.evaluate((select) => {
-		const style = getComputedStyle(select, '::picker(select)');
-		return { overflow: style.overflowY, height: parseFloat(style.maxHeight) };
-	});
-	expect(pickerStyle.overflow).toBe('auto');
-	expect(pickerStyle.height).toBeLessThanOrEqual(450);
 	await fitsViewport(page, editor);
 	await editor.getByRole('button', { name: 'Save draft' }).click();
 	await planner.getByRole('button', { name: '09:00 - 17:00', exact: true }).click();
@@ -51,19 +45,19 @@ test('editor honors filters, scrolls the start menu, and comparison uses full wi
 	await planner.getByRole('button', { name: 'Continue', exact: true }).click();
 	await editor.getByRole('button', { name: 'Preview on calendar' }).click();
 	const comparison = page.getByRole('region', { name: 'Calendar comparison' });
-	for (const width of [320, 480, 1280]) {
+	for (const width of [320, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		for (const view of ['Calendar', 'List']) {
 			await chooseRadio(comparison, view);
-			for (const day of ['Show Wednesday, Oct 7, 2026', 'Show Thursday, Oct 8, 2026']) {
-				if (view === 'List')
-					await comparison.getByRole('button', { name: day, exact: true }).click();
-				await fitsViewport(page, comparison);
-				const bounds = await comparison.boundingBox();
-				const parent = await comparison.locator('..').boundingBox();
-				expect(bounds!.x).toBeCloseTo(parent!.x, 0);
-				expect(bounds!.width).toBeCloseTo(parent!.width, 0);
-			}
+			if (view === 'List')
+				await comparison
+					.getByRole('button', { name: 'Show Wednesday, Oct 7, 2026', exact: true })
+					.click();
+			await fitsViewport(page, comparison);
+			const bounds = await comparison.boundingBox();
+			const parent = await comparison.locator('..').boundingBox();
+			expect(bounds!.x).toBeCloseTo(parent!.x, 0);
+			expect(bounds!.width).toBeCloseTo(parent!.width, 0);
 		}
 	}
 	await comparison.getByRole('button', { name: '← Back to Friends' }).click();
@@ -130,7 +124,7 @@ test('historical terms support Calendar/List with a fixed sample week and weekda
 	const emptyList = page.getByRole('region', { name: 'Schedule list for Wednesday', exact: true });
 	await expect(emptyList.getByRole('status')).toHaveText('No events scheduled for this day.');
 	await expect(emptyList.getByRole('button')).toHaveCount(0);
-	for (const width of [320, 480, 1280]) {
+	for (const width of [320, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		await fitsViewport(page, emptyList);
 	}

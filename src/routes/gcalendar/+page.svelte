@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { TextFieldOutlined, Button, snackbar } from 'm3-svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { API } from '$lib/api';
 	import { AuthError, checkBetaAccess, getUsableJwt } from '$lib/auth/session';
@@ -14,7 +15,7 @@
 	async function checkGcalStatus() {
 		try {
 			if (await hasUsableGoogleCalendar()) {
-				goto('/calendar');
+				goto(resolve('/calendar'));
 			}
 		} catch (err) {
 			if (err instanceof AuthError) {
@@ -34,7 +35,9 @@
 			if (typeof chrome.identity?.getProfileUserInfo !== 'function') return;
 			const info = await chrome.identity.getProfileUserInfo();
 			if (info?.email) emailToSignInWith = info.email;
-		} catch {}
+		} catch {
+			return;
+		}
 	}
 
 	async function onStorageChanged(changes: { [key: string]: chrome.storage.StorageChange }) {
@@ -44,7 +47,7 @@
 		});
 		// Both ways to connect set oauth_status, so count it here only.
 		track('google_calendar_connected');
-		goto('/calendar');
+		goto(resolve('/calendar'));
 	}
 
 	async function useDifferentEmail() {
@@ -69,7 +72,7 @@
 					oauth_status: 'success',
 					oauth_email: emailToUse
 				});
-				goto('/calendar');
+				goto(resolve('/calendar'));
 			}
 		} catch (err) {
 			if (err instanceof AuthError) {
@@ -89,7 +92,7 @@
 	async function setup() {
 		checkBetaAccess();
 		if (!(await getUsableJwt())) {
-			goto('/');
+			goto(resolve('/'));
 			return;
 		}
 		checkGcalStatus();

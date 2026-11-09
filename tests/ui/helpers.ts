@@ -14,22 +14,24 @@ export async function toggle(scope: Page | Locator, name: string | RegExp, check
 		await input.locator('xpath=ancestor::label[1]').click();
 	await expect(input).toBeChecked({ checked });
 }
-export async function selectFriends(page: Page) {
+export async function selectFriends(page: Page, exercisePicker = false) {
 	await chooseRadio(page, 'Friends');
 	await expect(page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
 	await page.getByRole('button', { name: /^(?:Edit people|Choose people)/ }).click();
 	const picker = page.getByRole('dialog', { name: 'Select people' });
 	await expect(picker.getByRole('checkbox', { name: /Ada Test/ })).toBeVisible();
-	await picker.getByLabel('Search people').fill('no-match');
-	await expect(picker.getByRole('checkbox')).toHaveCount(0);
-	await picker.getByLabel('Search people').fill('Ada');
-	await toggle(picker, /Ada Test/, true);
-	await picker.getByLabel('Search people').fill('');
-	await toggle(picker, /Ben Test/, true);
-	await toggle(picker, /You/, false);
-	await toggle(picker, /You/, true);
-	await picker.getByRole('button', { name: 'Clear friends' }).click();
-	await expect(picker.getByRole('checkbox', { name: /Ada Test/ })).not.toBeChecked();
+	if (exercisePicker) {
+		await picker.getByLabel('Search people').fill('no-match');
+		await expect(picker.getByRole('checkbox')).toHaveCount(0);
+		await picker.getByLabel('Search people').fill('Ada');
+		await toggle(picker, /Ada Test/, true);
+		await picker.getByLabel('Search people').fill('');
+		await toggle(picker, /Ben Test/, true);
+		await toggle(picker, /You/, false);
+		await toggle(picker, /You/, true);
+		await picker.getByRole('button', { name: 'Clear friends' }).click();
+		await expect(picker.getByRole('checkbox', { name: /Ada Test/ })).not.toBeChecked();
+	}
 	await toggle(picker, /Ada Test/, true);
 	await toggle(picker, /Ben Test/, true);
 	await picker.getByRole('button', { name: 'Done', exact: true }).click();

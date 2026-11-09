@@ -24,7 +24,8 @@
 	import { setUsageStatsEnabled, track, usageStatsEnabled } from '$lib/browser/telemetry';
 	import { copyIcsUrl } from '$lib/browser/clipboard';
 	import { openOAuthWindow } from '$lib/auth/popup';
-	import { Button, SelectOutlined, snackbar, Switch } from 'm3-svelte';
+	import { Button, snackbar, Switch } from 'm3-svelte';
+	import SelectOutlined from '$lib/components/ui/SelectOutlined.svelte';
 	import { getPanelSettings } from '$lib/panel/settings';
 	import { onMount } from 'svelte';
 	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
@@ -43,7 +44,7 @@
 		{ text: '1 week before', value: '7:days' }
 	];
 
-	let userSettings = $state<UserSettings | undefined>(undefined);
+	let userSettings = $derived($storedUserSettings);
 	const session = getPanelSettings();
 	let email = $state<string | undefined>(undefined);
 	let currentEnvironment = $state<Environment>('prod');
@@ -74,10 +75,6 @@
 	let isOtherCalendar = $state(
 		browser ? localStorage.getItem('isOtherCalendar') === 'true' : false
 	);
-
-	$effect(() => {
-		userSettings = $storedUserSettings;
-	});
 
 	let previousSettingsWasUndefined = false;
 	$effect(() => {
@@ -210,7 +207,7 @@
 				try {
 					const status = await API.getNotificationStatus();
 					notificationsDisabled = status.notifications_disabled;
-				} catch (e) {
+				} catch {
 					// DND status might not be available, that's okay
 				}
 			})(),
@@ -251,7 +248,7 @@
 							? offset
 							: UNI_CAL_REMINDER_DEFAULT_OFFSET;
 					}
-				} catch (e) {
+				} catch {
 					// Calendar preferences might not exist yet, that's okay
 				} finally {
 					hasLoadedUniCalColor = true;
@@ -398,7 +395,8 @@
 					classes: termData.responseData.classes.map((course) => ({
 						...course,
 						meeting_times: course.meeting_times.map((meeting) => {
-							const { color, ...meetingWithoutColor } = meeting;
+							const meetingWithoutColor = { ...meeting };
+							delete meetingWithoutColor.color;
 							return meetingWithoutColor;
 						})
 					}))

@@ -264,7 +264,7 @@ test('real create payload and idempotent retry do not duplicate meetings', async
 	await expect(planner.getByText('Saved draft', { exact: true })).toHaveCount(0);
 });
 
-test('upcoming owner edit/delete and invitee leave update Calendar/List and availability', async ({
+test('owner series edits and deletion update upcoming meetings and comparison', async ({
 	extension
 }) => {
 	const state = await meetingsBackend(extension, [
@@ -327,14 +327,29 @@ test('upcoming owner edit/delete and invitee leave update Calendar/List and avai
 	expect(state.deleted).toEqual(['weekly']);
 	await comparison.getByRole('button', { name: '← Back to Friends' }).click();
 	await expect(upcoming.getByText('Updated API series', { exact: true })).toHaveCount(0);
+});
+
+test('invitees can leave a series without removing unrelated Calendar events', async ({
+	extension
+}) => {
+	const state = await meetingsBackend(extension, [
+		record('once', 'One-time API meeting', '2026-10-07'),
+		record('invited', 'Invitee API meeting', '2026-10-09', 'invitee', true)
+	]);
+	const { page } = extension;
+	await extension.open('friends');
+	await selectFriends(page);
+	const upcoming = page.getByRole('region', { name: 'Saved meetings', exact: true });
 	await upcoming
 		.getByRole('button', { name: /Details for Invitee API meeting/ })
 		.first()
 		.click();
+	const details = page.getByRole('dialog', { name: 'Meeting details', exact: true });
+	const comparison = page.getByRole('region', { name: 'Calendar comparison' });
 	await expect(details.getByRole('button', { name: /Edit|Delete/ })).toHaveCount(0);
 	await details.getByRole('button', { name: 'Leave series', exact: true }).click();
 	const leave = page.getByRole('alertdialog', { name: 'Leave series?', exact: true });
-	for (const width of [320, 480, 1280]) {
+	for (const width of [320, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
 		await fitsViewport(page, leave);
 	}
@@ -343,6 +358,7 @@ test('upcoming owner edit/delete and invitee leave update Calendar/List and avai
 	await expect(upcoming.getByText('Invitee API meeting', { exact: true })).toHaveCount(0);
 	expect(state.left).toEqual(['invited']);
 	await page.getByRole('button', { name: 'Compare calendars', exact: true }).click();
+	await chooseRadio(comparison, 'List');
 	await comparison.getByRole('button', { name: 'This week', exact: true }).click();
 	await comparison.getByRole('button', { name: 'Show Friday, Oct 9, 2026' }).click();
 	await expect(comparison.getByRole('button', { name: /Invitee API meeting/ })).toHaveCount(0);

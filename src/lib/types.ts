@@ -1,3 +1,5 @@
+import type { RawFriendCourse } from './friends/schedule';
+
 export type Weekday =
 	| 'monday'
 	| 'tuesday'
@@ -47,6 +49,8 @@ export interface MeetingTime {
 	end_time: string;
 	start_date: string | null;
 	end_date: string | null;
+	effective_end_date?: string | null;
+	excluded_dates?: string[];
 	location: Location;
 	monday: boolean;
 	tuesday: boolean;
@@ -183,8 +187,14 @@ export interface OkResponse {
 	ok: boolean;
 }
 
+export type BackfillName = 'academic_data' | 'past_terms';
+export type BackfillState = Record<
+	BackfillName,
+	{ completed: boolean; completed_at: string | null }
+>;
+
 export interface FriendProcessedEventsResponse {
-	processed_courses: any[];
+	processed_courses: RawFriendCourse[];
 }
 
 export interface Professor {
@@ -202,6 +212,23 @@ export interface ResponseData {
 
 export interface ProcessedEvents {
 	classes: Course[];
+}
+
+export interface FinalExam {
+	id: string;
+	course: string;
+	crn: string;
+	date: string;
+	start_time: string;
+	end_time: string;
+	location: string | null;
+	location_name: string | null;
+}
+
+export interface FinalsResponse {
+	term_uid: number;
+	schedule_published: boolean;
+	finals: FinalExam[];
 }
 
 export interface Term {

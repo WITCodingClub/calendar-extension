@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const goto = vi.fn(async (_url: string) => {});
+const goto = vi.fn<(url: string) => Promise<void>>(async () => {});
 vi.mock('$app/navigation', () => ({ goto: (url: string) => goto(url) }));
+vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 vi.mock('$app/environment', () => ({ browser: false }));
 const userSettings = vi.hoisted(() =>
 	vi.fn(async (): Promise<{ usage_stats_enabled?: boolean | null }> => ({}))
@@ -18,7 +19,9 @@ vi.mock('./passkeys', () => ({
 }));
 
 const telemetry = vi.hoisted(() => ({ asked: false }));
-const rememberUsageStatsAnswer = vi.hoisted(() => vi.fn(async (_enabled: boolean) => {}));
+const rememberUsageStatsAnswer = vi.hoisted(() =>
+	vi.fn<(enabled: boolean) => Promise<void>>(async () => {})
+);
 vi.mock('../browser/telemetry', () => ({
 	usageStatsAsked: vi.fn(async () => telemetry.asked),
 	rememberUsageStatsAnswer
@@ -136,10 +139,11 @@ it('deduplicates terms, skips processed and empty terms, and respects the 12-ter
 		term === 'empty' ? [] : [{ crn: '12345', term, courseNumber: '1000' }]
 	);
 	const terms = Array.from({ length: 13 }, (_, index) => String(202010 + index));
-	await s.processing.start(['old', 'empty', ...terms, terms[0]], s.load);
+	expect(await s.processing.start(['old', 'empty', ...terms, terms[0]], s.load)).toBe(true);
 	expect(s.api.processCoursesBatch.mock.calls.map(([batch]) => batch.length)).toEqual([12, 1]);
 	expect(s.load).not.toHaveBeenCalledWith('old');
-	expect(s.completed).toHaveBeenCalledTimes(14);
+	expect(s.completed).toHaveBeenCalledTimes(13);
+	expect(s.completed).not.toHaveBeenCalledWith('old');
 	expect(s.failed).not.toHaveBeenCalled();
 	expect(s.processing.pending.size).toBe(0);
 });
@@ -170,7 +174,8 @@ it('waits for queued terms, isolates failures, and lets a completed term unblock
 			]
 		};
 	});
-	const run = s.processing.start(['now', 'queued', 'failed'], s.load);
+	const run = s.processing.start(['now', 'queued', 'failed', 'missing'], s.load);
+	const joined = s.processing.start(['queued', 'failed'], s.load);
 	const current = s.processing.wait('now');
 	await vi.advanceTimersByTimeAsync(0);
 	await current;
@@ -178,11 +183,17 @@ it('waits for queued terms, isolates failures, and lets a completed term unblock
 	expect(s.processing.pending.has('queued')).toBe(true);
 	ready = true;
 	await vi.advanceTimersByTimeAsync(5_000);
-	await run;
+	expect(await run).toBe(false);
+	expect(await joined).toBe(false);
+	expect(s.api.processCoursesBatch).toHaveBeenCalledTimes(1);
 	expect(s.completed.mock.calls.flat()).toEqual(['now', 'queued']);
 	expect(s.failed).toHaveBeenCalledWith(
 		'failed',
 		expect.objectContaining({ message: 'banner_unavailable' })
+	);
+	expect(s.failed).toHaveBeenCalledWith(
+		'missing',
+		expect.objectContaining({ message: 'Term processing returned no result' })
 	);
 	expect(s.processing.pending.size).toBe(0);
 });
@@ -233,7 +244,7 @@ it('ignores a late batch response after the session ends', async () => {
 	await vi.waitFor(() => expect(s.api.processCoursesBatch).toHaveBeenCalledTimes(1));
 	s.stop();
 	release({ user_pub: 'test', ics_url: 'test', terms: [{ term: 'term', status: 'processed' }] });
-	await run;
+	expect(await run).toBe(false);
 	expect(s.completed).not.toHaveBeenCalled();
 	expect(s.failed).not.toHaveBeenCalled();
 	expect(s.processing.pending.size).toBe(0);

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { SelectOutlined } from 'm3-svelte';
+	import SelectOutlined from '$lib/components/ui/SelectOutlined.svelte';
 
 	// The Google Calendar event palette. "Custom" opens the native color
 	// input, so a person can pick any color.

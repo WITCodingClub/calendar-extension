@@ -167,7 +167,7 @@ export const test = base.extend<{ extension: Extension }>({
 					// Staging reads only. Deliberate writes need their own authorized test scope.
 					const readPost = url.pathname === '/api/meeting_times/preferences';
 					const readGet =
-						/^(?:\/up|\/api\/(?:v1\/catalog\/terms\/(?:current|next)|friends(?:\/requests|\/groups|\/meetings|\/[^/]+\/(?:busy_blocks|processed_events(?:\/status)?))?|meeting_links|user(?:\/(?:busy_blocks|extension_config|notifications|oauth_credentials|passkeys|feature_flags|preferences\/version|processed_events(?:\/status)?))?|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference))$/.test(
+						/^(?:\/up|\/api\/(?:v1\/catalog\/terms\/(?:current|next)|friends(?:\/requests|\/groups|\/meetings|\/[^/]+\/(?:busy_blocks|processed_events(?:\/status)?))?|meeting_links|user(?:\/(?:backfills|busy_blocks|extension_config|notifications|oauth_credentials|passkeys|feature_flags|preferences\/version|processed_events(?:\/status)?))?|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference))$/.test(
 							url.pathname
 						);
 					if (
@@ -228,6 +228,11 @@ export const test = base.extend<{ extension: Extension }>({
 			const page = await context.newPage();
 			context.on('page', (other) => other.on('pageerror', (error) => errors.push(error.message)));
 			page.on('pageerror', (error) => errors.push(error.message));
+			page.on('console', (message) => {
+				if (message.type() === 'warning' && message.text().includes('svelte.dev/e/derived_inert')) {
+					errors.push(message.text());
+				}
+			});
 			if (!live) await page.clock.setFixedTime(new Date(now));
 			const open = async (route = 'calendar', signedIn = true) => {
 				// Storage setup happens in the extension worker using the actual Chrome API.
@@ -271,7 +276,7 @@ export const test = base.extend<{ extension: Extension }>({
 			expect(unexpected, 'Unexpected external request (no production egress permitted)').toEqual(
 				[]
 			);
-			expect(errors, 'Uncaught UI errors').toEqual([]);
+			expect(errors, 'Uncaught UI errors or inert derived warnings').toEqual([]);
 		} finally {
 			await context?.close();
 			for (const socket of sockets) socket.destroy();
