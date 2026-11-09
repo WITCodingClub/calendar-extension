@@ -20,6 +20,7 @@ import type {
 	MeetingDraft,
 	Participant,
 	FriendGroup,
+	SharedFriendGroup,
 	PreviewSlot
 } from '../friends/types';
 
@@ -60,6 +61,7 @@ export class PanelUi {
 		}))
 	]);
 	groups = $state<FriendGroup[]>([]);
+	sharedGroups = $state<SharedFriendGroup[]>([]);
 	groupsLoading = $state(false);
 	groupsError = $state('');
 	groupLoadingId = $state('');

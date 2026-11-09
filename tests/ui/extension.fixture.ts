@@ -162,7 +162,7 @@ export const test = base.extend<{ extension: Extension }>({
 					return route.continue();
 				const safePath = url.pathname
 					.replace(
-						/(\/friends\/)(?!(?:requests|groups|meetings|processed_events)(?:\/|$))[^/]+/g,
+						/(\/friends\/)(?!(?:requests|groups|shared_groups|meetings|processed_events)(?:\/|$))[^/]+/g,
 						'$1:friend'
 					)
 					.replace(/(\/meeting_times\/)[^/]+(?=\/preference)/g, '$1:event');
@@ -173,7 +173,7 @@ export const test = base.extend<{ extension: Extension }>({
 						'/api/friends/processed_events'
 					].includes(url.pathname);
 					const readGet =
-						/^(?:\/up|\/api\/(?:v1\/catalog\/terms\/(?:current|next)|friends(?:\/requests|\/groups|\/meetings|\/[^/]+\/(?:busy_blocks|processed_events(?:\/status)?))?|meeting_links|user(?:\/(?:backfills|busy_blocks|extension_config|notifications|oauth_credentials|passkeys|feature_flags|preferences\/version|processed_events(?:\/status)?))?|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference))$/.test(
+						/^(?:\/up|\/api\/(?:v1\/catalog\/terms\/(?:current|next)|friends(?:\/requests|\/groups|\/shared_groups|\/meetings|\/[^/]+\/(?:busy_blocks|processed_events(?:\/status)?))?|meeting_links|user(?:\/(?:backfills|busy_blocks|extension_config|notifications|oauth_credentials|passkeys|feature_flags|preferences\/version|processed_events(?:\/status)?))?|calendar_preferences|university_calendar_events\/(?:holidays|categories)|meeting_times\/[^/]+\/preference))$/.test(
 							url.pathname
 						);
 					if (

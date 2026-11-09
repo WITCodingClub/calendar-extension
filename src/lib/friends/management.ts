@@ -4,11 +4,12 @@ import type {
 	FriendRequestOutgoing,
 	SharingLevel
 } from '$lib/types';
-import type { FriendGroup } from '$lib/friends/types';
+import type { FriendGroup, SharedFriendGroup, SharedGroupStatus } from '$lib/friends/types';
 
 export type ManagementState = {
 	friends: Friend[];
 	groups: FriendGroup[];
+	sharedGroups: SharedFriendGroup[];
 	incomingRequests: FriendRequestIncoming[];
 	outgoingRequests: FriendRequestOutgoing[];
 	friendsLoading: boolean;
@@ -41,8 +42,10 @@ export type ManagementState = {
 			name: string,
 			members: string[],
 			id?: string,
-			expiry?: string | null
+			expiry?: string | null,
+			options?: { shared?: boolean; color?: string | null }
 		) => Promise<boolean>;
 		remove: (id: string) => Promise<boolean>;
+		setSharedStatus: (id: string, status: SharedGroupStatus) => Promise<boolean>;
 	};
 };
