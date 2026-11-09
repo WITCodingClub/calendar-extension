@@ -3,7 +3,9 @@
 	import SelectOutlined from '$lib/components/ui/SelectOutlined.svelte';
 	import DateField from '$lib/components/ui/DateField.svelte';
 	import type { ComponentProps } from 'svelte';
-	import { dateLabel, formatTime, minutesTime } from '$lib/datetime';
+	import { dateLabel, formatTime, minutesTime, shiftDate, weekDates } from '$lib/datetime';
+	import { DAYS, WEEKDAYS } from '$lib/calendar/days';
+	import type { Weekday } from '$lib/types';
 	type SelectOption = Pick<
 		ComponentProps<typeof SelectOutlined>['options'][number],
 		'text' | 'value'
@@ -16,6 +18,9 @@
 		start = $bindable(''),
 		duration = $bindable('30'),
 		frequency = $bindable('one_time'),
+		repeatInterval = $bindable(1),
+		repeatDays = $bindable<Weekday[]>([]),
+		repeatUntil = $bindable(''),
 		calendar = $bindable(''),
 		invite = $bindable(true),
 		participants,
@@ -47,6 +52,9 @@
 		start?: string;
 		duration?: string;
 		frequency?: string;
+		repeatInterval?: number;
+		repeatDays?: Weekday[];
+		repeatUntil?: string;
 		calendar?: string;
 		invite?: boolean;
 		participants: Array<{ id: string; name: string; busy: number[][]; message?: string }>;
@@ -72,6 +80,35 @@
 		onretry?: () => void;
 	} = $props();
 	const end = $derived(Number(start) + Number(duration));
+	const startDay = $derived(WEEKDAYS[weekDates(date).indexOf(date)]);
+	const monthlyDay = $derived(
+		`${['first', 'second', 'third', 'fourth', 'last'][Math.ceil(Number(date.slice(8, 10)) / 7) - 1]} ${DAYS.find((day) => day.key === startDay)?.label}`
+	);
+	let customRepeat = $state(false);
+	const repeatPreset = $derived.by(() => {
+		if (frequency === 'one_time') return 'one_time';
+		if (customRepeat || repeatUntil || repeatDays.some((day) => day !== startDay)) return 'custom';
+		if (frequency === 'weekly' && repeatInterval <= 2)
+			return repeatInterval === 2 ? 'biweekly' : 'weekly';
+		if (frequency === 'monthly' && repeatInterval === 1) return 'monthly';
+		return 'custom';
+	});
+	function chooseRepeat(value: string) {
+		customRepeat = value === 'custom';
+		if (customRepeat) {
+			if (frequency === 'one_time') frequency = 'weekly';
+			return;
+		}
+		frequency = value === 'biweekly' ? 'weekly' : value;
+		repeatInterval = value === 'biweekly' ? 2 : 1;
+		repeatDays = [];
+		repeatUntil = '';
+	}
+	function toggleRepeatDay(day: Weekday) {
+		repeatDays = repeatDays.includes(day)
+			? repeatDays.filter((item) => item !== day)
+			: [...repeatDays, day];
+	}
 	const conflict = $derived(Boolean(message));
 	const ticks = $derived(
 		Array.from({ length: 5 }, (_, index) => rangeStart + ((rangeEnd - rangeStart) * index) / 4)
@@ -232,12 +269,56 @@
 					<SelectOutlined
 						disabled={locked || submitting}
 						label="Repeat"
-						bind:value={frequency}
+						bind:value={() => repeatPreset, chooseRepeat}
 						options={[
 							{ text: 'Once', value: 'one_time' },
-							{ text: 'Weekly through the term', value: 'weekly' }
+							{ text: 'Every week', value: 'weekly' },
+							{ text: 'Every other week', value: 'biweekly' },
+							{ text: `Once a month on the ${monthlyDay}`, value: 'monthly' },
+							{ text: 'Custom', value: 'custom' }
 						]}
 					/>
+					{#if repeatPreset === 'custom'}
+						<div class="repeat-custom">
+							<SelectOutlined
+								disabled={locked || submitting}
+								label="Repeats"
+								bind:value={frequency}
+								options={[
+									{ text: 'Daily', value: 'daily' },
+									{ text: 'Weekly', value: 'weekly' },
+									{ text: 'Monthly', value: 'monthly' }
+								]}
+							/>
+							<TextFieldOutlined
+								disabled={locked || submitting}
+								label={`Every how many ${frequency === 'daily' ? 'days' : frequency === 'monthly' ? 'months' : 'weeks'}`}
+								type="number"
+								bind:value={
+									() => String(repeatInterval), (value) => (repeatInterval = Number(value))
+								}
+							/>
+							{#if frequency === 'weekly'}
+								<div class="repeat-days" role="group" aria-label="Repeat on">
+									{#each DAYS as day (day.key)}<Chip
+											variant="general"
+											selected={day.key === startDay || repeatDays.includes(day.key)}
+											aria-pressed={day.key === startDay || repeatDays.includes(day.key)}
+											aria-label={day.label}
+											disabled={locked || submitting || day.key === startDay}
+											onclick={() => toggleRepeatDay(day.key)}>{day.abbr}</Chip
+										>{/each}
+								</div>
+							{/if}
+							<DateField
+								disabled={locked || submitting}
+								label="Ends on (optional, defaults to the end of the term)"
+								bind:value={repeatUntil}
+								min={date}
+								max={date ? shiftDate(date, 366) : undefined}
+							/>
+						</div>
+					{/if}
 					<SelectOutlined
 						disabled={locked || submitting}
 						label="Add to calendar"
@@ -496,6 +577,15 @@
 	}
 	.options-content :global(input) {
 		box-sizing: border-box;
+	}
+	.repeat-custom {
+		display: grid;
+		gap: 1rem;
+	}
+	.repeat-days {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
 	}
 	.invite-label {
 		display: flex;

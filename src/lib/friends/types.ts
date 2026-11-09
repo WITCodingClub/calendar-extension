@@ -1,4 +1,4 @@
-import type { FriendIdentity } from '../types';
+import type { FriendIdentity, Weekday } from '../types';
 import type { CalendarDestination, SavedMeeting, SavedMeetingInput } from './savedMeetings';
 
 export type Participant = FriendIdentity & {
@@ -46,6 +46,7 @@ export type PlannerDraft = MinuteRange & {
 	participantNames: string[];
 	location?: string;
 	frequency?: string;
+	repeatInterval?: number;
 	calendar?: string;
 	invite?: boolean;
 };
@@ -66,6 +67,9 @@ export type MeetingDraft = {
 	destinations: CalendarDestination[];
 	inviteFriends: boolean;
 	frequency: SavedMeeting['frequency'];
+	repeatInterval?: number;
+	repeatDays?: Weekday[];
+	repeatUntil?: string;
 	idempotencyKey: string;
 	destinationDefaultsPending?: boolean;
 	submission?: SavedMeetingInput;
