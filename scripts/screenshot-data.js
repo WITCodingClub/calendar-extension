@@ -104,6 +104,7 @@ export function createResponses(data) {
 		'GET /api/university_calendar_events/categories': { categories: [] },
 		'GET /api/friends': { friends: [] },
 		'GET /api/friends/groups': { groups: [] },
+		'GET /api/friends/shared_groups': { groups: [] },
 		'GET /api/friends/requests': { incoming: [], outgoing: [] },
 		'GET /api/friends/meetings': { meetings: [], occurrences: [] },
 		'GET /api/meeting_links': { meeting_links: [] },
@@ -112,6 +113,15 @@ export function createResponses(data) {
 	return (method, pathname, body) => {
 		const key = `${method} ${pathname}`;
 		if (Object.hasOwn(responses, key)) return responses[key];
+		if (method === 'POST' && pathname === '/api/friends/processed_events') {
+			if (!Array.isArray(body?.friend_ids)) return;
+			const schedules = body.friend_ids.map((id) => {
+				const sample = responses[`GET /api/friends/${encodeURIComponent(id)}/processed_events`];
+				return Array.isArray(sample?.classes) && { friend_id: id, classes: sample.classes };
+			});
+			if (schedules.every(Boolean)) return { schedules };
+			return;
+		}
 		if (method === 'POST' && pathname === '/api/meeting_times/preferences')
 			return {
 				version: 'a'.repeat(64),
