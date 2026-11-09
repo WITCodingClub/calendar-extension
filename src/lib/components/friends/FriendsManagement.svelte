@@ -766,14 +766,16 @@
 														async () => {
 															await ui.groupActions?.setSharedStatus(group.id, 'opted_out');
 														}
-													)}>Opt out</Button
+													)}><span class="whitespace-nowrap">Opt out</span></Button
 											>
 										{:else}
 											<Button
 												variant="text"
 												disabled={busy}
 												onclick={() => void ui.groupActions?.setSharedStatus(group.id, 'active')}
-												>{group.status === 'hidden' ? 'Show' : 'Opt back in'}</Button
+												><span class="whitespace-nowrap"
+													>{group.status === 'hidden' ? 'Show' : 'Opt back in'}</span
+												></Button
 											>
 										{/if}
 									{/snippet}
