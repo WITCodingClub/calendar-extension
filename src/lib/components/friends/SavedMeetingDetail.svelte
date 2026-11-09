@@ -6,6 +6,7 @@
 	import { calendarDateTime, dateLabel, formatTime, minutesTime } from '$lib/datetime';
 	import {
 		providerLabel,
+		repeatLabel,
 		type SavedMeeting,
 		type SavedMeetingChanges,
 		type SavedMeetingSelection
@@ -43,7 +44,7 @@
 	);
 	let customDuration = $state(false);
 	let exactStart = $state(false);
-	const series = $derived(meeting.frequency === 'weekly');
+	const series = $derived(meeting.frequency !== 'one_time');
 	const publicationLabels = {
 		queued: 'Queued',
 		published: 'Published',
@@ -246,7 +247,7 @@
 					<dt>Repeat</dt>
 					<dd>
 						{series
-							? `Weekly${meeting.repeat_until ? ` through ${dateLabel(meeting.repeat_until)}, ${meeting.repeat_until.slice(0, 4)}` : ''}`
+							? `${repeatLabel(meeting)}${meeting.repeat_until ? ` through ${dateLabel(meeting.repeat_until)}, ${meeting.repeat_until.slice(0, 4)}` : ''}`
 							: 'Once'}
 					</dd>
 				</div>

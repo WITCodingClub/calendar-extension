@@ -1,10 +1,20 @@
-import type { Course, FriendIdentity, MeetingTime } from '../types';
+import type { Course, FriendIdentity, MeetingTime, Weekday } from '../types';
 import { dayFlags, WEEKDAYS } from '../calendar/days';
 import { syntheticCourse } from '../calendar/layout';
-import { CAMPUS_TIME_ZONE, shiftDate } from '../datetime';
+import { CAMPUS_TIME_ZONE } from '../datetime';
 import { record, timestamp } from './validate';
 
 export type CalendarDestination = 'google' | 'microsoft' | 'ics';
+
+const FREQUENCIES = ['one_time', 'daily', 'weekly', 'monthly'] as const;
+const repeatUnits = { daily: 'day', weekly: 'week', monthly: 'month' } as const;
+
+export function repeatLabel(meeting: Pick<SavedMeeting, 'frequency' | 'repeat_interval'>) {
+	if (meeting.frequency === 'one_time') return 'Once';
+	const interval = meeting.repeat_interval ?? 1;
+	if (interval === 1) return meeting.frequency[0].toUpperCase() + meeting.frequency.slice(1);
+	return `Every ${interval} ${repeatUnits[meeting.frequency]}s`;
+}
 
 const providerLabels: Record<string, string> = {
 	google: 'Google Calendar',
@@ -20,8 +30,10 @@ export type SavedMeeting = {
 	start_time: string;
 	end_time: string;
 	time_zone: string;
-	frequency: 'one_time' | 'weekly';
+	frequency: (typeof FREQUENCIES)[number];
 	recurrence: string | null;
+	repeat_interval?: number | null;
+	repeat_days?: Weekday[];
 	repeat_until: string | null;
 	invite_friends: boolean;
 	role: 'owner' | 'invitee';
@@ -90,8 +102,14 @@ function meeting(value: unknown): value is SavedMeeting {
 		timestamp(value.end_time) &&
 		Date.parse(value.end_time) > Date.parse(value.start_time) &&
 		value.time_zone === CAMPUS_TIME_ZONE &&
-		['one_time', 'weekly'].includes(String(value.frequency)) &&
+		FREQUENCIES.includes(value.frequency as SavedMeeting['frequency']) &&
 		(value.recurrence === null || typeof value.recurrence === 'string') &&
+		(value.repeat_interval === undefined ||
+			value.repeat_interval === null ||
+			(Number.isInteger(value.repeat_interval) && Number(value.repeat_interval) >= 1)) &&
+		(value.repeat_days === undefined ||
+			(Array.isArray(value.repeat_days) &&
+				value.repeat_days.every((day) => WEEKDAYS.includes(day)))) &&
 		(value.repeat_until === null ||
 			(typeof value.repeat_until === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.repeat_until))) &&
 		typeof value.invite_friends === 'boolean' &&
@@ -131,16 +149,19 @@ export function savedMeetingResponse(value: unknown): { meeting: SavedMeeting } 
 }
 
 export function savedMeetings(value: unknown): SavedMeetingsResponse {
-	if (
-		!record(value) ||
-		!Array.isArray(value.meetings) ||
-		!value.meetings.every(meeting) ||
-		new Set(value.meetings.map((item) => item.id)).size !== value.meetings.length ||
-		!Array.isArray(value.occurrences)
-	)
+	if (!record(value) || !Array.isArray(value.meetings) || !Array.isArray(value.occurrences))
 		throw new Error('Invalid saved meetings returned. Reload meetings to try again.');
-	const meetings = value.meetings;
-	const occurrences = value.occurrences;
+	const unknown = value.meetings
+		.filter(
+			(item) => record(item) && !FREQUENCIES.includes(item.frequency as SavedMeeting['frequency'])
+		)
+		.map((item) => item.id);
+	const meetings = value.meetings.filter((item) => !unknown.includes(item.id));
+	if (!meetings.every(meeting) || new Set(meetings.map((item) => item.id)).size !== meetings.length)
+		throw new Error('Invalid saved meetings returned. Reload meetings to try again.');
+	const occurrences = value.occurrences.filter(
+		(occurrence) => !record(occurrence) || !unknown.includes(occurrence.meeting_id)
+	);
 	if (
 		!occurrences.every(
 			(occurrence) =>
@@ -155,7 +176,7 @@ export function savedMeetings(value: unknown): SavedMeetingsResponse {
 		new Set(occurrences.map((item) => item.id)).size !== occurrences.length
 	)
 		throw new Error('Invalid saved meetings returned. Reload meetings to try again.');
-	return value as SavedMeetingsResponse;
+	return { ...value, meetings, occurrences } as SavedMeetingsResponse;
 }
 
 export function savedMeetingCourses(data: SavedMeetingsResponse, dates: string[]): Course[] {
@@ -181,16 +202,4 @@ export function savedMeetingCourses(data: SavedMeetingsResponse, dates: string[]
 			return [syntheticCourse(item.title, meetingTime)];
 		});
 	});
-}
-
-export function savedMeetingOverlaps(meeting: SavedMeeting, start: string, end: string): boolean {
-	const first = meeting.start_time.slice(0, 10);
-	let last = meeting.end_time.slice(0, 10);
-	if (meeting.frequency === 'weekly' && meeting.repeat_until) {
-		const days = (Date.parse(meeting.repeat_until) - Date.parse(first)) / 86400000;
-		const endDays = (Date.parse(last) - Date.parse(first)) / 86400000;
-		last = shiftDate(meeting.repeat_until, -(days % 7) + endDays);
-	}
-	if (meeting.end_time.slice(11, 19) !== '00:00:00') last = shiftDate(last, 1);
-	return first < end && last > start;
 }
