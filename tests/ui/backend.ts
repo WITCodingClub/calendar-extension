@@ -1,4 +1,5 @@
 // Synthetic backend boundary. These are source contracts, not a live login.
+import { registrationReply, registrationState } from './registrationFixtures';
 export const now = '2026-10-06T12:00:00-04:00';
 export const origin = 'https://staging-calendar.witcc.dev';
 export const friends = [
@@ -101,6 +102,8 @@ export function responseFor(
 	body: Record<string, unknown> | null,
 	query = new URLSearchParams()
 ) {
+	const registration = registrationReply(registrationState(), method, path, body, query);
+	if (registration) return registration;
 	if (method === 'GET') {
 		if (path === '/up') return { status: 'ok' };
 		if (query.get('term_uid') === '202610') {
