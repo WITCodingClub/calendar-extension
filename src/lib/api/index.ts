@@ -64,8 +64,33 @@ import {
 import { getBaseUrl, getJwtToken, readJson, request, requestJson } from './client';
 import type { AcademicProfile, StoredAcademicProfile } from '../calendar/academicProfile';
 import type { CourseOutcomes, CourseOutcomesResult } from '../calendar/courseOutcomes';
+import {
+	degreeProgress,
+	nextTermCourses,
+	savedPlan,
+	scheduleCheck,
+	scheduleCount,
+	scheduleOptions,
+	sectionPage
+} from '../registration/parse';
+import type {
+	DegreeProgress,
+	NextTermCourses,
+	RegistrationPlanBody,
+	SavedRegistrationPlan,
+	ScheduleCheck,
+	ScheduleCount,
+	ScheduleOptionsRequest,
+	ScheduleOptionsResponse,
+	SectionPage,
+	SectionQuery
+} from '../registration/types';
+import { ApiError } from './client';
 
 export { ApiError } from './client';
+
+const BUILDER_BUSY = 'SCHEDULE_BUILDER_BUSY';
+const MAX_RETRY_SECONDS = 10;
 
 const PREFERENCE_VERSION = /^[a-f0-9]{64}$/;
 
@@ -254,6 +279,119 @@ export class API {
 			`/user/finals?term_uid=${encodeURIComponent(termUid)}`,
 			'Failed to fetch your final exams'
 		);
+	}
+
+	public static async getDegreeProgress(): Promise<DegreeProgress> {
+		return degreeProgress(
+			await requestJson(
+				'/user/degree_progress?include_planned=true',
+				'Failed to fetch your degree progress'
+			)
+		);
+	}
+
+	public static async getNextTermCourses(term?: string): Promise<NextTermCourses> {
+		const query = new URLSearchParams({ assume_plans: 'true', include: 'candidates' });
+		if (term) query.set('term', term);
+		return nextTermCourses(
+			await requestJson(`/user/next_term_courses?${query}`, 'Failed to fetch your course plan')
+		);
+	}
+
+	public static async getRegistrationPlan(termUid: string): Promise<SavedRegistrationPlan | null> {
+		try {
+			return savedPlan(
+				await requestJson(
+					`/user/registration_plans/${encodeURIComponent(termUid)}`,
+					'Failed to fetch your saved plan'
+				)
+			);
+		} catch (error) {
+			if (
+				error instanceof ApiError &&
+				error.status === 404 &&
+				error.message === 'Registration plan not found'
+			)
+				return null;
+			throw error;
+		}
+	}
+
+	public static async saveRegistrationPlan(
+		termUid: string,
+		body: RegistrationPlanBody
+	): Promise<SavedRegistrationPlan> {
+		return savedPlan(
+			await requestJson(
+				`/user/registration_plans/${encodeURIComponent(termUid)}`,
+				'Failed to save your plan',
+				{ method: 'PUT', body }
+			)
+		);
+	}
+
+	public static async getSections(params: SectionQuery): Promise<SectionPage> {
+		const query = new URLSearchParams({ term_uid: String(params.term_uid) });
+		if (params.subject) query.set('subject', params.subject);
+		if (params.course_number?.length) query.set('course_number', params.course_number.join(','));
+		if (params.crn?.length) query.set('crn', params.crn.join(','));
+		if (params.q) query.set('q', params.q);
+		if (params.page) query.set('page', String(params.page));
+		if (params.per_page) query.set('per_page', String(params.per_page));
+		return sectionPage(
+			await requestJson(`/v1/catalog/sections?${query}`, 'Failed to fetch sections')
+		);
+	}
+
+	public static async scheduleCheck(termUid: string, crns: string[]): Promise<ScheduleCheck> {
+		const query = new URLSearchParams({ term_uid: termUid, crn: crns.join(',') });
+		return scheduleCheck(
+			await requestJson(`/v1/catalog/schedule_check?${query}`, 'Failed to check your schedule')
+		);
+	}
+
+	public static async scheduleOptions(
+		body: ScheduleOptionsRequest
+	): Promise<ScheduleOptionsResponse> {
+		return scheduleOptions(
+			await this.scheduleBuilder('/v1/catalog/schedule_options', body, 'Failed to build schedules')
+		);
+	}
+
+	public static async countScheduleOptions(body: ScheduleOptionsRequest): Promise<ScheduleCount> {
+		return scheduleCount(
+			await this.scheduleBuilder(
+				'/v1/catalog/schedule_options/count',
+				body,
+				'Failed to count schedules'
+			)
+		);
+	}
+
+	private static async scheduleBuilder(
+		path: string,
+		body: ScheduleOptionsRequest,
+		failureMessage: string
+	): Promise<unknown> {
+		const response = await request(path, { method: 'POST', body });
+		const wait = await this.busyDelay(response);
+		if (wait === undefined) return readJson(response, failureMessage);
+		await new Promise((resolve) => setTimeout(resolve, wait));
+		return requestJson(path, failureMessage, { method: 'POST', body });
+	}
+
+	private static async busyDelay(response: Response): Promise<number | undefined> {
+		if (response.status !== 503) return undefined;
+		let retryAfter: unknown;
+		try {
+			const body = await response.clone().json();
+			if (body?.code !== BUILDER_BUSY) return undefined;
+			retryAfter = body.retry_after;
+		} catch {
+			return undefined;
+		}
+		const seconds = Number(response.headers.get('Retry-After') ?? retryAfter ?? 1);
+		return Math.min(Math.max(Number.isFinite(seconds) ? seconds : 1, 0), MAX_RETRY_SECONDS) * 1000;
 	}
 
 	public static async getFriends(): Promise<FriendListResponse> {
