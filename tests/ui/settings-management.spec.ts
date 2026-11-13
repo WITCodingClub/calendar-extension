@@ -109,13 +109,24 @@ test('legacy routes and navigation reach Settings without changing values', asyn
 		await page.setViewportSize({ width, height: 900 });
 		await openNavigation.click();
 		await fitsViewport(page, navigation);
-		await expect(navigation.getByRole('button')).toHaveText(['Calendar', 'Settings', 'Help']);
+		await expect(navigation.getByRole('button')).toHaveText([
+			'Calendar',
+			'Registration',
+			'Settings',
+			'Help'
+		]);
 		await expect(navigation.locator('[aria-current="true"]')).toHaveText('Calendar');
 		await page.keyboard.press('Escape');
 		await expect(navigation).toBeHidden();
 		await expect(openNavigation).toBeFocused();
 	}
 	await openNavigation.click();
+	await navigation.getByRole('button', { name: 'Registration', exact: true }).click();
+	await expect(page).toHaveURL(/\/registration(?:\.html)?$/);
+	await expect(page.getByRole('heading', { name: 'Registration', exact: true })).toBeVisible();
+	await expect(navigation).toBeHidden();
+	await openNavigation.click();
+	await expect(navigation.locator('[aria-current="true"]')).toHaveText('Registration');
 	await navigation.getByRole('button', { name: 'Help', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
 	await expect(page).toHaveURL(/\/help(?:\.html)?$/);

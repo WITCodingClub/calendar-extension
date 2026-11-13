@@ -235,6 +235,72 @@ describe('API calls that moved to new paths', () => {
 	});
 });
 
+describe('registration endpoints', () => {
+	const base = 'https://calendar.example.test/api';
+	const request = { term_uid: 202720, courses: [{ codes: ['COMP 3350'] }] };
+	const busy = () =>
+		new Response(JSON.stringify({ error: 'Busy', code: 'SCHEDULE_BUILDER_BUSY', retry_after: 1 }), {
+			status: 503,
+			headers: { 'Content-Type': 'application/json', 'Retry-After': '1' }
+		});
+
+	it('reads a saved plan with CRNs as strings, and null only for a missing plan', async () => {
+		fetchMock.mockResolvedValueOnce(
+			json({
+				term: { uid: 202720, name: 'Spring 2027' },
+				courses: [{ code: 'PSYC 1500', crns: ['20620'], fills: null }],
+				preferences: {},
+				crns: ['20620'],
+				updated_at: '2026-11-12T12:00:00Z',
+				schedule_check: {
+					sections: [],
+					not_found: [20999],
+					cancelled: [],
+					conflicts: [],
+					link_problems: [],
+					duplicates: [],
+					totals: { days: [] }
+				}
+			})
+		);
+		const saved = await API.getRegistrationPlan('202720');
+		expect(fetchMock.mock.calls[0][0]).toBe(`${base}/user/registration_plans/202720`);
+		expect(saved?.schedule_check.not_found).toEqual(['20999']);
+		expect(saved?.updated_at).toBe('2026-11-12T12:00:00Z');
+		fetchMock.mockResolvedValueOnce(json({ error: 'Registration plan not found' }, 404));
+		expect(await API.getRegistrationPlan('202720')).toBeNull();
+		fetchMock.mockResolvedValueOnce(json({ error: 'Term not found' }, 404));
+		await expect(API.getRegistrationPlan('1')).rejects.toMatchObject({ status: 404 });
+	});
+
+	it('retries the builder once after Retry-After, then reports it busy', async () => {
+		vi.useFakeTimers();
+		try {
+			fetchMock
+				.mockResolvedValueOnce(busy())
+				.mockResolvedValueOnce(json({ data: { count: 3, capped: false } }));
+			const counted = API.countScheduleOptions(request);
+			await vi.advanceTimersByTimeAsync(999);
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(await counted).toEqual({ count: 3, capped: false });
+			expect(fetchMock.mock.calls[0][0]).toBe(`${base}/v1/catalog/schedule_options/count`);
+
+			fetchMock.mockReset();
+			fetchMock.mockImplementation(async () => busy());
+			const failed = expect(API.scheduleOptions(request)).rejects.toMatchObject({
+				status: 503,
+				code: 'SCHEDULE_BUILDER_BUSY'
+			});
+			await vi.advanceTimersByTimeAsync(1000);
+			await failed;
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
 describe('Friends screenshot API compatibility (update scripts/screenshot-data.js on drift)', () => {
 	const maintenance = 'Friends screenshot contract changed: update scripts/screenshot-data.js';
 	const classes = [{ title: 'Linear Algebra', meeting_times: [] }];

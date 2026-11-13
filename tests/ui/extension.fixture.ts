@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { now, origin, responseFor } from './backend';
+import { Reply } from './registrationFixtures';
 
 type NetworkRow = {
 	method: string;
@@ -190,7 +191,14 @@ export const test = base.extend<{ extension: Extension }>({
 					}
 					const data = responseFor(method, url.pathname, body, url.searchParams);
 					if (data !== undefined) {
-						const status = data === null ? 404 : 200;
+						const reply =
+							data instanceof Reply
+								? data
+								: new Reply(
+										data === null ? 404 : 200,
+										data ?? { error: 'Term not found', code: 'NOT_FOUND' }
+									);
+						const status = reply.status;
 						const row: NetworkRow = {
 							method,
 							path: safePath,
@@ -199,10 +207,7 @@ export const test = base.extend<{ extension: Extension }>({
 						};
 						network.push(row);
 						rows.set(request, row);
-						return route.fulfill({
-							status,
-							json: data ?? { error: 'Term not found', code: 'NOT_FOUND' }
-						});
+						return route.fulfill({ status, json: reply.json, headers: reply.headers });
 					}
 				}
 				unexpected.push(`${method} ${url.hostname}${safePath}`);
