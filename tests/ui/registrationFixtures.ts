@@ -40,7 +40,7 @@ export function registrationState(): RegistrationState {
 export const REGISTRATION_PATH =
 	/^\/api\/(?:user\/(degree_progress|next_term_courses|registration_plans)(?:\/(\d+))?|v1\/catalog\/(sections|schedule_check|schedule_options)(\/count)?)$/;
 const REGISTERING = 202620;
-const CURRENT = 202610;
+const SUMMER = 202630;
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 const DAY_LETTERS: Record<string, string> = {
 	M: 'monday',
@@ -397,7 +397,7 @@ function candidate(code: string, open_seats: boolean) {
 }
 
 function nextTerm(uid: number, sections: boolean): NextTermCourses {
-	const fall = uid === CURRENT;
+	const summer = uid === SUMMER;
 	return {
 		term: { uid, name: termName(uid) },
 		assumed: { courses: [], from_plans: [] },
@@ -408,9 +408,9 @@ function nextTerm(uid: number, sections: boolean): NextTermCourses {
 				name: 'Computer Science, B.S.',
 				plan: 'Four Year Plan',
 				start_term: 'Fall 2025',
-				semester: { year: 2, season: fall ? 'fall' : 'spring' },
-				planned: fall
-					? [courseRow(2, 'fall', 'COMP 2280'), courseRow(2, 'fall', 'MATH 2500')]
+				semester: { year: 2, season: summer ? 'summer' : 'spring' },
+				planned: summer
+					? []
 					: [
 							courseRow(2, 'spring', 'COMP 3350'),
 							courseRow(2, 'spring', 'COMP 3450'),
@@ -427,7 +427,7 @@ function nextTerm(uid: number, sections: boolean): NextTermCourses {
 								candidates: [candidate('PHIL 2100', true), candidate('PHIL 4401', false)]
 							}
 						],
-				behind: fall ? [] : [courseRow(2, 'fall', 'COMP 2280'), courseRow(2, 'fall', 'MATH 2500')]
+				behind: [courseRow(2, 'fall', 'COMP 2280'), courseRow(2, 'fall', 'MATH 2500')]
 			}
 		],
 		assumptions: []
@@ -719,9 +719,9 @@ export function registrationReply(
 	if (method === 'GET' && key === 'degree_progress') return new Reply(200, degreeProgress);
 	if (method === 'GET' && key === 'next_term_courses') {
 		const term = Number(query.get('term') ?? REGISTERING);
-		if (term !== REGISTERING && term !== CURRENT)
+		if (term !== REGISTERING && term !== SUMMER)
 			return new Reply(404, { error: 'Term not found', code: 'NOT_FOUND' });
-		return new Reply(200, nextTerm(term, term === CURRENT || !state.unpublished));
+		return new Reply(200, nextTerm(term, term === SUMMER || !state.unpublished));
 	}
 	if (key === 'registration_plans' && match[2]) {
 		const term = match[2];

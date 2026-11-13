@@ -248,7 +248,8 @@ test('progress shows the missed warning, the timeline, details, HSS and the mino
 			)
 		}));
 	const before = await snapshot();
-	await chooseRadio(page, 'Fall 2026');
+	await expect(page.getByRole('radio', { name: 'Fall 2026', exact: true })).toHaveCount(0);
+	await chooseRadio(page, 'Summer 2027');
 	await expect(page.getByRole('radio', { name: 'Spring 2027', exact: true })).not.toBeChecked();
 	await expect.poll(snapshot).toEqual(before);
 	await chooseRadio(page, 'Spring 2027');

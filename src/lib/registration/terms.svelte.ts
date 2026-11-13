@@ -13,6 +13,21 @@ import type {
 
 export type TermOption = { uid: string; name: string; registering: boolean; published: boolean };
 
+export function termAfter(uid: string) {
+	const code = Number(uid);
+	const year = Math.floor(code / 100);
+	const suffix = code % 100;
+	return String(suffix === 30 ? (year + 1) * 100 + 10 : year * 100 + suffix + 10);
+}
+
+export function termLabel(uid: string) {
+	const code = Number(uid);
+	const year = Math.floor(code / 100);
+	const season = code % 100;
+	if (season === 10) return `Fall ${year - 1}`;
+	return `${season === 20 ? 'Spring' : 'Summer'} ${year}`;
+}
+
 export class TermData {
 	readonly session: PanelSession;
 	readonly active = () => this.session.active;
@@ -20,7 +35,7 @@ export class TermData {
 	readonly registering = new Source<NextTermCourses>(this.active);
 	readonly #idle = new TermSources(() => false);
 	sources = $state<Record<string, TermSources>>({});
-	otherTerm = $state<{ uid: string; name: string } | null>(null);
+	upcoming = $state<string[]>([]);
 	#term = $state('');
 	#fetching: string[] = [];
 
@@ -38,18 +53,15 @@ export class TermData {
 
 	registeringUid = $derived(String(this.registering.data?.term.uid ?? ''));
 	termOptions = $derived.by<TermOption[]>(() => {
-		const data = this.registering.data;
-		if (!data || !this.registeringUid) return [];
-		const options: TermOption[] = [
-			{
-				uid: this.registeringUid,
-				name: data.term.name ?? this.registeringUid,
-				registering: true,
-				published: data.sections
-			}
-		];
-		if (this.otherTerm) options.push({ ...this.otherTerm, registering: false, published: true });
-		return options.sort((a, b) => Number(a.uid) - Number(b.uid));
+		return this.upcoming.map((uid) => {
+			const data = this.sources[uid]?.courses.data;
+			return {
+				uid,
+				name: data?.term.name ?? termLabel(uid),
+				registering: uid === this.registeringUid,
+				published: data?.sections ?? false
+			};
+		});
 	});
 	current = $derived<TermSources>(this.sources[this.#term] ?? this.#idle);
 	courses = $derived<Source<NextTermCourses>>(
@@ -102,37 +114,23 @@ export class TermData {
 		if (data.term.uid === null) return;
 		const uid = String(data.term.uid);
 		if (!this.sources[uid]) this.sources[uid] = new TermSources(this.active, this.registering);
-		if (!this.#term) this.selectTerm(uid);
-		else this.#loadTerm(uid);
-		void this.#findOtherTerm(uid);
+		void this.#findUpcoming(uid);
 	}
 
-	async #findOtherTerm(registering: string) {
-		if (this.otherTerm) return;
-		let terms;
+	async #findUpcoming(registering: string) {
+		let current: string | undefined;
 		try {
-			terms = await this.session.loadTerms();
+			const terms = await this.session.loadTerms();
+			if (terms.current_term) current = String(terms.current_term.id);
 		} catch (error) {
 			console.error('Failed to load the terms for registration', error);
-			return;
 		}
-		for (const term of [terms.next_term, terms.current_term]) {
-			if (!this.active() || this.otherTerm) return;
-			if (!term || String(term.id) === registering) continue;
-			const uid = String(term.id);
-			const sources = this.#ensure(uid);
-			const data =
-				sources.courses.data ??
-				(await sources.courses.load(
-					() => API.getNextTermCourses(uid),
-					() => this.#coursesLoaded(uid)
-				));
-			if (!this.active()) return;
-			if (data?.sections) {
-				this.otherTerm = { uid, name: data.term.name ?? term.name };
-				this.#loadSaved(uid);
-				return;
-			}
+		if (!this.active()) return;
+		const first = current ? termAfter(current) : registering;
+		this.upcoming = [first, termAfter(first)];
+		if (!this.#term || !this.upcoming.includes(this.#term)) this.selectTerm(first);
+		for (const uid of this.upcoming) {
+			if (uid !== this.#term) this.#loadTerm(uid);
 		}
 	}
 
