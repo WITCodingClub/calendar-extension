@@ -57,6 +57,7 @@ test('legacy routes and navigation reach Settings without changing values', asyn
 	extension
 }) => {
 	const { page, network } = extension;
+	extension.allowedProbeHosts.add('selfservice.wit.edu');
 	await extension.open('help');
 	await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
 	await expect
