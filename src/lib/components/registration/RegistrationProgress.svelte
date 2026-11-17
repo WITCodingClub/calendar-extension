@@ -6,6 +6,7 @@
 	import ProgramCard from './ProgramCard.svelte';
 	import HssCard from './HssCard.svelte';
 	import MinorCard from './MinorCard.svelte';
+	import TransferCreditDialog from './TransferCreditDialog.svelte';
 	import { getRegistrationPlan } from '$lib/registration/plan.svelte';
 	import {
 		KINDS,
@@ -43,6 +44,9 @@
 	);
 	const firstEstimate = $derived(terms.find((term) => term.estimated)?.term);
 	const allOpen = $derived(terms.every((term) => expanded(term)));
+	const transferCount = $derived(
+		(plan.progress.data?.courses ?? []).filter((course) => course.transfer).length
+	);
 
 	function label(entry: DegreeProgram) {
 		const name = entry.name.trim();
@@ -141,6 +145,14 @@
 			<ul class="m-0 pl-5 text-sm text-on-surface">
 				{#each missed as row, index (index)}<li>{title(row)}</li>{/each}
 			</ul>
+			<p class="m-0 text-xs text-on-surface-variant">
+				Have AP or transfer credit for {one ? 'it' : 'one of these'}?
+				<button
+					type="button"
+					class="link text-xs font-medium text-primary p-0 cursor-pointer border-0 bg-transparent"
+					onclick={() => plan.transferCredits.show()}>Add it</button
+				>
+			</p>
 			<div class="flex justify-end">
 				<Button variant="tonal" onclick={toCourses}>Add to {plan.termName}</Button>
 			</div>
@@ -268,6 +280,20 @@
 	<HssCard {plan} hss={program.hss} />
 {/if}
 
+<section class="gap-3 rounded-2xl bg-surface-container-low p-4 flex items-center">
+	<div class="min-w-0 flex-1">
+		<h2 class="m-0 text-sm font-bold text-on-surface">AP and transfer credit</h2>
+		<p class="m-0 text-xs text-on-surface-variant">
+			{transferCount
+				? `${transferCount} ${transferCount === 1 ? 'course' : 'courses'} counted`
+				: 'Add credit from AP exams, tests or other schools.'}
+		</p>
+	</div>
+	<Button variant="tonal" onclick={() => plan.transferCredits.show()}>Manage</Button>
+</section>
+
+<TransferCreditDialog credits={plan.transferCredits} />
+
 <style>
 	.chip,
 	.swatch {
@@ -309,7 +335,8 @@
 		outline-offset: 1px;
 	}
 	.chip:focus-visible,
-	.head:focus-visible {
+	.head:focus-visible,
+	.link:focus-visible {
 		outline: 2px solid rgb(var(--m3-scheme-primary));
 		outline-offset: 2px;
 		border-radius: 0.5rem;

@@ -65,15 +65,19 @@ import { getBaseUrl, getJwtToken, readJson, request, requestJson } from './clien
 import type { AcademicProfile, StoredAcademicProfile } from '../calendar/academicProfile';
 import type { CourseOutcomes, CourseOutcomesResult } from '../calendar/courseOutcomes';
 import {
+	courseSummaries,
 	degreeProgress,
 	nextTermCourses,
 	savedPlan,
 	scheduleCheck,
 	scheduleCount,
 	scheduleOptions,
-	sectionPage
+	sectionPage,
+	transferCredit,
+	transferCredits
 } from '../registration/parse';
 import type {
+	CourseSummary,
 	DegreeProgress,
 	NextTermCourses,
 	RegistrationPlanBody,
@@ -83,7 +87,9 @@ import type {
 	ScheduleOptionsRequest,
 	ScheduleOptionsResponse,
 	SectionPage,
-	SectionQuery
+	SectionQuery,
+	TransferCredit,
+	TransferKind
 } from '../registration/types';
 import { ApiError } from './client';
 
@@ -327,6 +333,35 @@ export class API {
 				'Failed to save your plan',
 				{ method: 'PUT', body }
 			)
+		);
+	}
+
+	public static async getTransferCredits(): Promise<TransferCredit[]> {
+		return transferCredits(
+			await requestJson('/user/transfer_credits', 'Failed to fetch your transfer credit')
+		);
+	}
+
+	public static async addTransferCredit(code: string, kind: TransferKind): Promise<TransferCredit> {
+		return transferCredit(
+			await requestJson('/user/transfer_credits', 'Failed to add the credit', {
+				method: 'POST',
+				body: { code, kind }
+			})
+		);
+	}
+
+	public static async removeTransferCredit(code: string): Promise<void> {
+		const response = await request(`/user/transfer_credits/${encodeURIComponent(code)}`, {
+			method: 'DELETE'
+		});
+		if (!response.ok) await readJson(response, 'Failed to remove the credit');
+	}
+
+	public static async searchCourses(query: string): Promise<CourseSummary[]> {
+		const params = new URLSearchParams({ q: query, per_page: '20' });
+		return courseSummaries(
+			await requestJson(`/v1/catalog/courses?${params}`, 'Failed to search courses')
 		);
 	}
 

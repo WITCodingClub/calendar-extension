@@ -255,3 +255,17 @@ export type SavedRegistrationPlan = {
 	updated_at: string | null;
 	schedule_check: ScheduleCheck;
 };
+
+export type TransferKind = 'ap' | 'test' | 'transfer';
+
+export type TransferCredit = {
+	code: string;
+	title: string | null;
+	credits: number | null;
+	source: 'transcript' | 'student';
+	kind: TransferKind | null;
+	removable: boolean;
+	updated_at: string | null;
+};
+
+export type CourseSummary = { code: string; title: string | null; credits: number | null };

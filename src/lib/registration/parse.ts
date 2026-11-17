@@ -1,6 +1,7 @@
 import { record, text } from '../friends/validate';
 import type {
 	CatalogSection,
+	CourseSummary,
 	DegreeProgress,
 	NextTermCourses,
 	PlanCourse,
@@ -8,7 +9,9 @@ import type {
 	ScheduleCheck,
 	ScheduleCount,
 	ScheduleOptionsResponse,
-	SectionPage
+	SectionPage,
+	TransferCredit,
+	TransferKind
 } from './types';
 
 function fail(kind: string): never {
@@ -360,4 +363,44 @@ export function savedPlan(value: unknown): SavedRegistrationPlan {
 		updated_at: value.updated_at as string | null,
 		schedule_check: check(value.schedule_check)
 	};
+}
+
+export function transferCredit(value: unknown): TransferCredit {
+	const kind = 'transfer credit';
+	if (
+		!record(value) ||
+		!text(value.code) ||
+		!nullable(value.title, (title) => typeof title === 'string') ||
+		!nullable(value.credits, int) ||
+		!['transcript', 'student'].includes(value.source as string) ||
+		!nullable(value.kind, (entry) => ['ap', 'test', 'transfer'].includes(entry as string)) ||
+		typeof value.removable !== 'boolean'
+	)
+		fail(kind);
+	return {
+		code: value.code,
+		title: value.title as string | null,
+		credits: value.credits as number | null,
+		source: value.source as TransferCredit['source'],
+		kind: value.kind as TransferKind | null,
+		removable: value.removable,
+		updated_at: typeof value.updated_at === 'string' ? value.updated_at : null
+	};
+}
+
+export function transferCredits(value: unknown): TransferCredit[] {
+	if (!record(value) || !Array.isArray(value.credits)) fail('transfer credit');
+	return value.credits.map(transferCredit);
+}
+
+export function courseSummaries(value: unknown): CourseSummary[] {
+	if (!record(value) || !Array.isArray(value.data)) fail('courses');
+	return value.data.map((entry) => {
+		if (!record(entry) || !text(entry.code)) fail('courses');
+		return {
+			code: entry.code,
+			title: typeof entry.title === 'string' ? entry.title : null,
+			credits: typeof entry.credit_hours === 'number' ? entry.credit_hours : null
+		};
+	});
 }

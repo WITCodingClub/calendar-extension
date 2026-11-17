@@ -10,7 +10,9 @@ import type {
 	RequirementRow,
 	ScheduleCheck,
 	ScheduleOptionsRequest,
-	SchedulePreferences
+	SchedulePreferences,
+	TransferCredit,
+	TransferKind
 } from '../../src/lib/registration/types';
 
 export class Reply {
@@ -32,6 +34,7 @@ export type RegistrationState = {
 	unpublished: boolean;
 	registered: boolean;
 	fail: string[];
+	transferCredits: TransferCredit[];
 };
 
 export function registrationState(): RegistrationState {
@@ -42,12 +45,13 @@ export function registrationState(): RegistrationState {
 		zero: false,
 		unpublished: false,
 		registered: false,
-		fail: []
+		fail: [],
+		transferCredits: []
 	};
 }
 
 export const REGISTRATION_PATH =
-	/^\/api\/(?:user\/(degree_progress|next_term_courses|registration_plans)(?:\/(\d+))?|v1\/catalog\/(sections|schedule_check|schedule_options)(\/count)?)$/;
+	/^\/api\/(?:user\/(degree_progress|next_term_courses|registration_plans|transfer_credits)(?:\/([^/]+))?|v1\/catalog\/(sections|schedule_check|schedule_options|courses)(\/count)?)$/;
 const REGISTERING = 202620;
 const SUMMER = 202630;
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
@@ -417,6 +421,105 @@ function registeredProgress(): DegreeProgress {
 	};
 }
 
+function withTransferCredit(progress: DegreeProgress, credits: TransferCredit[]): DegreeProgress {
+	if (!credits.length) return progress;
+	const codes = credits.map((credit) => credit.code);
+	return {
+		...progress,
+		programs: progress.programs.map((entry) => {
+			if (entry.program !== computerScience.program) return entry;
+			const requirements = entry.requirements.map((row) =>
+				row.code && codes.includes(row.code) && row.status === 'open'
+					? {
+							...row,
+							status: 'done' as const,
+							course: row.code,
+							term: null,
+							behind: false,
+							expected_term: null,
+							expected_term_uid: null,
+							moved: 'transfer' as const,
+							transfer: true
+						}
+					: row
+			);
+			return { ...entry, requirements, counts: counts(requirements) };
+		}),
+		courses: [
+			...progress.courses,
+			...credits.map((credit) => ({
+				code: credit.code,
+				title: credit.title ?? credit.code,
+				term: null,
+				term_uid: null,
+				crn: null,
+				credits: credit.credits,
+				status: 'done' as const,
+				outcome: null,
+				transfer: true,
+				source: credit.source
+			}))
+		]
+	};
+}
+
+function transferCredits(
+	state: RegistrationState,
+	method: string,
+	code: string | undefined,
+	body: Record<string, unknown> | null
+): Reply | undefined {
+	const list = () => new Reply(200, { credits: state.transferCredits });
+	if (method === 'GET' && !code) return list();
+	if (method === 'POST' && !code) {
+		const added = String(body?.code ?? '');
+		if (!COURSES[added])
+			return new Reply(422, { error: `${added} is not a WIT course`, code: 'unknown_course' });
+		if (state.transferCredits.some((credit) => credit.code === added))
+			return new Reply(422, { error: `You already have ${added}`, code: 'duplicate' });
+		const credit: TransferCredit = {
+			code: added,
+			title: COURSES[added][0],
+			credits: 4,
+			source: 'student',
+			kind: (body?.kind as TransferKind | undefined) ?? null,
+			removable: true,
+			updated_at: '2026-10-06T15:00:00Z'
+		};
+		state.transferCredits = [...state.transferCredits, credit].sort((a, b) =>
+			a.code.localeCompare(b.code)
+		);
+		return new Reply(201, credit);
+	}
+	if (method === 'DELETE' && code) {
+		const credit = state.transferCredits.find((entry) => entry.code === code);
+		if (!credit) return new Reply(404, { error: 'Transfer credit not found' });
+		if (!credit.removable)
+			return new Reply(422, {
+				error: 'This credit comes from the LeopardWeb transcript and cannot be removed',
+				code: 'transcript_entry'
+			});
+		state.transferCredits = state.transferCredits.filter((entry) => entry.code !== code);
+		return new Reply(204, undefined);
+	}
+	return undefined;
+}
+
+function courseSearch(query: URLSearchParams) {
+	const words = (query.get('q') ?? '').toLowerCase();
+	const data = Object.entries(COURSES)
+		.filter(([code, [title]]) => `${code} ${title}`.toLowerCase().includes(words))
+		.map(([code, [title]]) => ({
+			code,
+			subject_code: code.split(' ')[0],
+			course_number: code.split(' ')[1],
+			title,
+			credit_hours: 4,
+			typically_offered: null
+		}));
+	return { data, meta: { page: 1, per_page: 20, total_count: data.length, total_pages: 1 } };
+}
+
 function courseRow(year: number, season: string, code: string): NextTermRow {
 	return {
 		year,
@@ -781,7 +884,21 @@ export function registrationReply(
 		});
 	}
 	if (method === 'GET' && key === 'degree_progress')
-		return new Reply(200, state.registered ? registeredProgress() : degreeProgress);
+		return new Reply(
+			200,
+			withTransferCredit(
+				state.registered ? registeredProgress() : degreeProgress,
+				state.transferCredits
+			)
+		);
+	if (key === 'transfer_credits')
+		return transferCredits(
+			state,
+			method,
+			match[2] === undefined ? undefined : decodeURIComponent(match[2]),
+			body
+		);
+	if (method === 'GET' && key === 'courses') return new Reply(200, courseSearch(query));
 	if (method === 'GET' && key === 'next_term_courses') {
 		const term = Number(query.get('term') ?? REGISTERING);
 		if (term !== REGISTERING && term !== SUMMER)

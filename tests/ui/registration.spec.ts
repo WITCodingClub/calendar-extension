@@ -285,6 +285,69 @@ test('progress shows the missed warning, the timeline, details, HSS and the mino
 	await expect.poll(snapshot).toEqual(before);
 });
 
+test('AP and transfer credit can be added and removed from progress', async ({ extension }) => {
+	const { page } = extension;
+	const state = await registration(extension, {
+		transferCredits: [
+			{
+				code: 'ENGL 1100',
+				title: 'English I',
+				credits: 4,
+				source: 'transcript',
+				kind: 'ap',
+				removable: false,
+				updated_at: '2026-09-01T12:00:00Z'
+			}
+		]
+	});
+	await extension.open('registration/progress');
+	const card = page.locator('section').filter({
+		has: page.getByRole('heading', { name: 'AP and transfer credit' })
+	});
+	await expect(card).toContainText('1 course counted');
+
+	await page.getByRole('button', { name: '2 courses from Fall 2026 not taken' }).click();
+	await page.getByRole('button', { name: 'Add it', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'AP and transfer credit' });
+	await expect(dialog).toBeVisible();
+	await expect(
+		dialog.getByRole('link', { name: 'Check your transcript in LeopardWeb' })
+	).toHaveAttribute(
+		'href',
+		'https://selfservice.wit.edu/StudentSelfService/ssb/academicTranscript'
+	);
+	const saved = dialog.getByRole('listitem').filter({ hasText: 'ENGL 1100' });
+	await expect(saved).toContainText('4 credits · AP exam · From transcript');
+	await expect(saved.getByRole('button', { name: 'Remove ENGL 1100' })).toHaveCount(0);
+
+	await chooseRadio(dialog, 'Transfer');
+	await dialog.getByRole('searchbox', { name: 'WIT course it counts as' }).fill('MATH 25');
+	await dialog.getByRole('button', { name: /MATH 2500 · Probability and Statistics/ }).click();
+	const added = dialog.getByRole('listitem').filter({ hasText: 'MATH 2500' }).first();
+	await expect(added).toContainText('4 credits · Transfer · Added by you');
+	expect(state.transferCredits.map((credit) => [credit.code, credit.kind])).toEqual([
+		['ENGL 1100', 'ap'],
+		['MATH 2500', 'transfer']
+	]);
+	await dialog.getByRole('searchbox', { name: 'WIT course it counts as' }).fill('MATH 25');
+	await expect(dialog.getByRole('button', { name: /MATH 2500 · Probability/ })).toBeDisabled();
+	await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+	await expect(dialog).toBeHidden();
+	await expect(
+		page.getByRole('button', { name: '1 course from Fall 2026 not taken' })
+	).toBeVisible();
+	await expect(card).toContainText('2 courses counted');
+
+	await card.getByRole('button', { name: 'Manage', exact: true }).click();
+	await dialog.getByRole('button', { name: 'Remove MATH 2500' }).click();
+	await expect(dialog.getByRole('listitem').filter({ hasText: 'MATH 2500' })).toHaveCount(0);
+	await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+	await expect(
+		page.getByRole('button', { name: '2 courses from Fall 2026 not taken' })
+	).toBeVisible();
+	await expect(card).toContainText('1 course counted');
+});
+
 test('builder busy, zero results, unpublished terms and fetch errors recover', async ({
 	extension
 }) => {

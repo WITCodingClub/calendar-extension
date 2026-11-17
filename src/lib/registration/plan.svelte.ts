@@ -3,6 +3,7 @@ import { API } from '../api';
 import { FinderState } from './finder.svelte';
 import { codeOf, conflictText, sectionsConflict, type Candidate } from './options';
 import { errorText } from './source.svelte';
+import { TransferCredits } from './transferCredits.svelte';
 import type { CatalogSection } from './types';
 
 export type Issue = { code: string; text: string };
@@ -11,6 +12,7 @@ export class RegistrationPlan extends FinderState {
 	stage = $state<'plan' | 'review'>('plan');
 	saving = $state(false);
 	saveError = $state('');
+	readonly transferCredits = new TransferCredits(this.active, () => this.#creditsChanged());
 
 	issues = $derived.by(() => {
 		const list: Issue[] = [];
@@ -41,6 +43,11 @@ export class RegistrationPlan extends FinderState {
 		return list;
 	});
 	ready = $derived(this.added.length > 0 && this.issues.length === 0);
+
+	#creditsChanged() {
+		void this.progress.retry();
+		for (const option of this.termOptions) void this.sources[option.uid]?.courses.retry();
+	}
 
 	override selectTerm(uid: string) {
 		if (!uid || uid === this.term) return;
