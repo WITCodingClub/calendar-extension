@@ -6,6 +6,7 @@
 	import iconCalendar from '@ktibow/iconset-material-symbols/calendar-month';
 	import iconSettings from '@ktibow/iconset-material-symbols/settings-outline';
 	import iconHelp from '@ktibow/iconset-material-symbols/help-outline';
+	import iconRegistration from '@ktibow/iconset-material-symbols/how-to-reg';
 
 	let {
 		title,
@@ -37,6 +38,12 @@
 			value: 'calendar',
 			icon: iconCalendar,
 			onselect: () => void goto(resolve('/calendar'))
+		},
+		{
+			name: 'Registration',
+			value: 'registration',
+			icon: iconRegistration,
+			onselect: () => void goto(resolve('/registration'))
 		}
 	];
 	const utilities = [

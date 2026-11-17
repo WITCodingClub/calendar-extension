@@ -188,10 +188,10 @@ export interface OkResponse {
 }
 
 export type BackfillName = 'academic_data' | 'past_terms';
-export type BackfillState = Record<
-	BackfillName,
-	{ completed: boolean; completed_at: string | null }
->;
+export type BackfillEntry = { completed: boolean; completed_at: string | null };
+export type BackfillState = Record<BackfillName, BackfillEntry> & {
+	transfer_credits?: BackfillEntry;
+};
 
 export interface FriendScheduleEntry {
 	friend_id: string;
