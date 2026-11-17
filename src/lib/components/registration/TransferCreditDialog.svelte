@@ -184,8 +184,10 @@
 				{#if credits.other.length}
 					<p class="m-0 text-xs">
 						{credits.other.length === 1 ? 'This is' : 'These are'} general credit, not a specific WIT
-						course, so {credits.other.length === 1 ? 'it' : 'they'} can't count automatically. If one
-						fills a requirement, add the course below.
+						course, so {credits.other.length === 1 ? 'it' : 'they'} can't count automatically. If {credits
+							.other.length === 1
+							? 'it fills'
+							: 'one fills'} a requirement, add the course below.
 					</p>
 					<ul class="m-0 gap-1 p-0 flex list-none flex-col" aria-label="General credit">
 						{#each credits.other as credit, index (index)}
