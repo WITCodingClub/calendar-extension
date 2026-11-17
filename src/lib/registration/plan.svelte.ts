@@ -12,7 +12,11 @@ export class RegistrationPlan extends FinderState {
 	stage = $state<'plan' | 'review'>('plan');
 	saving = $state(false);
 	saveError = $state('');
-	readonly transferCredits = new TransferCredits(this.active, () => this.#creditsChanged());
+	readonly transferCredits = new TransferCredits(
+		this.active,
+		() => this.#creditsChanged(),
+		this.session.backfills
+	);
 
 	issues = $derived.by(() => {
 		const list: Issue[] = [];
@@ -43,6 +47,11 @@ export class RegistrationPlan extends FinderState {
 		return list;
 	});
 	ready = $derived(this.added.length > 0 && this.issues.length === 0);
+
+	override start() {
+		super.start();
+		void this.transferCredits.autoCheck();
+	}
 
 	#creditsChanged() {
 		void this.progress.retry();

@@ -404,3 +404,17 @@ export function courseSummaries(value: unknown): CourseSummary[] {
 		};
 	});
 }
+
+export function replacedTransferCredits(value: unknown): {
+	credits: TransferCredit[];
+	skipped: { code: string; reason: string }[];
+} {
+	const skipped = record(value) && Array.isArray(value.skipped) ? value.skipped : [];
+	return {
+		credits: transferCredits(value),
+		skipped: skipped.filter(
+			(entry): entry is { code: string; reason: string } =>
+				record(entry) && typeof entry.code === 'string' && typeof entry.reason === 'string'
+		)
+	};
+}

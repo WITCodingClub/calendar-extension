@@ -72,6 +72,7 @@ import {
 	scheduleCheck,
 	scheduleCount,
 	scheduleOptions,
+	replacedTransferCredits,
 	sectionPage,
 	transferCredit,
 	transferCredits
@@ -115,6 +116,16 @@ export class API {
 		);
 		if (!state[name].completed) throw new Error('The backfill was not recorded as complete');
 		return state;
+	}
+
+	public static async completeTransferCreditReview(): Promise<void> {
+		try {
+			await requestJson('/user/backfills/transfer_credits', 'Failed to record the review', {
+				method: 'PUT'
+			});
+		} catch (error) {
+			if (!(error instanceof ApiError && error.status === 404)) throw error;
+		}
 	}
 
 	private static readBackfills(value: unknown): BackfillState {
@@ -339,6 +350,17 @@ export class API {
 	public static async getTransferCredits(): Promise<TransferCredit[]> {
 		return transferCredits(
 			await requestJson('/user/transfer_credits', 'Failed to fetch your transfer credit')
+		);
+	}
+
+	public static async replaceTranscriptCredits(
+		credits: { code: string; title: string | null; credits: number | null; kind: TransferKind }[]
+	) {
+		return replacedTransferCredits(
+			await requestJson('/user/transfer_credits', 'Failed to save your transfer credit', {
+				method: 'PUT',
+				body: { credits }
+			})
 		);
 	}
 

@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
+import type { TransferCredit } from '../../src/lib/registration/types';
 import { test, expect, type Extension } from './extension.fixture';
-import { chooseRadio, fitsViewport } from './helpers';
+import { chooseRadio, fitsViewport, toggle } from './helpers';
 import { origin } from './backend';
 import {
 	REGISTRATION_PATH,
@@ -9,8 +10,33 @@ import {
 	type RegistrationState
 } from './registrationFixtures';
 
-async function registration(extension: Extension, setup: Partial<RegistrationState> = {}) {
+const TRANSCRIPT_URL = 'https://selfservice.wit.edu/StudentSelfService/ssb/academicTranscript';
+
+async function registration(
+	extension: Extension,
+	setup: Partial<RegistrationState> = {},
+	transcript: unknown[] = []
+) {
 	const state = { ...registrationState(), ...setup };
+	extension.allowedProbeHosts.add('selfservice.wit.edu');
+	await extension.context.route(TRANSCRIPT_URL, (route) =>
+		route.fulfill({
+			contentType: 'text/html',
+			body: '<meta name="synchronizerToken" content="token"><h1>Academic Transcript</h1>'
+		})
+	);
+	await extension.context.route(`${TRANSCRIPT_URL}/academicTranscriptPageData?*`, (route) => {
+		const url = new URL(route.request().url());
+		expect([url.searchParams.get('level'), url.searchParams.get('type')]).toEqual(['UG', 'WEB']);
+		expect(route.request().headers()['x-synchronizer-token']).toBe('token');
+		return route.fulfill({
+			json: {
+				hasError: false,
+				listOfNavigationItem: [{ code: 'studentInformation' }, { code: 'transferCredit' }],
+				viewtransferCreditData: { transferCreditList: transcript }
+			}
+		});
+	});
 	await extension.context.route(
 		(url) => url.origin === origin && REGISTRATION_PATH.test(url.pathname),
 		async (route) => {
@@ -346,6 +372,88 @@ test('AP and transfer credit can be added and removed from progress', async ({ e
 		page.getByRole('button', { name: '2 courses from Fall 2026 not taken' })
 	).toBeVisible();
 	await expect(card).toContainText('1 course counted');
+});
+
+test('the transcript check opens a review, saves the confirmed credit and stays quiet after', async ({
+	extension
+}) => {
+	const { page } = extension;
+	const credit = (subject: string, course: string, title: string) => ({
+		subject,
+		course,
+		title,
+		grade: 'TR',
+		creditHours: '4.000',
+		qualityPoints: '0.00',
+		rVal: ''
+	});
+	const state = await registration(extension, {}, [
+		{
+			collegeName: 'Advanced Placement Program',
+			transferCreditInfo: [
+				credit('MATH', '2500', 'AP STATISTICS'),
+				credit('COMP', '2280', 'AP COMPUTER SCIENCE'),
+				credit('HIST', '1XXX', 'AP WORLD HISTORY')
+			]
+		}
+	]);
+	const puts: unknown[] = [];
+	await extension.context.route(`${origin}/api/user/transfer_credits`, async (route) => {
+		if (route.request().method() !== 'PUT') return route.fallback();
+		const body = route.request().postDataJSON() as {
+			credits: { code: string; title: string; credits: number; kind: TransferCredit['kind'] }[];
+		};
+		puts.push(body);
+		state.transferCredits = body.credits.map((entry) => ({
+			...entry,
+			source: 'transcript',
+			removable: false,
+			updated_at: '2026-10-06T15:00:00Z'
+		}));
+		await route.fulfill({ json: { credits: state.transferCredits, skipped: [] } });
+	});
+	let reviewed = 0;
+	await extension.context.route(`${origin}/api/user/backfills/transfer_credits`, (route) => {
+		if (route.request().method() !== 'PUT') return route.fallback();
+		reviewed++;
+		const done = { completed: true, completed_at: '2026-10-06T15:00:00Z' };
+		return route.fulfill({
+			json: { past_terms: done, academic_data: done, transfer_credits: done }
+		});
+	});
+	const transcriptTab = await extension.context.newPage();
+	await transcriptTab.goto(TRANSCRIPT_URL);
+	await page.bringToFront();
+	await extension.open('registration/progress');
+	const dialog = page.getByRole('dialog', { name: 'AP and transfer credit' });
+	await expect(dialog).toBeVisible();
+	const found = dialog.getByRole('list', { name: 'Found on your transcript' });
+	await expect(found.getByRole('checkbox')).toHaveCount(2);
+	await expect(found).toContainText('MATH 2500 · AP STATISTICS');
+	await expect(found).toContainText('4 credits · AP exam · Advanced Placement Program');
+	await expect(dialog.getByRole('list', { name: 'General credit' })).toContainText('HIST 1XXX');
+	await toggle(found, /COMP 2280/, false);
+	await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
+	await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+	expect(puts).toEqual([
+		{ credits: [{ code: 'MATH 2500', title: 'AP STATISTICS', credits: 4, kind: 'ap' }] }
+	]);
+	await expect.poll(() => reviewed).toBe(1);
+	const saved = dialog.getByRole('listitem').filter({ hasText: 'From transcript' });
+	await expect(saved).toContainText('MATH 2500');
+	await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+	await expect(
+		page.getByRole('button', { name: '1 course from Fall 2026 not taken' })
+	).toBeVisible();
+
+	await page.reload();
+	await expect(page.getByRole('heading', { name: 'Plan by term' })).toBeVisible();
+	await expect(dialog).toBeHidden();
+	await page.getByRole('button', { name: 'Manage', exact: true }).click();
+	await dialog.getByRole('button', { name: 'Check transcript', exact: true }).click();
+	await expect(found.getByRole('checkbox', { name: /MATH 2500/ })).toBeChecked();
+	await expect(found.getByRole('checkbox', { name: /COMP 2280/ })).not.toBeChecked();
+	await expect(dialog.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
 });
 
 test('builder busy, zero results, unpublished terms and fetch errors recover', async ({
