@@ -44,7 +44,7 @@ function data(value: unknown, kind: string): Record<string, unknown> {
 }
 
 function status(value: unknown): boolean {
-	return value === 'done' || value === 'in_progress' || value === 'open';
+	return ['done', 'in_progress', 'registered', 'open'].includes(value as string);
 }
 
 function requirement(row: unknown): boolean {
@@ -177,12 +177,25 @@ export function nextTermCourses(value: unknown): NextTermCourses {
 				Array.isArray(entry.planned) &&
 				entry.planned.every(nextRow) &&
 				Array.isArray(entry.behind) &&
-				entry.behind.every(nextRow)
+				entry.behind.every(nextRow) &&
+				(entry.registered === undefined ||
+					(Array.isArray(entry.registered) &&
+						entry.registered.every((course) => record(course) && text(course.code))))
 		) ||
 		!strings(value.assumptions)
 	)
 		fail('course plan');
-	return value as NextTermCourses;
+	return {
+		...(value as NextTermCourses),
+		programs: (value.programs as Record<string, unknown>[]).map((entry) => ({
+			...(entry as NextTermCourses['programs'][number]),
+			registered: ((entry.registered ?? []) as Record<string, unknown>[]).map((course) => ({
+				code: course.code as string,
+				title: typeof course.title === 'string' ? course.title : null,
+				crns: crns(course.crns ?? [], 'course plan')
+			}))
+		}))
+	};
 }
 
 function seats(value: unknown): boolean {

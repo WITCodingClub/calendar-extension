@@ -1,5 +1,6 @@
 import iconDone from '@ktibow/iconset-material-symbols/check-circle';
 import iconNow from '@ktibow/iconset-material-symbols/pending-outline';
+import iconRegistered from '@ktibow/iconset-material-symbols/bookmark-added-outline';
 import iconScheduled from '@ktibow/iconset-material-symbols/event-available-outline';
 import iconBehind from '@ktibow/iconset-material-symbols/error-outline';
 import iconTodo from '@ktibow/iconset-material-symbols/add-circle-outline';
@@ -7,11 +8,12 @@ import iconLater from '@ktibow/iconset-material-symbols/circle-outline';
 import type { CourseOption } from './options';
 import type { DegreeProgram, HssProgress, PlanTerm, ProgramOverlap, RequirementRow } from './types';
 
-export type Kind = 'done' | 'now' | 'scheduled' | 'behind' | 'todo' | 'later';
+export type Kind = 'done' | 'now' | 'registered' | 'scheduled' | 'behind' | 'todo' | 'later';
 
 export const KINDS: Record<Kind, { label: string; icon: typeof iconDone }> = {
 	done: { label: 'Done', icon: iconDone },
 	now: { label: 'Taking now', icon: iconNow },
+	registered: { label: 'Registered', icon: iconRegistered },
 	scheduled: { label: 'In your schedule', icon: iconScheduled },
 	behind: { label: 'Not taken when planned', icon: iconBehind },
 	todo: { label: 'Not in your schedule yet', icon: iconTodo },
@@ -51,6 +53,7 @@ export function kindOf(
 ): Kind {
 	if (row.status === 'done') return 'done';
 	if (row.status === 'in_progress') return 'now';
+	if (row.status === 'registered') return 'registered';
 	if (plan.scheduled(row)) return 'scheduled';
 	if (row.behind) return 'behind';
 	if (term.when === 'registering') return 'todo';
@@ -111,6 +114,7 @@ export function explain(
 			row.list?.notes ??
 			(row.checkable ? '' : NO_LIST),
 		meta: [
+			row.transfer ? 'AP or transfer credit' : null,
 			filled && row.kind !== 'choice' ? `Counts as ${row.label}` : null,
 			credits ? `${credits} credits` : null
 		]

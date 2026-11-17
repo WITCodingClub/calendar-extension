@@ -72,9 +72,11 @@
 					? 'done'
 					: category.status === 'in_progress'
 						? 'now'
-						: scheduled
-							? 'scheduled'
-							: 'later'}
+						: category.status === 'registered'
+							? 'registered'
+							: scheduled
+								? 'scheduled'
+								: 'later'}
 			<li class="gap-3 py-2 flex items-start">
 				<span class="icon {k} mt-0.5 inline-flex shrink-0"
 					><Icon icon={KINDS[k].icon} size={18} /></span
@@ -88,7 +90,7 @@
 					{#if taken || scheduled || hint(category)}
 						<p class="m-0 text-xs text-on-surface-variant">
 							{taken
-								? `${taken.title} · ${taken.status === 'done' ? 'done' : 'taking now'}`
+								? `${taken.title} · ${{ done: 'done', in_progress: 'taking now', registered: 'registered' }[taken.status]}`
 								: scheduled
 									? `${scheduled.title} · in your ${scheduled.term} schedule`
 									: hint(category)}
@@ -131,6 +133,9 @@
 	}
 	.icon.now {
 		color: rgb(var(--m3-scheme-tertiary));
+	}
+	.icon.registered {
+		color: rgb(var(--m3-scheme-secondary));
 	}
 	.icon.later {
 		color: rgb(var(--m3-scheme-on-surface-variant));

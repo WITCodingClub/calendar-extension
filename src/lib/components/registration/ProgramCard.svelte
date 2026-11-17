@@ -7,6 +7,7 @@
 	const total = $derived(program.summary.total_credits ?? 0);
 	const earned = $derived(program.summary.credits.earned);
 	const now = $derived(program.summary.credits.in_progress);
+	const registered = $derived(program.summary.credits.registered ?? 0);
 	const coOps = $derived(program.summary.co_ops);
 	const school = $derived(program.school ?? program.summary.school);
 	const planned = $derived(
@@ -24,7 +25,9 @@
 		const picks = plan.byTerm[uid];
 		if (!picks) return 0;
 		const sections = plan.sources[uid]?.sections() ?? [];
+		const taken = plan.registeredIn(uid).map((course) => course.code);
 		return picks.added.reduce((sum, code) => {
+			if (taken.includes(code)) return sum;
 			const lecture = picks.picks[code]?.lecture;
 			if (!lecture) return sum;
 			const section = sections.find((entry) => entry.crn === lecture);
@@ -50,15 +53,18 @@
 				<div
 					class="h-2.5 bg-surface-container-highest flex overflow-hidden rounded-full"
 					role="img"
-					aria-label={`${earned} earned, ${now} in progress, ${scheduled} in your ${scheduledIn || plan.termName} schedule, of ${total}`}
+					aria-label={`${earned} earned, ${now} in progress, ${registered} registered, ${scheduled} in your ${scheduledIn || plan.termName} schedule, of ${total}`}
 				>
 					<span class="bg-primary" style:width={pct(earned)}></span>
 					<span class="bg-tertiary" style:width={pct(now)}></span>
+					<span class="bg-secondary" style:width={pct(registered)}></span>
 					<span class="bg-primary/40" style:width={pct(scheduled)}></span>
 				</div>
 				<p class="m-0 gap-x-3 text-xs text-on-surface-variant flex flex-wrap">
 					<span><span class="dot bg-primary"></span>{earned} earned</span>
 					<span><span class="dot bg-tertiary"></span>{now} taking now</span>
+					{#if registered}<span><span class="dot bg-secondary"></span>{registered} registered</span
+						>{/if}
 					{#if scheduled}<span
 							><span class="dot bg-primary/40"></span>{scheduled} in {scheduledIn}</span
 						>{/if}

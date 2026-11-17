@@ -15,6 +15,7 @@
 	function kind(course: ListCourse): Kind {
 		if (course.status === 'done') return 'done';
 		if (course.status === 'in_progress') return 'now';
+		if (course.status === 'registered') return 'registered';
 		if (scheduledTerm(course.code)) return 'scheduled';
 		return 'later';
 	}
@@ -22,6 +23,8 @@
 	function note(course: ListCourse) {
 		if (course.status === 'done') return course.term ? `Done ${course.term}` : 'Done';
 		if (course.status === 'in_progress') return 'Taking now';
+		if (course.status === 'registered')
+			return course.term ? `Registered for ${course.term}` : 'Registered';
 		const term = scheduledTerm(course.code);
 		if (term) return `In your ${term} schedule`;
 		if (course.major_term) return `In your major plan · ${course.major_term}`;
@@ -75,6 +78,9 @@
 	}
 	.icon.now {
 		color: rgb(var(--m3-scheme-tertiary));
+	}
+	.icon.registered {
+		color: rgb(var(--m3-scheme-secondary));
 	}
 	.icon.later {
 		color: rgb(var(--m3-scheme-on-surface-variant));

@@ -178,6 +178,35 @@ test('courses lead through the questions to a schedule, a section change, review
 	expect(state.puts).toHaveLength(1);
 });
 
+test('registered courses and transfer credit show in progress, and registered sections start the plan', async ({
+	extension
+}) => {
+	const { page } = extension;
+	await registration(extension, { registered: true });
+	await extension.open('registration/progress');
+	await expect(page.getByRole('heading', { name: 'Computer Science, B.S.' })).toBeVisible();
+	await expect(page.getByText('4 registered')).toBeVisible();
+
+	const term = (name: string) =>
+		page
+			.getByRole('listitem')
+			.filter({ has: page.getByRole('button', { name: new RegExp(`^${name}`) }) });
+	const spring = term('Spring 2027');
+	await expect(spring.getByRole('button', { name: 'COMP 3450: Registered' })).toBeVisible();
+	await expect(spring.getByRole('button', { name: /^Spring 2027/ })).toContainText(
+		'1 of 5 in your schedule'
+	);
+
+	const fall = term('Fall 2025');
+	await fall.getByRole('button', { name: /^Fall 2025/ }).click();
+	await fall.getByRole('button', { name: 'MATH 1750: Done' }).click();
+	await expect(fall.getByRole('status')).toContainText('AP or transfer credit');
+
+	await chooseRadio(page, 'Courses');
+	await expect(page.getByText('1 course · 4 credits').first()).toBeVisible();
+	await expect(page.getByRole('button', { name: /COMP 3450/ }).first()).toBeVisible();
+});
+
 test('progress shows the missed warning, the timeline, details, HSS and the minor', async ({
 	extension
 }) => {

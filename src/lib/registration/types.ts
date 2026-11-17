@@ -1,10 +1,17 @@
 export type * from './catalogTypes';
 import type { ScheduleCheck } from './catalogTypes';
 
-export type ProgressStatus = 'done' | 'in_progress' | 'open';
+export type ProgressStatus = 'done' | 'in_progress' | 'registered' | 'open';
 export type PrerequisiteStatus = 'met' | 'not_met' | 'unknown' | null;
 export type RowKind = 'course' | 'choice' | 'placeholder';
-export type EstimateMove = 'taken' | 'behind' | 'prerequisite' | 'offered' | 'co_op' | 'load';
+export type EstimateMove =
+	| 'taken'
+	| 'behind'
+	| 'prerequisite'
+	| 'offered'
+	| 'co_op'
+	| 'load'
+	| 'transfer';
 
 export type CourseDetails = {
 	description: string | null;
@@ -53,6 +60,8 @@ export type NextTermRow = {
 	candidates?: ElectiveCandidate[];
 };
 
+export type RegisteredCourse = { code: string; title: string | null; crns: string[] };
+
 export type NextTermProgram = {
 	program: string;
 	name: string;
@@ -61,6 +70,7 @@ export type NextTermProgram = {
 	semester: { year: number; season: string } | null;
 	planned: NextTermRow[];
 	behind: NextTermRow[];
+	registered: RegisteredCourse[];
 };
 
 export type NextTermCourses = {
@@ -95,6 +105,7 @@ export type RequirementRow = Partial<CourseDetails> & {
 	expected_term?: string | null;
 	expected_term_uid?: number | null;
 	moved?: EstimateMove | null;
+	transfer?: boolean;
 	title?: string | null;
 	list?: RowList;
 	filled_course?: FilledCourse | null;
@@ -143,7 +154,7 @@ export type HssProgress = {
 		code: string;
 		title: string;
 		credits: number | null;
-		status: 'done' | 'in_progress';
+		status: 'done' | 'in_progress' | 'registered';
 		category: string | null;
 	}[];
 	open_slots: {
@@ -161,7 +172,13 @@ export type ProgramSummary = {
 	credits: {
 		earned: number;
 		in_progress: number;
-		not_counted: { earned: number; in_progress: number; courses: string[] };
+		registered: number;
+		not_counted: {
+			earned: number;
+			in_progress: number;
+			registered: number;
+			courses: string[];
+		};
 	};
 	co_ops: { required: number; done: number };
 };
@@ -189,7 +206,7 @@ export type DegreeProgram = {
 	needs_review: boolean;
 	plan: string | null;
 	plans: string[];
-	counts: { done: number; in_progress: number; open: number };
+	counts: { done: number; in_progress: number; registered: number; open: number };
 	summary: ProgramSummary;
 	requirements: RequirementRow[];
 	hss: HssProgress | null;
@@ -205,12 +222,14 @@ export type DegreeProgram = {
 export type TakenCourse = {
 	code: string;
 	title: string;
-	term: string;
-	term_uid: number;
-	crn: number;
+	term: string | null;
+	term_uid: number | null;
+	crn: number | null;
 	credits: number | null;
-	status: 'done' | 'in_progress' | 'not_passed';
+	status: 'done' | 'in_progress' | 'registered' | 'not_passed';
 	outcome: string | null;
+	transfer: boolean;
+	source: 'transcript' | 'student' | null;
 };
 
 export type DegreeProgress = {

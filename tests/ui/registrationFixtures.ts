@@ -30,11 +30,20 @@ export type RegistrationState = {
 	busy: number;
 	zero: boolean;
 	unpublished: boolean;
+	registered: boolean;
 	fail: string[];
 };
 
 export function registrationState(): RegistrationState {
-	return { plans: {}, puts: [], busy: 0, zero: false, unpublished: false, fail: [] };
+	return {
+		plans: {},
+		puts: [],
+		busy: 0,
+		zero: false,
+		unpublished: false,
+		registered: false,
+		fail: []
+	};
 }
 
 export const REGISTRATION_PATH =
@@ -190,13 +199,19 @@ const timeline: PlanTerm[] = [
 
 function counts(rows: RequirementRow[]) {
 	const of = (status: ProgressStatus) => rows.filter((row) => row.status === status).length;
-	return { done: of('done'), in_progress: of('in_progress'), open: of('open') };
+	return {
+		done: of('done'),
+		in_progress: of('in_progress'),
+		registered: of('registered'),
+		open: of('open')
+	};
 }
 
 const noCredits = {
 	earned: 0,
 	in_progress: 0,
-	not_counted: { earned: 0, in_progress: 0, courses: [] }
+	registered: 0,
+	not_counted: { earned: 0, in_progress: 0, registered: 0, courses: [] }
 };
 
 const hssSlot = (term: string, hss_category: string | null) => ({
@@ -357,6 +372,51 @@ export const degreeProgress: DegreeProgress = {
 	assumptions: []
 };
 
+function registeredProgress(): DegreeProgress {
+	const requirements = csRequirements.map((row) => {
+		if (row.code === 'COMP 3450')
+			return { ...row, status: 'registered' as const, course: row.code, term: row.planned_term };
+		if (row.code === 'MATH 1750')
+			return {
+				...row,
+				term: null,
+				expected_term: null,
+				moved: 'transfer' as const,
+				transfer: true
+			};
+		return row;
+	});
+	return {
+		...degreeProgress,
+		programs: [
+			{
+				...computerScience,
+				requirements,
+				counts: counts(requirements),
+				summary: {
+					...computerScience.summary,
+					credits: { ...computerScience.summary.credits, registered: 4 }
+				}
+			},
+			mathMinor
+		],
+		courses: [
+			{
+				code: 'MATH 1750',
+				title: 'Calculus I',
+				term: null,
+				term_uid: null,
+				crn: null,
+				credits: 4,
+				status: 'done',
+				outcome: null,
+				transfer: true,
+				source: 'transcript'
+			}
+		]
+	};
+}
+
 function courseRow(year: number, season: string, code: string): NextTermRow {
 	return {
 		year,
@@ -396,8 +456,9 @@ function candidate(code: string, open_seats: boolean) {
 	};
 }
 
-function nextTerm(uid: number, sections: boolean): NextTermCourses {
+function nextTerm(uid: number, sections: boolean, registered: boolean): NextTermCourses {
 	const summer = uid === SUMMER;
+	const taken = registered && !summer;
 	return {
 		term: { uid, name: termName(uid) },
 		assumed: { courses: [], from_plans: [] },
@@ -413,7 +474,7 @@ function nextTerm(uid: number, sections: boolean): NextTermCourses {
 					? []
 					: [
 							courseRow(2, 'spring', 'COMP 3350'),
-							courseRow(2, 'spring', 'COMP 3450'),
+							...(taken ? [] : [courseRow(2, 'spring', 'COMP 3450')]),
 							{
 								year: 2,
 								season: 'spring',
@@ -427,7 +488,10 @@ function nextTerm(uid: number, sections: boolean): NextTermCourses {
 								candidates: [candidate('PHIL 2100', true), candidate('PHIL 4401', false)]
 							}
 						],
-				behind: [courseRow(2, 'fall', 'COMP 2280'), courseRow(2, 'fall', 'MATH 2500')]
+				behind: [courseRow(2, 'fall', 'COMP 2280'), courseRow(2, 'fall', 'MATH 2500')],
+				registered: taken
+					? [{ code: 'COMP 3450', title: COURSES['COMP 3450'][0], crns: ['20431'] }]
+					: []
 			}
 		],
 		assumptions: []
@@ -716,12 +780,13 @@ export function registrationReply(
 			data: match[4] ? { count: result.count, capped: result.capped } : result
 		});
 	}
-	if (method === 'GET' && key === 'degree_progress') return new Reply(200, degreeProgress);
+	if (method === 'GET' && key === 'degree_progress')
+		return new Reply(200, state.registered ? registeredProgress() : degreeProgress);
 	if (method === 'GET' && key === 'next_term_courses') {
 		const term = Number(query.get('term') ?? REGISTERING);
 		if (term !== REGISTERING && term !== SUMMER)
 			return new Reply(404, { error: 'Term not found', code: 'NOT_FOUND' });
-		return new Reply(200, nextTerm(term, term === SUMMER || !state.unpublished));
+		return new Reply(200, nextTerm(term, term === SUMMER || !state.unpublished, state.registered));
 	}
 	if (key === 'registration_plans' && match[2]) {
 		const term = match[2];

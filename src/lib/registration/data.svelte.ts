@@ -8,7 +8,13 @@ import {
 	type SectionPick,
 	type Suggestion
 } from './options';
-import { emptyPicks, picksFrom, withoutUnavailable, type TermPicks } from './restore';
+import {
+	emptyPicks,
+	picksFrom,
+	registeredCourses,
+	withoutUnavailable,
+	type TermPicks
+} from './restore';
 import { TermData } from './terms.svelte';
 import type { CatalogSection, PlanCourse, RequirementRow, SavedRegistrationPlan } from './types';
 
@@ -92,6 +98,7 @@ export class PlanData extends TermData {
 	async #restore(uid: string) {
 		const sources = this.sources[uid];
 		if (!sources?.saved.loaded || this.#restored.includes(uid)) return;
+		if (!sources.courses.loaded && !sources.courses.error) return;
 		await this.#drafts;
 		if (!this.active() || this.#restored.includes(uid)) return;
 		this.#restored.push(uid);
@@ -115,9 +122,24 @@ export class PlanData extends TermData {
 				this.dropped = [...this.dropped, ...dropped];
 				this.#saveDrafts();
 			}
+		} else {
+			await this.#seed(uid);
+			if (!this.active()) return;
 		}
 		this.onRestored(uid, saved);
 		if (sources.catalog.loaded) void this.fetchSections(uid, this.#pickedCrns(uid));
+	}
+
+	async #seed(uid: string) {
+		const registered = this.registeredIn(uid);
+		if (!registered.length) return;
+		await this.fetchSections(
+			uid,
+			registered.flatMap((course) => course.crns)
+		);
+		const sources = this.sources[uid];
+		if (!this.active() || !sources || this.byTerm[uid]?.added.length) return;
+		this.#update(uid, picksFrom(registeredCourses(registered, sources.sections())));
 	}
 
 	protected onRestored(uid: string, saved: SavedRegistrationPlan | null) {

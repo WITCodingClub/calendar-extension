@@ -1,5 +1,5 @@
-import { fillId, unique, type DroppedCrn, type SectionPick } from './options';
-import type { PlanCourse, SavedRegistrationPlan } from './types';
+import { fillId, isLab, unique, type DroppedCrn, type SectionPick } from './options';
+import type { CatalogSection, PlanCourse, RegisteredCourse, SavedRegistrationPlan } from './types';
 
 export type TermPicks = {
 	added: string[];
@@ -30,6 +30,23 @@ export function picksFrom(courses: PlanCourse[]): Pick<TermPicks, 'added' | 'fil
 		seen[key] = (seen[key] ?? 0) + 1;
 	}
 	return { added: unique(courses.map((course) => course.code)), fills, picks };
+}
+
+export function registeredCourses(
+	registered: RegisteredCourse[],
+	sections: CatalogSection[]
+): PlanCourse[] {
+	return registered.map((course) => {
+		const lab = (crn: string) => {
+			const section = sections.find((entry) => entry.crn === crn);
+			return section ? isLab(section) : false;
+		};
+		const crns = [
+			...course.crns.filter((crn) => !lab(crn)),
+			...course.crns.filter((crn) => lab(crn))
+		];
+		return { code: course.code, crns, fills: null };
+	});
 }
 
 export function withoutUnavailable(

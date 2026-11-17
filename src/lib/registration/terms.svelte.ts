@@ -8,6 +8,7 @@ import type {
 	DegreeProgress,
 	NextTermCourses,
 	NextTermRow,
+	RegisteredCourse,
 	SavedRegistrationPlan
 } from './types';
 
@@ -148,10 +149,12 @@ export class TermData {
 	#loadTerm(uid: string) {
 		const sources = this.#ensure(uid);
 		if (!sources.courses.started)
-			void sources.courses.load(
-				() => API.getNextTermCourses(uid),
-				() => this.#coursesLoaded(uid)
-			);
+			void sources.courses
+				.load(
+					() => API.getNextTermCourses(uid),
+					() => this.#coursesLoaded(uid)
+				)
+				.then(() => this.savedLoaded(uid));
 		else if (sources.courses.data) this.#coursesLoaded(uid);
 		this.#loadSaved(uid);
 	}
@@ -225,6 +228,15 @@ export class TermData {
 		if (!sources || !subject || !number) return;
 		const found = await allSections({ term_uid: uid, subject, course_number: [number] });
 		if (this.active()) sources.addSections(found.filter((section) => codeOf(section) === code));
+	}
+
+	registeredIn(uid: string): RegisteredCourse[] {
+		const courses = (this.sources[uid]?.courses.data?.programs ?? []).flatMap(
+			(program) => program.registered
+		);
+		return courses.filter(
+			(course, index) => courses.findIndex((other) => other.code === course.code) === index
+		);
 	}
 
 	section(crn: string) {

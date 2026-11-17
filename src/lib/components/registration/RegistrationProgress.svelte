@@ -64,13 +64,16 @@
 		const list = term.rows.map((row) => kindOf(plan, row, term));
 		const count = (k: Kind) => list.filter((entry) => entry === k).length;
 		if (term.co_op) return 'Co-op';
+		if (term.when === 'registering' && count('registered') === list.length)
+			return `Registered for ${list.length}`;
 		if (term.when === 'registering')
-			return `${count('scheduled')} of ${list.length} in your schedule`;
+			return `${count('scheduled') + count('registered')} of ${list.length} in your schedule`;
 		if (term.when === 'current') return `Taking ${count('now')}`;
 		if (term.when === 'past')
 			return count('behind')
 				? `${count('done')} of ${list.length} done`
 				: `All ${list.length} done`;
+		if (count('registered')) return `Registered for ${count('registered')} of ${list.length}`;
 		return `${list.length} ${list.length === 1 ? 'course' : 'courses'}`;
 	}
 
@@ -283,6 +286,10 @@
 	.now {
 		background: rgb(var(--m3-scheme-tertiary-container));
 		color: rgb(var(--m3-scheme-on-tertiary-container));
+	}
+	.registered {
+		background: rgb(var(--m3-scheme-secondary-container));
+		color: rgb(var(--m3-scheme-on-secondary-container));
 	}
 	.scheduled {
 		background: rgb(var(--m3-scheme-primary));
